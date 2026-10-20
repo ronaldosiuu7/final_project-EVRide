@@ -19,7 +19,7 @@ Ngày soạn: **21/10/2026**. Base URL: `/api/v1`. Định dạng: JSON, UTF-8.
 
 Tên endpoint, schema JSON, HTTP status, JWT, idempotency, phân quyền chi tiết và trạng thái bổ sung dưới đây là đề xuất triển khai V1. Nhóm cần review trước khi đóng băng hợp đồng.
 
-DBML hiện đọc được vẫn có `planned_start_time`, `planned_end_time`, chưa có `expires_at` và trạng thái giữ chỗ/hết hạn. Hợp đồng này dùng mô hình nghiệp vụ mới; **không được triển khai trực tiếp trên schema cũ mà bỏ qua mục 13**.
+Hợp đồng này dựa trên bản `docs/database.md` đã cập nhật ở nhánh `docs/update-database-design`: có `expires_at`, trạng thái `RESERVED`/`EXPIRED`, đã bỏ `planned_start_time`/`planned_end_time` và cho phép `total_price` là null trước khi chốt phí. PR API contract phụ thuộc bản thiết kế này; cần tích hợp thay đổi thiết kế vào nhánh đích khi hợp nhất các PR. Mục 13 phân biệt nội dung đã có trong DBML với phần còn phải bổ sung hoặc thực thi bằng migration/backend.
 
 Không tự coi các chính sách giá, cọc, giấy phép, ngưỡng pin và cổng thanh toán là đã được duyệt. Các quyết định còn thiếu nằm ở mục 14; API phụ thuộc chính sách chưa cấu hình trả `503 POLICY_NOT_CONFIGURED`, không tự áp dụng giá hoặc mức cọc mặc định.
 
@@ -157,7 +157,7 @@ Field dẫn xuất không tạo thêm bảng: `occupied_spaces` đếm tất c�
 
 `remaining_hold_seconds = max(0, floor(expires_at - server_time))` khi RESERVED, trạng thái khác bằng 0. `elapsed_seconds` bằng 0 trước nhận xe, sau đó tính từ actual_start_time đến actual_end_time hoặc server_time. Đây không phải số đơn vị tính phí.
 
-Enum bổ sung đề xuất: Station `ACTIVE/INACTIVE`; Transaction `PENDING/SUCCESS/FAILED`; Vehicle thêm `RESERVED`; Rental dùng `RESERVED/IN_RENT/COMPLETED/CANCELLED/EXPIRED/STOLEN`. Giữ các enum khác trong DBML. `OVERDUE` chưa dùng vì chưa chốt hạn trả xe.
+Enum bổ sung đề xuất: Station `ACTIVE/INACTIVE`; Transaction `PENDING/SUCCESS/FAILED`. Theo DBML ở nhánh `docs/update-database-design`, Vehicle đã có `RESERVED`; Rental dùng `RESERVED/IN_RENT/COMPLETED/CANCELLED/EXPIRED/STOLEN`. Giữ các enum khác trong DBML. `OVERDUE` chưa dùng vì chưa chốt hạn trả xe.
 
 ## 4. Đăng ký, đăng nhập, hồ sơ và giấy tờ
 
@@ -433,24 +433,25 @@ GET `/health`: Public, 200 `{status: "ok"}` trong envelope, không lộ cấu h�
 
 Kiểm thử tranh chấp dùng PostgreSQL thật với các kết nối độc lập. Frontend đếm ngược dựa expires_at/server_time, không dùng đồng hồ client để quyết định quyền nhận xe; tải lại dữ liệu sau lỗi xung đột.
 
-## 13. Chênh lệch với DBML và yêu cầu lưu trữ
+## 13. Đối chiếu DBML và yêu cầu lưu trữ
 
-Không tự thêm bảng trong file DBML qua tài liệu này. Thành viên CSDL phải cập nhật thiết kế và migration trước khi tuyên bố API tương ứng đã sẵn sàng.
+Đối chiếu với `docs/database.md` trên nhánh `docs/update-database-design`. Các nội dung ghi “đã có” là đã có trong thiết kế, không có nghĩa đã chạy migration trên PostgreSQL. Tài liệu này không tự thêm bảng; thành viên CSDL triển khai migration và bổ sung các phần còn thiếu trước khi tuyên bố API tương ứng đã sẵn sàng.
 
-| Hạng mục | Thay đổi cần có |
+| Hạng mục | Trạng thái thiết kế và việc tiếp theo |
 | --- | --- |
-| Thời hạn | Thêm rentals.expires_at, bỏ yêu cầu planned_start_time/planned_end_time cho đặt lịch; giữ actual_start_time/actual_end_time |
-| Trạng thái | Thêm Vehicle RESERVED; Rental RESERVED/EXPIRED, thay PENDING/CONFIRMED; không dùng OVERDUE khi chưa có chính sách |
-| Tiền chưa tính | rentals.total_price nullable trước khi chốt phí, không dùng 0 để giả định đã miễn phí |
-| Chống đặt trùng | Partial unique index vehicle_id với trạng thái RESERVED/IN_RENT/STOLEN; hết hạn phải được chuyển trạng thái trong giao dịch, không dùng NOW() trong predicate index |
-| Bàn giao / mã | UNIQUE handovers(rental_id, kind), UNIQUE user_promotions(user_id, promotion_id) |
+| Thời hạn | Đã có rentals.expires_at và bỏ planned_start_time/planned_end_time; cần migration và xử lý hết hạn trong backend |
+| Trạng thái | Đã có Vehicle RESERVED, Rental RESERVED/EXPIRED và bỏ PENDING/CONFIRMED/OVERDUE; cần thực thi giới hạn enum và chuyển trạng thái |
+| Tiền chưa tính | Đã có rentals.total_price nullable trước khi chốt phí; giữ nguyên ý nghĩa null khác 0 |
+| Chống đặt trùng | Đã mô tả partial unique index vehicle_id cho RESERVED/IN_RENT/STOLEN trong phần quy tắc; cần tạo index bằng migration và thực thi giao dịch hết hạn, không dùng NOW() trong predicate index |
+| Bàn giao | Đã khai báo UNIQUE handovers(rental_id, kind); cần tạo bằng migration |
+| Mã cá nhân | Còn cần bổ sung UNIQUE user_promotions(user_id, promotion_id) |
 | Snapshot thanh toán | Lưu giá, loại xe, phiên bản chính sách, mã và số tiền giảm/cọc đã áp dụng ở rental/invoice hoặc cấu trúc phụ đã duyệt |
 | Ghi sổ một lần | Liên kết định danh giao dịch nghiệp vụ với wallet_transactions; ràng buộc không ghi cùng thanh toán hai lần |
 | Idempotency | Kho bền vững lưu key, request hash, kết quả và trạng thái xử lý; không giả định 15 bảng hiện tại đã hỗ trợ |
 | Audit / GPS thật | Kho audit cho quản trị, xác minh giấy tờ; mô hình thiết bị nếu tích hợp GPS thật |
 | Bảo trì / bảng giá | Nếu cần phiếu bảo trì, lịch sử giá hoặc vị trí đầy đủ phải bổ sung bảng; support_tickets không thay thế toàn bộ |
-| Kiểm tra giá trị | CHECK enum, capacity > 0, pin 0–100, tiền không âm, thứ tự các mốc thời gian, expires_at = created_at + 30 phút |
-| FK DBML | Quan hệ nullable biểu diễn bằng cột nullable và ký hiệu quan hệ chuẩn; rà soát ký hiệu `>?` trong bản hiện tại trước khi xuất ERD |
+| Kiểm tra giá trị | Đã mô tả quy tắc trong DBML; cần CHECK enum, capacity > 0, pin 0–100, tiền không âm, thứ tự các mốc thời gian và expires_at = created_at + 30 phút trong migration/backend |
+| FK DBML | Đã sửa ký hiệu quan hệ nullable sang cột nullable và quan hệ chuẩn; dùng bản thiết kế mới khi xuất ERD |
 
 Giữ các ràng buộc unique sẵn có như wallets.user_id, invoices.rental_id, rental_reviews.rental_id. Không xóa dữ liệu lịch sử có liên quan tài chính. Bất kỳ endpoint nào cần trường chưa có phải chờ migration, không trả dữ liệu giả để che thiếu schema.
 
