@@ -20,7 +20,7 @@ Cập nhật ngày 20/10/2026: repo đang ở giai đoạn thiết kế và chu�
 
 Cập nhật backend ngày 30/10/2026: đã khởi tạo FastAPI với `GET /api/v1/health` và Swagger tại `/docs`. Xem [hướng dẫn cài đặt và chạy backend](backend/README.md). Chưa triển khai đăng nhập hoặc nghiệp vụ thuê xe.
 
-Xem [trạng thái và phân công](docs/project-status.md) cùng [quy tắc nghiệp vụ](docs/requirements.md).
+Xem [quy tắc nghiệp vụ](docs/requirements.md).
 
 
 ## Cấu trúc dự án
