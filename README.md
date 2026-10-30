@@ -1,6 +1,26 @@
-# EVRide — Website cho thuê xe điện
+# EVRide – Hệ thống quản lý cho thuê ô tô điện
 
-EVRide là dự án website cho thuê xe điện theo trạm, với ví trả trước, quản lý chuyến đi, bảo trì và thống kê. Công nghệ định hướng: React, FastAPI và PostgreSQL.
+EVRide là website quản lý dịch vụ cho thuê ô tô điện theo mô hình trạm. Khách hàng tìm xe đang có sẵn, đặt và giữ xe trong 30 phút, nhận xe tại một trạm và trả tại bất kỳ trạm nào còn chỗ trống.
+
+Phạm vi hệ thống gồm quản lý phương tiện, trạm xe, khách hàng, nhân viên, thanh toán, ví điện tử, khuyến mãi và xử lý sự cố. Công nghệ định hướng: React, FastAPI và PostgreSQL.
+
+## Mô hình hoạt động
+
+1. Chọn trạm nhận xe, xem danh sách trạm và số xe đang có sẵn.
+2. Chọn một chiếc xe cụ thể; hệ thống giữ xe trong 30 phút.
+3. Đến trạm A; nhân viên xác nhận, bàn giao và bắt đầu chuyến thuê.
+4. Sử dụng xe, theo dõi thời gian thuê và vị trí GPS.
+5. Chọn trạm B bất kỳ còn chỗ; nhân viên nhận xe và hoàn tất thanh toán.
+
+**Phiên bản hiện tại không hỗ trợ đặt trước nhiều ngày.** Khách chỉ đặt xe đang có sẵn và phải đến nhận trong 30 phút.
+
+## Trạng thái dự án
+
+Cập nhật ngày 20/10/2026: repo đang ở giai đoạn thiết kế và chuẩn bị triển khai. Đã có tài liệu nghiệp vụ, thiết kế CSDL, kế hoạch kiểm thử và hạ tầng; chưa có mã ứng dụng backend/frontend, migration thực thi, kiểm thử tự động hay workflow CI/CD. Các chức năng nêu trên là phạm vi cần triển khai, chưa phải tính năng đã chạy được.
+
+Cập nhật backend ngày 30/10/2026: đã khởi tạo FastAPI với `GET /api/v1/health` và Swagger tại `/docs`. Xem [hướng dẫn cài đặt và chạy backend](backend/README.md). Chưa triển khai đăng nhập hoặc nghiệp vụ thuê xe.
+
+Xem [trạng thái và phân công](docs/project-status.md) cùng [quy tắc nghiệp vụ](docs/requirements.md).
 
 
 ## Cấu trúc dự án
@@ -78,7 +98,7 @@ Các thư mục chưa có mã nguồn được để trống. Git chỉ lưu cá
 ## Bắt đầu phát triển
 
 1. Đọc [phạm vi chức năng](docs/requirements.md) và [kiến trúc dự kiến](docs/architecture.md).
-2. Khởi tạo ứng dụng FastAPI trong `backend/` và React trong `frontend/` theo hướng dẫn cấu trúc của từng phần.
+2. Chạy FastAPI theo [backend/README.md](backend/README.md); phát triển frontend theo hướng dẫn trong `frontend/`.
 3. Chọn thư viện truy cập PostgreSQL và công cụ migration; đặt lịch sử schema tại `database/migrations/`.
 4. Cấu hình môi trường, sau đó triển khai từng luồng nghiệp vụ và kiểm thử tương ứng.
 
