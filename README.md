@@ -1,6 +1,6 @@
-# EVRide – Hệ thống quản lý cho thuê ô tô điện
+# EVRide – Hệ thống quản lý cho thuê xe máy điện
 
-EVRide là website quản lý dịch vụ cho thuê ô tô điện theo mô hình trạm. Khách hàng tìm xe đang có sẵn, đặt và giữ xe trong 30 phút, nhận xe tại một trạm và trả tại bất kỳ trạm nào còn chỗ trống.
+EVRide là website quản lý dịch vụ cho thuê xe máy điện theo mô hình trạm. Khách hàng tìm xe đang có sẵn, đặt và giữ xe trong 30 phút, nhận xe tại một trạm và trả tại bất kỳ trạm nào còn chỗ trống.
 
 Phạm vi hệ thống gồm quản lý phương tiện, trạm xe, khách hàng, nhân viên, thanh toán, ví điện tử, khuyến mãi và xử lý sự cố. Công nghệ định hướng: React, FastAPI và PostgreSQL.
 

@@ -1,4 +1,4 @@
-// EVRide – Hệ thống quản lý cho thuê ô tô điện theo trạm
+// EVRide – Hệ thống quản lý cho thuê xe máy điện theo trạm
 // Cập nhật thiết kế: 21/10/2026.
 // File dùng cú pháp DBML để nhập vào công cụ vẽ ERD; chưa phải migration SQL.
 // Chỉ đặt xe đang có sẵn, giữ 30 phút; không đặt trước nhiều ngày.
