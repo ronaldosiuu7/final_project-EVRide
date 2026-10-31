@@ -8,7 +8,7 @@ Ngày soạn: **21/10/2026**. Base URL: `/api/v1`. Định dạng: JSON, UTF-8.
 
 ### 1.1. Quy tắc nghiệp vụ đã chốt
 
-- Cho thuê ô tô điện theo trạm; chỉ đặt chiếc xe đang có sẵn, không đặt trước nhiều ngày.
+- Cho thuê xe máy điện theo trạm; chỉ đặt chiếc xe đang có sẵn, không đặt trước nhiều ngày.
 - Giữ xe 30 phút kể từ khi đặt thành công. Hết hạn phải tạo lượt đặt mới và kiểm tra lại xe còn sẵn; không gia hạn hay ghi đè lượt cũ.
 - Nhân viên xác nhận bàn giao mới bắt đầu thời gian thuê thực tế.
 - Trả tại trạm nhận hoặc bất kỳ trạm khác còn chỗ; nhân viên nhận xe và hoàn tất thanh toán.

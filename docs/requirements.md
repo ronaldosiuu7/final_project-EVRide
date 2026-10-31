@@ -1,5 +1,7 @@
 # Phạm vi chức năng đề xuất
 
+Phương tiện cho thuê trong EVRide là xe máy điện.
+
 
 
 ## Khách hàng
