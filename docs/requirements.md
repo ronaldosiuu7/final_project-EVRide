@@ -15,6 +15,7 @@ Phương tiện cho thuê trong EVRide là xe máy điện.
 ## Nhân viên và quản trị
 
 - Quản lý trạm, xe, giá thuê và tài khoản.
+- Phê duyệt, xác thực thông tin khách hàng.
 - Theo dõi lượt đặt xe và chuyến đi.
 - Ghi nhận lỗi xe và xử lý bảo trì.
 - Xem doanh thu và thống kê sử dụng xe.
