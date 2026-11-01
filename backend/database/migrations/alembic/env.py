@@ -7,8 +7,12 @@ from sqlalchemy import engine_from_config, pool
 
 # 1. Thêm đường dẫn thư mục gốc của dự án vào sys.path
 # Giả sử cấu trúc: root/alembic/env.py -> parents[1] là thư mục root (hoặc backend)
-BASE_DIR = Path(__file__).resolve().parents[2]
+BASE_DIR = Path(__file__).resolve().parents[1]
 sys.path.append(str(BASE_DIR))
+
+# Thêm 2 dòng này để debug:
+print("--> BASE_DIR dang tro toi:", BASE_DIR)
+print("--> Co thu muc 'app' o day khong?:", (BASE_DIR / "app").exists())
 
 # 2. Import database_url và Base từ dự án của bạn
 # (Thay 'app.database' và 'app.models' theo đúng tên file/thư mục trong dự án của bạn)

@@ -16,7 +16,6 @@ from sqlalchemy import (
     String,
     Text,
     Time,
-    UniqueConstraint,
     func,
     text,
 )
@@ -212,7 +211,7 @@ class Handover(Base):
             "battery_percent BETWEEN 0 AND 100",
             name="ck_handovers_battery_percent_range",
         ),
-        UniqueConstraint("rental_id", "kind", name="uq_handovers_rental_kind"),
+        Index("uq_handovers_rental_kind", "rental_id", "kind", unique=True),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)

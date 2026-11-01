@@ -7,6 +7,7 @@ Mã quản lý cấu trúc và dữ liệu của EVRide được tập trung t�
 | [migrations](migrations/README.md) | Các thay đổi cấu trúc cơ sở dữ liệu theo phiên bản. |
 | [seeds](seeds/README.md) | Dữ liệu mẫu phục vụ phát triển và demo. |
 | [queries](queries/README.md) | Truy vấn tham khảo, kiểm tra dữ liệu và báo cáo. |
+| [stored_database](stored_database/README.md) | Cấu trúc dữ liệu ban đầu được thêm vào SQL|
 
 Các nhóm dữ liệu dự kiến: người dùng, trạm, xe, lượt đặt xe, chuyến đi, ví, giao dịch ví và phiếu bảo trì. Chưa có schema, migration hoặc dữ liệu mẫu được triển khai.
 
