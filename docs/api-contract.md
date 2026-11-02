@@ -19,7 +19,7 @@ Ngày soạn: **21/10/2026**. Base URL: `/api/v1`. Định dạng: JSON, UTF-8.
 
 Tên endpoint, schema JSON, HTTP status, JWT, idempotency, phân quyền chi tiết và trạng thái bổ sung dưới đây là đề xuất triển khai V1. Nhóm cần review trước khi đóng băng hợp đồng.
 
-Hợp đồng này dựa trên bản `docs/database.md` đã cập nhật ở nhánh `docs/update-database-design`: có `expires_at`, trạng thái `RESERVED`/`EXPIRED`, đã bỏ `planned_start_time`/`planned_end_time` và cho phép `total_price` là null trước khi chốt phí. PR API contract phụ thuộc bản thiết kế này; cần tích hợp thay đổi thiết kế vào nhánh đích khi hợp nhất các PR. Mục 13 phân biệt nội dung đã có trong DBML với phần còn phải bổ sung hoặc thực thi bằng migration/backend.
+Hợp đồng này chọn thiết kế từ nhánh `docs/update-database-design`, hiện đã được đồng bộ trong `docs/database.md`: có `expires_at`, trạng thái `RESERVED`/`EXPIRED`, bỏ `planned_start_time`/`planned_end_time` và cho phép `total_price` là null trước khi chốt phí. Migration Alembic mới đồng bộ bảng `rentals` theo thiết kế này; các quy tắc nghiệp vụ vẫn cần được thực thi trong backend. Mục 13 phân biệt nội dung đã có trong thiết kế với phần còn cần triển khai.
 
 Không tự coi các chính sách giá, cọc, giấy phép, ngưỡng pin và cổng thanh toán là đã được duyệt. Các quyết định còn thiếu nằm ở mục 14; API phụ thuộc chính sách chưa cấu hình trả `503 POLICY_NOT_CONFIGURED`, không tự áp dụng giá hoặc mức cọc mặc định.
 
@@ -439,10 +439,10 @@ Kiểm thử tranh chấp dùng PostgreSQL thật với các kết nối độc 
 
 | Hạng mục | Trạng thái thiết kế và việc tiếp theo |
 | --- | --- |
-| Thời hạn | Đã có rentals.expires_at và bỏ planned_start_time/planned_end_time; cần migration và xử lý hết hạn trong backend |
-| Trạng thái | Đã có Vehicle RESERVED, Rental RESERVED/EXPIRED và bỏ PENDING/CONFIRMED/OVERDUE; cần thực thi giới hạn enum và chuyển trạng thái |
-| Tiền chưa tính | Đã có rentals.total_price nullable trước khi chốt phí; giữ nguyên ý nghĩa null khác 0 |
-| Chống đặt trùng | Đã mô tả partial unique index vehicle_id cho RESERVED/IN_RENT/STOLEN trong phần quy tắc; cần tạo index bằng migration và thực thi giao dịch hết hạn, không dùng NOW() trong predicate index |
+| Thời hạn | Schema dùng rentals.expires_at, bỏ planned_start_time/planned_end_time; migration backfill hạn giữ chỗ 30 phút và backend phải kiểm tra/hết hạn |
+| Trạng thái | Rental dùng RESERVED/IN_RENT/STOLEN/COMPLETED/CANCELLED/EXPIRED; migration chuẩn hóa status cũ và áp dụng CHECK |
+| Tiền chưa tính | rentals.total_price nullable trước khi chốt phí; migration giữ null khác 0 |
+| Chống đặt trùng | Migration bảo đảm partial unique index vehicle_id cho RESERVED/IN_RENT/STOLEN; backend vẫn phải xử lý giao dịch hết hạn, không dùng NOW() trong predicate index |
 | Bàn giao | Đã khai báo UNIQUE handovers(rental_id, kind); cần tạo bằng migration |
 | Mã cá nhân | Còn cần bổ sung UNIQUE user_promotions(user_id, promotion_id) |
 | Snapshot thanh toán | Lưu giá, loại xe, phiên bản chính sách, mã và số tiền giảm/cọc đã áp dụng ở rental/invoice hoặc cấu trúc phụ đã duyệt |

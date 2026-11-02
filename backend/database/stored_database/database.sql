@@ -101,8 +101,10 @@ CREATE TABLE rentals (
     expires_at TIMESTAMPTZ NOT NULL,
     actual_start_time TIMESTAMPTZ,
     actual_end_time TIMESTAMPTZ,
-    status VARCHAR(20) NOT NULL DEFAULT 'RESERVED' CHECK (status IN ('RESERVED', 'IN_RENT', 'STOLEN', 'COMPLETED', 'CANCELLED', 'EXPIRED')),
-    total_price NUMERIC(12, 2) CHECK (total_price >= 0),
+    status VARCHAR(20) NOT NULL DEFAULT 'RESERVED',
+    total_price NUMERIC(12, 2),
+    CONSTRAINT ck_rentals_status CHECK (status IN ('RESERVED', 'IN_RENT', 'STOLEN', 'COMPLETED', 'CANCELLED', 'EXPIRED')),
+    CONSTRAINT ck_rentals_total_price_nonnegative CHECK (total_price >= 0),
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

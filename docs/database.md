@@ -7,7 +7,7 @@
 ## 1. TỔNG QUAN VỀ QUY TẮC VẬN HÀNH (BUSINESS RULES)
 
 1. **Giữ chỗ xe:** Khách hàng chỉ được đặt xe đang ở trạng thái `AVAILABLE`. Thời gian giữ chỗ mặc định là **30 phút** (`expires_at = created_at + 30m`). Không hỗ trợ đặt trước nhiều ngày hoặc gia hạn lượt giữ chỗ.
-2. **Hết hạn giữ chỗ:** Khi quá thời gian `expires_at`, lượt đặt chuyển sang `EXPIRED`. Xe sẽ được giải phóng về trạng thái `AVAILABLE` (trừ khi gặp sự cố/sửa chữa).
+2. **Hết hạn giữ chỗ:** Tại hoặc sau `expires_at`, lượt đặt chuyển sang `EXPIRED`. Xe sẽ được giải phóng về trạng thái `AVAILABLE` (trừ khi gặp sự cố/sửa chữa).
 3. **Nhận xe (Pickup):** Khi nhân viên giao xe thành công, trạng thái chuyển sang `IN_RENT`. Xe rời trạm (`current_station_id = NULL`).
 4. **Trả xe (Return):** Khách trả xe tại trạm bất kỳ còn đủ sức chứa (`capacity`). Nhân viên kiểm tra, xác nhận trả xe để hoàn tất chuyến đi (`COMPLETED`).
 
@@ -104,7 +104,7 @@ Thông tin chi tiết từng lượt đặt / thuê xe.
 | `vehicle_id` | `bigint` | **FK** -> `vehicles.id`, NOT NULL |
 | `pickup_station_id` | `bigint` | **FK** -> `stations.id`, NOT NULL |
 | `actual_return_station_id` | `bigint` | **FK** -> `stations.id`, NULL |
-| `expires_at` | `timestamptz` | NOT NULL (Mặc định `created_at + 30m`) |
+| `expires_at` | `timestamptz` | NOT NULL (Backend ấn định bằng `created_at + 30m`; client không truyền) |
 | `actual_start_time` | `timestamptz` | NULL (Thời điểm nhận xe thực tế) |
 | `actual_end_time` | `timestamptz` | NULL (Thời điểm trả xe thực tế) |
 | `status` | `varchar(20)` | NOT NULL, Default: `'RESERVED'` (`RESERVED`, `IN_RENT`, `STOLEN`, `COMPLETED`, `CANCELLED`, `EXPIRED`) |
