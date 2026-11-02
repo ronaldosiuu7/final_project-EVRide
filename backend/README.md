@@ -72,7 +72,8 @@ Tạo file `backend/.env` từ `backend/.env.example` (xem lệnh ở phần Cà
 | `app/main.py` | Khởi tạo ứng dụng FastAPI và đăng ký router. |
 | `app/api/v1/` | Tập hợp router dưới tiền tố `/api/v1`, hiện có `health.py`. |
 | `app/core/` | Cấu hình môi trường, bảo mật, logging và xử lý lỗi chung. |
-| `app/db/` | Kết nối, session và lớp cơ sở cho ORM; migration nằm ở `../database/migrations/`. |
+| `app/database.py` | Cấu hình kết nối PostgreSQL. |
+| `app/models.py` | SQLAlchemy ORM cho bảng nghiệp vụ và bảng hạ tầng; migration nằm ở `../database/migrations/`. |
 | `app/modules/` | Mã nghiệp vụ, tổ chức theo từng chức năng. |
 | `app/shared/` | Tiện ích và kiểu dữ liệu dùng chung, không gắn với một nghiệp vụ cụ thể. |
 | `tests/unit/` | Kiểm thử quy tắc nghiệp vụ độc lập. |

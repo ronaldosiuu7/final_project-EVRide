@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, time
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import (
     BigInteger,
@@ -16,10 +17,12 @@ from sqlalchemy import (
     String,
     Text,
     Time,
+    UniqueConstraint,
     func,
     text,
 )
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 class Base(DeclarativeBase):
@@ -199,6 +202,9 @@ class Rental(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.current_timestamp()
     )
+    pricing_snapshot: Mapped[RentalPricingSnapshot | None] = relationship(
+        back_populates="rental", uselist=False
+    )
 
 
 class Handover(Base):
@@ -275,6 +281,10 @@ class Transaction(Base):
     __table_args__ = (
         CheckConstraint("amount >= 0", name="ck_transactions_amount_nonnegative"),
         CheckConstraint(
+            "status IN ('PENDING', 'SUCCESS', 'FAILED')",
+            name="ck_transactions_status",
+        ),
+        CheckConstraint(
             "kind IN ('PAYMENT', 'DEPOSIT', 'REFUND', 'FEE')",
             name="ck_transactions_kind",
         ),
@@ -288,11 +298,20 @@ class Transaction(Base):
     actor_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id"), nullable=False
     )
+    idempotency_record_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("idempotency_records.id", ondelete="SET NULL")
+    )
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     kind: Mapped[str] = mapped_column(String(20), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.current_timestamp()
+    )
+    idempotency_record: Mapped[IdempotencyRecord | None] = relationship(
+        back_populates="transactions"
+    )
+    wallet_transaction: Mapped[WalletTransaction | None] = relationship(
+        back_populates="transaction", uselist=False
     )
 
 
@@ -316,6 +335,7 @@ class WalletTransaction(Base):
             "status IN ('PENDING', 'SUCCESS', 'FAILED')",
             name="ck_wallet_transactions_status",
         ),
+        UniqueConstraint("transaction_id", name="uq_wallet_transactions_transaction"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
@@ -323,6 +343,12 @@ class WalletTransaction(Base):
         BigInteger, ForeignKey("wallets.id"), nullable=False
     )
     rental_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("rentals.id"))
+    transaction_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("transactions.id", ondelete="RESTRICT")
+    )
+    idempotency_record_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("idempotency_records.id", ondelete="SET NULL")
+    )
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     type: Mapped[str] = mapped_column(String(30), nullable=False)
     balance_before: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
@@ -330,6 +356,12 @@ class WalletTransaction(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.current_timestamp()
+    )
+    transaction: Mapped[Transaction | None] = relationship(
+        back_populates="wallet_transaction"
+    )
+    idempotency_record: Mapped[IdempotencyRecord | None] = relationship(
+        back_populates="wallet_transactions"
     )
 
 
@@ -370,6 +402,11 @@ class Promotion(Base):
 
 class UserPromotion(Base):
     __tablename__ = "user_promotions"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "promotion_id", name="uq_user_promotions_user_promotion"
+        ),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     user_id: Mapped[int] = mapped_column(
@@ -419,5 +456,149 @@ class GPSPoint(Base):
     latitude: Mapped[Decimal] = mapped_column(Numeric(9, 6), nullable=False)
     longitude: Mapped[Decimal] = mapped_column(Numeric(9, 6), nullable=False)
     recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.current_timestamp()
+    )
+
+
+class IdempotencyRecord(Base):
+    __tablename__ = "idempotency_records"
+    __table_args__ = (
+        UniqueConstraint(
+            "actor_id",
+            "http_method",
+            "request_path",
+            "idempotency_key",
+            name="uq_idempotency_scope_key",
+        ),
+        CheckConstraint(
+            "state IN ('PROCESSING', 'COMPLETED')",
+            name="ck_idempotency_records_state",
+        ),
+        CheckConstraint(
+            "char_length(idempotency_key) BETWEEN 16 AND 128",
+            name="ck_idempotency_records_key_length",
+        ),
+        CheckConstraint(
+            "char_length(request_hash) = 64",
+            name="ck_idempotency_records_hash_length",
+        ),
+        CheckConstraint(
+            "(state = 'PROCESSING' AND completed_at IS NULL "
+            "AND response_status IS NULL) OR "
+            "(state = 'COMPLETED' AND completed_at IS NOT NULL "
+            "AND response_status BETWEEN 100 AND 599)",
+            name="ck_idempotency_records_completion",
+        ),
+        CheckConstraint(
+            "expires_at >= created_at + INTERVAL '24 hours'",
+            name="ck_idempotency_records_minimum_retention",
+        ),
+        Index("idx_idempotency_records_expiry", "expires_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    actor_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    http_method: Mapped[str] = mapped_column(String(10), nullable=False)
+    request_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    state: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default=text("'PROCESSING'")
+    )
+    response_status: Mapped[int | None] = mapped_column(Integer)
+    response_body: Mapped[Any | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.current_timestamp()
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    transactions: Mapped[list[Transaction]] = relationship(
+        back_populates="idempotency_record"
+    )
+    wallet_transactions: Mapped[list[WalletTransaction]] = relationship(
+        back_populates="idempotency_record"
+    )
+
+
+class RentalPricingSnapshot(Base):
+    __tablename__ = "rental_pricing_snapshots"
+    __table_args__ = (
+        UniqueConstraint("rental_id", name="uq_rental_pricing_snapshots_rental"),
+        CheckConstraint("daily_price >= 0", name="ck_rental_price_daily_nonnegative"),
+        CheckConstraint(
+            "deposit_amount >= 0", name="ck_rental_price_deposit_nonnegative"
+        ),
+        CheckConstraint(
+            "discount_percent IS NULL OR discount_percent BETWEEN 0 AND 100",
+            name="ck_rental_price_discount_percent",
+        ),
+        CheckConstraint(
+            "max_discount_amount IS NULL OR max_discount_amount >= 0",
+            name="ck_rental_price_max_discount_nonnegative",
+        ),
+        CheckConstraint(
+            "discount_amount >= 0", name="ck_rental_price_discount_nonnegative"
+        ),
+        CheckConstraint(
+            "pricing_policy_version <> ''",
+            name="ck_rental_price_policy_version_nonempty",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(pricing_policy_snapshot) = 'object'",
+            name="ck_rental_price_policy_snapshot_object",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    rental_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("rentals.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    vehicle_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    vehicle_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    daily_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    pricing_policy_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    pricing_policy_snapshot: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False
+    )
+    deposit_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    promotion_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("promotions.id", ondelete="SET NULL")
+    )
+    promotion_code: Mapped[str | None] = mapped_column(String(50))
+    discount_percent: Mapped[int | None] = mapped_column(Integer)
+    max_discount_amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    discount_amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default=text("0.00")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.current_timestamp()
+    )
+    rental: Mapped[Rental] = relationship(back_populates="pricing_snapshot")
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+    __table_args__ = (
+        Index("idx_audit_logs_actor_created", "actor_id", "created_at"),
+        Index("idx_audit_logs_resource", "resource_type", "resource_id"),
+        Index("idx_audit_logs_created", "created_at"),
+        Index("idx_audit_logs_request_id", "request_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    actor_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL")
+    )
+    action: Mapped[str] = mapped_column(String(100), nullable=False)
+    resource_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    resource_id: Mapped[str | None] = mapped_column(String(100))
+    request_id: Mapped[str | None] = mapped_column(String(64))
+    before_data: Mapped[Any | None] = mapped_column(JSONB)
+    after_data: Mapped[Any | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.current_timestamp()
     )

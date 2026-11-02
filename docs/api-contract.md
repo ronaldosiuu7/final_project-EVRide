@@ -2,7 +2,7 @@
 
 Ngày soạn: **21/10/2026**. Base URL: `/api/v1`. Định dạng: JSON, UTF-8.
 
-Đây là hợp đồng đề xuất để nhóm triển khai và review, **không phải danh sách API đã chạy được**. Căn cứ: [DBML 15 bảng](database.md), [phạm vi nghiệp vụ](requirements.md) và [đặc tả báo cáo](dac_ta_quan_tri_bao_cao.md).
+Đây là hợp đồng đề xuất để nhóm triển khai và review, **không phải danh sách API đã chạy được**. Căn cứ: [15 bảng nghiệp vụ trong DBML và các bảng hạ tầng bổ sung](database.md), [phạm vi nghiệp vụ](requirements.md) và [đặc tả báo cáo](dac_ta_quan_tri_bao_cao.md).
 
 ## 1. Phạm vi và mức độ thống nhất
 
@@ -19,7 +19,7 @@ Ngày soạn: **21/10/2026**. Base URL: `/api/v1`. Định dạng: JSON, UTF-8.
 
 Tên endpoint, schema JSON, HTTP status, JWT, idempotency, phân quyền chi tiết và trạng thái bổ sung dưới đây là đề xuất triển khai V1. Nhóm cần review trước khi đóng băng hợp đồng.
 
-Hợp đồng này dựa trên bản `docs/database.md` đã cập nhật ở nhánh `docs/update-database-design`: có `expires_at`, trạng thái `RESERVED`/`EXPIRED`, đã bỏ `planned_start_time`/`planned_end_time` và cho phép `total_price` là null trước khi chốt phí. PR API contract phụ thuộc bản thiết kế này; cần tích hợp thay đổi thiết kế vào nhánh đích khi hợp nhất các PR. Mục 13 phân biệt nội dung đã có trong DBML với phần còn phải bổ sung hoặc thực thi bằng migration/backend.
+Hợp đồng này chọn thiết kế từ nhánh `docs/update-database-design`, hiện đã được đồng bộ trong `docs/database.md`: có `expires_at`, trạng thái `RESERVED`/`EXPIRED`, bỏ `planned_start_time`/`planned_end_time` và cho phép `total_price` là null trước khi chốt phí. Alembic quản lý schema tại `database/migrations/`; các quy tắc nghiệp vụ và thao tác ghi/replay vẫn cần được thực thi trong backend.
 
 Không tự coi các chính sách giá, cọc, giấy phép, ngưỡng pin và cổng thanh toán là đã được duyệt. Các quyết định còn thiếu nằm ở mục 14; API phụ thuộc chính sách chưa cấu hình trả `503 POLICY_NOT_CONFIGURED`, không tự áp dụng giá hoặc mức cọc mặc định.
 
@@ -129,9 +129,9 @@ Các POST được đánh dấu `I` bắt buộc header `Idempotency-Key`, chu�
 - Key đã hết thời gian lưu không thay thế các ràng buộc lâu dài: một hóa đơn/lượt thuê, một PICKUP/RETURN, một đánh giá, một lần ghi sổ cho mỗi giao dịch thanh toán.
 - Mọi thay đổi xe, lượt thuê, trạm, ví và sổ giao dịch liên quan phải commit/rollback cùng nhau. Không gọi dịch vụ thanh toán bên ngoài trong lúc giữ khóa DB dài hạn.
 
-DBML chưa có kho idempotency hoặc tham chiếu cổng thanh toán: xem mục 13. Client không được tự retry nghiệp vụ bằng key mới chỉ vì chưa nhận response.
+Schema có bảng `idempotency_records`, liên kết giao dịch/sổ ví và snapshot giá trong `database.md`. Backend vẫn phải triển khai claim nguyên tử theo khóa duy nhất, hash body, lưu response cùng transaction và chỉ dọn record sau `expires_at`. Client không được tự retry nghiệp vụ bằng key mới chỉ vì chưa nhận response.
 
-## 3. Tài nguyên và ánh xạ đủ 15 bảng
+## 3. Tài nguyên API
 
 Các schema bên dưới liệt kê trường response. ID/tiền/thời gian theo mục 2. Dấu `?` chỉ trường có giá trị nullable, không phải một phần tên trường. Mọi field không nullable được trả đầy đủ.
 
@@ -181,7 +181,7 @@ Enum bổ sung đề xuất: Station `ACTIVE/INACTIVE`; Transaction `PENDING/SUC
 
 M không tự khóa/hạ quyền tài khoản MANAGER cuối cùng; không đổi CUSTOMER thành nhân viên bằng PATCH để tránh nhập nhằng quyền sở hữu dữ liệu. Tạo nhân viên dùng POST `/users`. Không có DELETE tài khoản trong V1.
 
-Giấy tờ chỉ nhận loại CCCD/PASSPORT/DRIVER_LICENSE. URL ảnh đầu vào phải là đường dẫn HTTPS thuộc kho upload được hệ thống tin cậy, không nhận URL tùy ý để backend tải về. API upload chưa nằm trong 15 bảng; hợp đồng tích hợp kho ảnh cần chốt riêng. Endpoint sensitive trả URL ký ngắn hạn, không cache, ghi audit truy cập; các API danh sách không trả ảnh hoặc số đầy đủ. S/M không tự duyệt giấy tờ của mình. Nộp lại giấy tờ tạo bản PENDING mới, không sửa bằng chứng đã duyệt.
+Giấy tờ chỉ nhận loại CCCD/PASSPORT/DRIVER_LICENSE. URL ảnh đầu vào phải là đường dẫn HTTPS thuộc kho upload được hệ thống tin cậy, không nhận URL tùy ý để backend tải về. Kho file/upload vẫn cần tích hợp riêng. Endpoint sensitive trả URL ký ngắn hạn, không cache, ghi audit truy cập; các API danh sách không trả ảnh hoặc số đầy đủ. S/M không tự duyệt giấy tờ của mình. Nộp lại giấy tờ tạo bản PENDING mới, không sửa bằng chứng đã duyệt.
 
 ## 5. Trạm và xe
 
@@ -439,21 +439,21 @@ Kiểm thử tranh chấp dùng PostgreSQL thật với các kết nối độc 
 
 | Hạng mục | Trạng thái thiết kế và việc tiếp theo |
 | --- | --- |
-| Thời hạn | Đã có rentals.expires_at và bỏ planned_start_time/planned_end_time; cần migration và xử lý hết hạn trong backend |
-| Trạng thái | Đã có Vehicle RESERVED, Rental RESERVED/EXPIRED và bỏ PENDING/CONFIRMED/OVERDUE; cần thực thi giới hạn enum và chuyển trạng thái |
-| Tiền chưa tính | Đã có rentals.total_price nullable trước khi chốt phí; giữ nguyên ý nghĩa null khác 0 |
-| Chống đặt trùng | Đã mô tả partial unique index vehicle_id cho RESERVED/IN_RENT/STOLEN trong phần quy tắc; cần tạo index bằng migration và thực thi giao dịch hết hạn, không dùng NOW() trong predicate index |
+| Thời hạn | Schema dùng rentals.expires_at, bỏ planned_start_time/planned_end_time; migration backfill hạn giữ chỗ 30 phút và backend phải kiểm tra/hết hạn |
+| Trạng thái | Rental dùng RESERVED/IN_RENT/STOLEN/COMPLETED/CANCELLED/EXPIRED; migration chuẩn hóa status cũ và áp dụng CHECK |
+| Tiền chưa tính | rentals.total_price nullable trước khi chốt phí; migration giữ null khác 0 |
+| Chống đặt trùng | Migration bảo đảm partial unique index vehicle_id cho RESERVED/IN_RENT/STOLEN; backend vẫn phải xử lý giao dịch hết hạn, không dùng NOW() trong predicate index |
 | Bàn giao | Đã khai báo UNIQUE handovers(rental_id, kind); cần tạo bằng migration |
-| Mã cá nhân | Còn cần bổ sung UNIQUE user_promotions(user_id, promotion_id) |
-| Snapshot thanh toán | Lưu giá, loại xe, phiên bản chính sách, mã và số tiền giảm/cọc đã áp dụng ở rental/invoice hoặc cấu trúc phụ đã duyệt |
-| Ghi sổ một lần | Liên kết định danh giao dịch nghiệp vụ với wallet_transactions; ràng buộc không ghi cùng thanh toán hai lần |
-| Idempotency | Kho bền vững lưu key, request hash, kết quả và trạng thái xử lý; không giả định 15 bảng hiện tại đã hỗ trợ |
-| Audit / GPS thật | Kho audit cho quản trị, xác minh giấy tờ; mô hình thiết bị nếu tích hợp GPS thật |
+| Mã cá nhân | Có UNIQUE user_promotions(user_id, promotion_id); backend phải tiêu thụ voucher trong cùng transaction với thanh toán |
+| Snapshot thanh toán | Có rental_pricing_snapshots cho giá/loại xe/chính sách/cọc/giảm giá; backend phải ghi snapshot khi chốt lượt thuê |
+| Ghi sổ một lần | Có liên kết duy nhất wallet_transactions.transaction_id; backend phải ghi transaction, số dư ví và bút toán cùng một DB transaction |
+| Idempotency | Có idempotency_records lưu scope, request hash, trạng thái, response và thời hạn tối thiểu 24 giờ; backend vẫn phải triển khai claim/replay/cleanup |
+| Audit / GPS thật | Có audit_logs cho actor/action/resource/before-after; backend phải ghi sự kiện, loại bỏ bí mật payload. GPS thật vẫn cần mô hình thiết bị khi tích hợp |
 | Bảo trì / bảng giá | Nếu cần phiếu bảo trì, lịch sử giá hoặc vị trí đầy đủ phải bổ sung bảng; support_tickets không thay thế toàn bộ |
 | Kiểm tra giá trị | Đã mô tả quy tắc trong DBML; cần CHECK enum, capacity > 0, pin 0–100, tiền không âm, thứ tự các mốc thời gian và expires_at = created_at + 30 phút trong migration/backend |
 | FK DBML | Đã sửa ký hiệu quan hệ nullable sang cột nullable và quan hệ chuẩn; dùng bản thiết kế mới khi xuất ERD |
 
-Giữ các ràng buộc unique sẵn có như wallets.user_id, invoices.rental_id, rental_reviews.rental_id. Không xóa dữ liệu lịch sử có liên quan tài chính. Bất kỳ endpoint nào cần trường chưa có phải chờ migration, không trả dữ liệu giả để che thiếu schema.
+Giữ các ràng buộc unique sẵn có như wallets.user_id, invoices.rental_id, rental_reviews.rental_id và wallet_transactions.transaction_id. Không xóa dữ liệu lịch sử có liên quan tài chính. Các bảng lưu trữ đã có không đồng nghĩa endpoint/backend đã triển khai thao tác ghi hoặc replay.
 
 ## 14. Các quyết định cần nhóm duyệt trước khi đóng băng V1
 
