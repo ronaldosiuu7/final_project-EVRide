@@ -28,7 +28,7 @@ Không tự coi các chính sách giá, cọc, giấy phép, ngưỡng pin và c
 ### 2.1. Kiểu dữ liệu và validation
 
 | Kiểu | Quy ước |
-| --- | --- |
+| --- | --- | 
 | ID | Chuỗi số nguyên dương, ví dụ `"101"`; DB dùng bigint, JSON dùng string tránh mất chính xác trong JavaScript |
 | Tiền | Chuỗi số thập phân không âm, tối đa 2 chữ số lẻ, ví dụ `"150000.00"`; đơn vị VND; không dùng float để tính tiền |
 | Thời gian | RFC 3339 có múi giờ; response UTC dạng `2026-10-21T03:00:00Z` |

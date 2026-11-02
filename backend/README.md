@@ -50,9 +50,20 @@ Health chỉ kiểm tra ứng dụng đang hoạt động, chưa kiểm tra cơ 
 
 ## Cấu hình
 
-`.env.example` chứa `APP_NAME`, tên ứng dụng hiển thị trên Swagger (mặc định `EVRide`). Uvicorn nạp `.env` qua `--env-file`; biến môi trường đã có được ưu tiên. Prefix `/api/v1` được khai báo tại `app/api/v1/router.py`; `/docs` và `/openapi.json` nằm ngoài prefix này.
+Tạo file `backend/.env` từ `backend/.env.example` (xem lệnh ở phần Cài đặt và chạy), rồi thay các giá trị mẫu bằng cấu hình của môi trường bạn. Uvicorn đọc `.env` nhờ tùy chọn `--env-file`; biến đã được đặt trong môi trường hệ thống sẽ được ưu tiên.
 
-`.gitignore` ở gốc repo đã loại trừ `.venv/`, `.env`, các biến thể `.env.*`, cache Python và log, đồng thời giữ `.env.example` trong Git. Không đưa thông tin bí mật vào file mẫu.
+| Biến | Ý nghĩa | Giá trị mẫu / lưu ý |
+| --- | --- | --- |
+| `APP_NAME` | Tên ứng dụng hiển thị trên Swagger UI. | `EVRide`; mặc định trong ứng dụng cũng là `EVRide`. |
+| `DB_HOST` | Địa chỉ máy chủ PostgreSQL. | `127.0.0.1` nếu database chạy trên máy đang chạy backend. |
+| `DB_PORT` | Cổng PostgreSQL. | `5432`, cổng mặc định của PostgreSQL. |
+| `DB_NAME` | Tên database PostgreSQL cần kết nối. | Thay `database_name` bằng tên database đã tạo. |
+| `DB_USER` | Tài khoản PostgreSQL dùng để kết nối. | Thay `username` bằng tài khoản có quyền truy cập database. |
+| `DB_PASSWORD` | Mật khẩu của tài khoản PostgreSQL. | Thay giá trị hướng dẫn trong file mẫu bằng mật khẩu của bạn; không commit mật khẩu thật. |
+
+`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER` và `DB_PASSWORD` được dùng để tạo kết nối trong `app/database.py`; khi thiếu biến bắt buộc, module này báo lỗi. Health endpoint hiện tại chỉ kiểm tra ứng dụng hoạt động, không kiểm tra kết nối database. Prefix `/api/v1` được khai báo tại `app/api/v1/router.py`; `/docs` và `/openapi.json` nằm ngoài prefix này.
+
+`.gitignore` ở gốc repo đã loại trừ `.venv/`, `.env`, các biến thể `.env.*`, cache Python và log, đồng thời giữ `.env.example` trong Git. Chỉ lưu cấu hình/mật khẩu thật trong `.env` ở máy của bạn, không đưa chúng vào file mẫu hoặc commit lên Git.
 
 ## Cấu trúc
 
