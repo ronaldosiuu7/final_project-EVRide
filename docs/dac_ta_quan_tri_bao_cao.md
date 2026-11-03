@@ -6,8 +6,9 @@ Tài liệu mô tả các màn hình dành cho nhân viên vận hành của h�
 
 ## 1. Người dùng và quyền
 
-- Chỉ tài khoản vai trò `nhan_vien` truy cập được các màn hình dưới đây.
-- Quyền được kiểm tra **ở Backend** (khách gọi API báo cáo nhận lỗi 403), không chỉ ẩn menu trên giao diện.
+- Các màn hình quản trị/báo cáo dành cho tài khoản `STAFF` hoặc `MANAGER` đang `ACTIVE`; `CUSTOMER` không có quyền truy cập.
+- `nhan_vien` trong tài liệu cũ là cách gọi giao diện, không phải giá trị role. Backend chỉ dùng enum `CUSTOMER`, `STAFF`, `MANAGER` như contract/database.
+- Quyền được kiểm tra **ở Backend** (khách gọi API báo cáo nhận lỗi `403 FORBIDDEN`), không chỉ ẩn menu trên giao diện.
 
 ## 2. Danh sách màn hình
 
@@ -17,7 +18,7 @@ Tài liệu mô tả các màn hình dành cho nhân viên vận hành của h�
 | M2 | **Báo cáo 1 – Mức sử dụng trạm** | Biết trạm nào đông vào giờ nào, trạm nào thừa xe | Lượt thuê theo trạm × giờ; thời gian xe nằm chờ trung bình theo trạm | **Q3** (`/api/v1/analytics/peak-hours`), Q8 (`/api/v1/analytics/idle-time`) |
 | M3 | **Báo cáo 2 – Doanh thu** | Theo dõi doanh thu theo tháng và loại xe | Doanh thu theo tháng × loại xe, lũy kế, tỷ trọng; top 3 tuyến mỗi tháng | **Q4** (`/api/v1/analytics/revenue`), Q5 (`/api/v1/analytics/top-routes`) |
 | M4 | Xe và trạm | Tra cứu xe, điều chuyển xe, ngừng hoạt động xe | Danh sách xe có lọc theo trạm, trạng thái, mã xe; phân trang | `GET /api/v1/vehicles`, `POST /api/v1/vehicles/{id}/move`, `POST /api/v1/vehicles/{id}/status` |
-| M5 | Bảng giá | Xem lịch sử giá, áp dụng giá mới | Các phiên bản giá theo loại xe | `GET/POST /api/v1/prices` |
+| M5 | Bảng giá | Xem lịch sử giá, áp dụng giá mới | Các phiên bản giá theo từng xe, gồm giá 30 phút đầu, giá phút thêm và cọc | `GET/POST /api/v1/prices` |
 | M6 | Khách lâu không đi | Chăm sóc khách còn tiền trong ví nhưng không đi xe | Khách không có chuyến trong N ngày, sắp theo số dư | **Q6** (`/api/v1/analytics/inactive-customers`) |
 
 Màn hình Báo hỏng và Bảo trì thuộc luồng nghiệp vụ báo hỏng – bảo trì; giao diện quản trị của hai màn hình này được xây dựng sau khi API của luồng đó hoàn thành.
@@ -30,10 +31,10 @@ Màn hình Báo hỏng và Bảo trì thuộc luồng nghiệp vụ báo hỏng 
 
 **Phần 1 – Bản đồ nhiệt lượt thuê (Q3)**
 
-- Hàng: trạm (hiển thị 20 trạm đông nhất). Cột: 24 giờ trong ngày, giờ Việt Nam.
+- Hàng: tối đa 20 trạm đông nhất (có thể lọc một trạm). Cột: 24 giờ trong ngày, giờ Việt Nam.
 - Ô càng đậm càng nhiều lượt thuê; một thang màu duy nhất, nhạt → đậm; có chú giải.
 - Di chuột vào ô: hiện tên trạm, khung giờ, số lượt.
-- Q3 cần trả về: `tram_id, ten_tram, gio (0–23), so_luot_thue`, lọc theo `bat_dau` trong khoảng ngày.
+- Q3 cần trả về theo envelope API: `station_id, station_name, hour (0–23), rental_count`, lọc theo `actual_start_time` trong khoảng ngày; top 20 sắp theo lượt giảm dần, hòa lượt thì `station_id` tăng dần. Tổng lượt có thể gồm nhiều hơn 20 trạm nên API tách `filtered_trip_count` và `included_trip_count`.
 
 **Phần 2 – Thời gian xe nằm chờ (Q8)**
 
@@ -41,7 +42,7 @@ Màn hình Báo hỏng và Bảo trì thuộc luồng nghiệp vụ báo hỏng 
 
 **Điều kiện hoàn thành**
 
-- [ ] Tổng số lượt trên bản đồ nhiệt bằng số chuyến trong khoảng ngày (đối chiếu bằng một câu `COUNT(*)` độc lập).
+- [ ] Tổng lượt hiển thị trên heatmap bằng `included_trip_count`; `filtered_trip_count` được đối chiếu bằng `COUNT(*)` độc lập trước khi giới hạn top 20.
 - [ ] Đổi khoảng ngày thì cả hai phần cập nhật.
 - [ ] Khoảng ngày không có chuyến: hiện "Không có chuyến nào trong khoảng ngày này", không vỡ giao diện.
 - [ ] Ngày kết thúc trước ngày bắt đầu: API trả lỗi 400, giao diện hiện thông báo.
@@ -50,7 +51,7 @@ Màn hình Báo hỏng và Bảo trì thuộc luồng nghiệp vụ báo hỏng 
 
 **Câu hỏi nghiệp vụ trả lời được:** doanh thu từng tháng bao nhiêu, loại xe nào đóng góp nhiều nhất, xu hướng tăng hay giảm, tuyến nào phổ biến.
 
-**Quy tắc tính:** chỉ cộng chuyến `hoan_thanh`; chuyến kết thúc do sự cố đã được hoàn tiền nên không tính.
+**Quy tắc tính:** chỉ cộng rental `COMPLETED` có hóa đơn `PAID`, theo `actual_end_time`; không cộng cọc/top-up và không tính hai lần khi nối giao dịch.
 
 **Bộ lọc:** từ ngày – đến ngày.
 
@@ -72,8 +73,8 @@ Màn hình Báo hỏng và Bảo trì thuộc luồng nghiệp vụ báo hỏng 
 ## 5. Đặc tả Q6 – Khách lâu không đi (M6)
 
 - Đầu vào: số ngày N (14 / 30 / 60 / 90), mốc ngày (mặc định ngày có chuyến mới nhất trong dữ liệu), trang, kích thước trang.
-- Điều kiện: khách `hoat_dong`, số dư > 0, **không tồn tại** chuyến nào có `bat_dau` trong N ngày trước mốc → dùng `NOT EXISTS`.
-- Kết quả: mã khách, họ tên, email, số dư; sắp số dư giảm dần; phân trang.
+- Điều kiện: `CUSTOMER` `ACTIVE`, `balance > 0`, **không tồn tại** chuyến có `actual_start_time` trong N ngày trước mốc → dùng `NOT EXISTS`.
+- Kết quả theo contract: `user_id`, `name`, `email`, `balance`; sắp `balance DESC, user_id ASC`; phân trang.
 - Kiểm tra: mỗi khách trả về, đếm lại số chuyến trong N ngày phải bằng 0.
 
 ## 6. Quy ước giao diện chung
@@ -83,8 +84,11 @@ Màn hình Báo hỏng và Bảo trì thuộc luồng nghiệp vụ báo hỏng 
 - Bộ lọc khoảng ngày đặt cùng một hàng phía trên biểu đồ, dùng chung cho các báo cáo.
 - Dùng được trên màn hình 1280px và điện thoại 390px (bảng cuộn ngang khi hẹp).
 
-## 7. Vấn đề cần thống nhất
+## 7. Các quyết định đã thống nhất
 
-1. Số trạm hiển thị trên bản đồ nhiệt: 20 trạm đông nhất có đủ không, hay cho phép chọn trạm?
-2. Báo cáo doanh thu có cần xuất file (CSV) không?
-3. `docs/requirements.md` hiện có chức năng **đặt xe trước và hủy** (module `bookings`), trong khi phạm vi đăng ký gồm 3 luồng thuê xe – trả xe – báo hỏng. Cần thống nhất có làm đặt xe trước hay không, vì ảnh hưởng tới số liệu của 2 báo cáo.
+1. Heatmap hiển thị tối đa 20 trạm đông nhất; có thể lọc riêng một trạm. Bộ lọc và thứ tự được định nghĩa trong API contract.
+2. Role quản trị là `STAFF`/`MANAGER`; `nhan_vien` chỉ là nhãn tiếng Việt, không phải role wire/DB.
+3. Bảng giá là theo từng xe, lịch sử append-only; doanh thu nhóm theo `vehicle_type_snapshot` đã lưu ở rental, không dùng loại xe hiện tại để viết lại lịch sử.
+4. Thay đổi chính sách giá hiện tại: 10.000đ cho 30 phút đầu, 350đ/phút thêm; seed chỉ dành cho dữ liệu demo. Xe chỉ được đặt/pickup khi pin từ 30% trở lên.
+5. Thiếu số dư trả `409 INSUFFICIENT_BALANCE`, không dùng HTTP 402. Ngưỡng đặt xe phụ thuộc `deposit_amount_snapshot + first_30_minutes_price_snapshot`, không phải một con số cố định 20.000đ.
+6. API quản lý bảng giá, bảo trì, file upload/download và audit điều chuyển được mô tả ở mức đề xuất trong `api-contract.md`; chưa coi là chức năng đã triển khai.

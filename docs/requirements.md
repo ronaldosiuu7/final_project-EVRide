@@ -17,6 +17,8 @@ Phương tiện cho thuê trong EVRide là xe máy điện.
 - Quản lý trạm, xe, giá thuê và tài khoản.
 - Phê duyệt, xác thực thông tin khách hàng.
 - Theo dõi lượt đặt xe và chuyến đi.
-- Ghi nhận lỗi xe và xử lý bảo trì.
+- Ghi nhận lỗi xe, tạo/theo dõi phiếu bảo trì và đính kèm ảnh bằng chứng.
+- Xem lịch sử giá theo xe, áp dụng phiên bản giá mới; xem lịch sử điều chuyển xe.
 - Xem doanh thu và thống kê sử dụng xe.
 
+Contract `/prices`, `/maintenance-orders`, upload/download file và audit điều chuyển được mô tả trong `api-contract.md` ở mức schema/API đề xuất; đây không phải khẳng định các endpoint hoặc chức năng đã được triển khai.

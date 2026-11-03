@@ -1,6 +1,6 @@
 # EVRide V1 — Hợp đồng API
 
-Ngày soạn: **21/10/2026**. Cập nhật: **02/11/2026** theo `v1-decisions.md` (mục 1–7 R2 và quyết định bổ sung mục 9, 11). Base URL: `/api/v1`. Định dạng: JSON, UTF-8.
+Ngày soạn: **21/10/2026**. Cập nhật: **03/11/2026** theo `v1-decisions.md` và thống nhất schema/API quản lý giá, bảo trì, tệp đính kèm và điều chuyển. Base URL: `/api/v1`. Định dạng: JSON, UTF-8.
 
 Đây là hợp đồng đề xuất để nhóm triển khai và review, **không phải danh sách API đã chạy được**. Căn cứ: [15 bảng nghiệp vụ trong DBML và các bảng hạ tầng bổ sung](database.md), [phạm vi nghiệp vụ](requirements.md) và [đặc tả báo cáo](dac_ta_quan_tri_bao_cao.md).
 
@@ -20,7 +20,7 @@ Nguồn chính sách: [Sổ quyết định V1](v1-decisions.md). **Đã chốt:
 
 ### 1.2. Đề xuất kỹ thuật của hợp đồng này
 
-Tên endpoint, schema JSON, HTTP status, JWT, idempotency, phân quyền chi tiết và trạng thái bổ sung dưới đây là đề xuất triển khai V1. Nhóm cần review trước khi đóng băng hợp đồng.
+Tên endpoint, schema JSON, HTTP status, JWT, idempotency, phân quyền chi tiết và trạng thái bổ sung dưới đây là đề xuất triển khai V1. Các API giá, bảo trì, file và audit điều chuyển được chốt ở mức contract/schema đề xuất; **chưa có nghĩa là API hoặc chức năng đã được triển khai**.
 
 Hợp đồng này chọn thiết kế từ nhánh `docs/update-database-design`, hiện đã được đồng bộ trong `docs/database.md`: có `expires_at`, trạng thái `RESERVED`/`EXPIRED`, bỏ `planned_start_time`/`planned_end_time` và cho phép `total_price` là null trước khi chốt phí. Alembic quản lý schema tại `database/migrations/`; các quy tắc nghiệp vụ và thao tác ghi/replay vẫn cần được thực thi trong backend.
 
@@ -40,6 +40,8 @@ Giá, cọc, điều kiện CCCD/tuổi, ngưỡng pin và quy trình trả xe �
 | Pin / đánh giá | Integer; pin 0–100, rating 1–5 |
 | Enum | Chuỗi viết hoa; không dịch giá trị enum trên wire |
 | Trường nullable | Trả `null` khi chưa có; không dùng `0` hoặc chuỗi rỗng thay cho dữ liệu chưa biết |
+
+ID và tiền luôn được serialize thành JSON string; enum viết hoa; timestamp API là RFC 3339 UTC; ngày báo cáo/UI diễn giải theo `Asia/Ho_Chi_Minh`. Không dùng HTTP 402 cho lỗi số dư: thiếu số dư trả `409 INSUFFICIENT_BALANCE` theo envelope lỗi chung.
 
 Body phải là object. Từ chối trường không được khai báo bằng `422`; không cho phép client đặt `id`, `created_at`, chủ sở hữu hoặc trạng thái nghiệp vụ trực tiếp. PATCH: trường bị bỏ qua giữ nguyên; `null` chỉ hợp lệ với trường nullable. Chuỗi bắt buộc phải có nội dung sau trim. Giới hạn mặc định cho note/comment/description là 2.000 ký tự, email 100, tên người/xe 100, tên trạm 120, tiêu đề sự cố 200. Mật khẩu không trim.
 
@@ -103,6 +105,8 @@ Frontend xử lý theo `error.code`, không so sánh `message`. Không trả sta
 | 409 | `WALLET_UNAVAILABLE`, `INSUFFICIENT_BALANCE`, `PROMOTION_INVALID`, `ALREADY_REVIEWED` | Điều kiện nghiệp vụ không đáp ứng |
 | 409 | `IDEMPOTENCY_CONFLICT`, `REQUEST_IN_PROGRESS`, `STALE_QUOTE`, `INVALID_STATE_TRANSITION` | Request lặp khác nội dung hoặc dữ liệu đã thay đổi |
 | 409 | `ACTIVE_RENTAL_EXISTS`, `DAILY_CANCELLATION_LIMIT_REACHED` | Đã có chuyến chưa giải quyết hoặc đã đủ 3 lượt hủy/hết hạn trong ngày |
+| 413 | `FILE_TOO_LARGE` | File upload vượt 10 MiB |
+| 415 | `UNSUPPORTED_MEDIA_TYPE` | File không phải JPEG/PNG/WebP |
 | 422 | `VALIDATION_ERROR` | Sai kiểu/enum, thiếu trường, số âm, trường lạ; details.fields là mảng `{field, message}` |
 | 429 | `RATE_LIMITED` | Vượt giới hạn; kèm `Retry-After` |
 | 503 | `POLICY_NOT_CONFIGURED`, `FEATURE_NOT_ENABLED`, `DEPENDENCY_UNAVAILABLE` | Chính sách/tích hợp chưa sẵn sàng |
@@ -120,7 +124,7 @@ Ký hiệu quyền trong bảng endpoint:
 - `M`: MANAGER, tài khoản ACTIVE.
 - `Owner/S/M`: khách sở hữu đối tượng hoặc nhân viên/quản lý.
 
-Sai vai trò trả 403; truy cập tài nguyên cá nhân của khách khác trả 404. S/M không có nghĩa được đóng vai khách đặt xe hoặc thanh toán từ ví bất kỳ. **Đã chốt:** S thực hiện pickup/initiate-return/return/move ở mọi trạm, M quản trị toàn hệ thống. Không thêm `staff_station_assignments` trong V1. Quyền toàn hệ thống không bỏ qua các điều kiện nghiệp vụ; production cần thiết kế phân quyền theo trạm.
+Chỉ dùng enum role `CUSTOMER`, `STAFF`, `MANAGER`; các tài liệu cũ ghi `nhan_vien` được hiểu là `STAFF`, không phải một giá trị DB/API. Sai vai trò trả 403; truy cập tài nguyên cá nhân của khách khác trả 404. S/M không có nghĩa được đóng vai khách đặt xe hoặc thanh toán từ ví bất kỳ. **Đã chốt:** STAFF thực hiện pickup/initiate-return/return/move ở mọi trạm; MANAGER quản trị toàn hệ thống. Không thêm `staff_station_assignments` trong V1. Quyền toàn hệ thống không bỏ qua các điều kiện nghiệp vụ; production cần thiết kế phân quyền theo trạm.
 
 ### 2.5. Idempotency và giao dịch
 
@@ -135,7 +139,8 @@ Các POST được đánh dấu `I` bắt buộc header `Idempotency-Key`, chu�
 
 Schema có bảng `idempotency_records`, liên kết giao dịch/sổ ví và snapshot giá trong `database.md`. Backend vẫn phải triển khai claim nguyên tử theo khóa duy nhất, hash body, lưu response cùng transaction và chỉ dọn record sau `expires_at`. Client không được tự retry nghiệp vụ bằng key mới chỉ vì chưa nhận response.
 
-## 3. Tài nguyên API và ánh xạ từ thiết kế 15 bảng ban đầu
+Trước khi tách `trips`, mọi implementation reserve/expiry/cancel/pickup/initiate-return/settle phải dùng chung transaction/locking/idempotency contract, không để router hoặc module khác tự ghi các bảng rental/vehicle/wallet/ledger. Cùng key/body replay nguyên status/payload; cùng key khác body trả `409 IDEMPOTENCY_CONFLICT`; mọi ghi liên quan một hành động commit/rollback thống nhất. Các test tranh chấp, rollback giữa các bước và retry sau timeout phải chạy trên PostgreSQL thật.
+
 ## 3. Tài nguyên API
 
 Các schema bên dưới liệt kê trường response. ID/tiền/thời gian theo mục 2. Dấu `?` chỉ trường có giá trị nullable, không phải một phần tên trường. Mọi field không nullable được trả đầy đủ.
@@ -147,7 +152,12 @@ Các schema bên dưới liệt kê trường response. ID/tiền/thời gian th
 | `stations` | Station: `id, name, address, latitude, longitude, capacity, opens_at?, closes_at?, status, occupied_spaces, available_spaces, available_vehicle_count` | Public |
 | `vehicles` | Vehicle: `id, current_station_id?, name, type, battery_percent, status, first_30_minutes_price, extra_minute_price, deposit_amount, created_at` | Public chỉ xe có thể thuê; S/M xem tất cả |
 | `rentals` | Rental: `id, customer_id, vehicle_id, pickup_station_id, actual_return_station_id?, created_at, expires_at, actual_start_time?, actual_end_time?, return_initiated_at?, settled_at?, cancelled_at?, cancellation_reason?, cancellation_limit_exempt, first_30_minutes_price_snapshot, extra_minute_price_snapshot, deposit_amount_snapshot, vehicle_type_snapshot, pricing_policy_version, billing_unit, deposit_held, status, total_price?, remaining_hold_seconds, elapsed_seconds` | Owner/S/M |
-| `handovers` | Handover: `id, rental_id, staff_id, kind, time, battery_percent, note?, created_at` | Owner/S/M |
+| `handovers` | Handover: `id, rental_id, staff_id, kind, time, battery_percent, vehicle_condition?, note?, created_at` | Owner/S/M |
+| `vehicle_pricing_history` | PriceVersion: `id, vehicle_id, version_number, old_first_30_minutes_price?, new_first_30_minutes_price, old_extra_minute_price?, new_extra_minute_price, old_deposit_amount?, new_deposit_amount, changed_by, created_at` | S/M |
+| `maintenance_orders` | MaintenanceOrder: `id, vehicle_id, created_by, assigned_to?, title, description, status, opened_at, started_at?, completed_at?, resolution_note?, created_at, updated_at` | S/M |
+| `stored_files` | StoredFile: `id, original_filename, content_type, size_bytes, sha256, status, uploaded_by, created_at, verified_at?` | Người tải lên/S/M theo quyền |
+| `file_attachments` | FileAttachment: `id, file_id, owner_type, owner_id, purpose, attached_by, created_at` | Theo quyền xem tài nguyên cha |
+| `vehicle_move_audits` | VehicleMoveAudit: `id, vehicle_id, from_station_id, to_station_id, actor_id, idempotency_record_id?, note?, moved_at` | S/M |
 | `invoices` | Invoice: `id, rental_id, total_amount, status, created_at` | Owner/S/M |
 | `transactions` | Transaction: `id, rental_id, invoice_id?, actor_id, amount, kind, status, created_at` | Owner/S/M |
 | `wallets` | Wallet: `id, user_id, balance, status, created_at, updated_at` | Chủ ví/M |
@@ -166,6 +176,8 @@ Field dẫn xuất không tạo thêm bảng: `occupied_spaces` đếm tất c�
 
 Enum bổ sung đề xuất: Station `ACTIVE/INACTIVE`; Transaction `PENDING/SUCCESS/FAILED`. Theo DBML ở nhánh `docs/update-database-design`, Vehicle đã có `RESERVED`; Rental cần dùng `RESERVED/IN_RENT/RETURN_PENDING/COMPLETED/CANCELLED/EXPIRED/STOLEN`; Vehicle cần bổ sung `RETURN_PENDING` bên cạnh `AVAILABLE/RESERVED/RENTED/MAINTENANCE/SUSPECTED_STOLEN/STOLEN`. Đây là yêu cầu migration, không phải xác nhận enum đã có. Giữ các enum khác trong DBML. `OVERDUE` chưa dùng vì chưa chốt hạn trả xe.
 
+Với `file_attachments`, `owner_id` là trường response suy ra từ đúng một FK owner đã lưu (vehicle, maintenance order, handover, user document hoặc support ticket); `owner_type` được suy ra từ loại FK. Không lưu hai trường đa hình này làm FK giả trong DB.
+
 ## 4. Đăng ký, đăng nhập, hồ sơ và giấy tờ
 
 | Method / path | Quyền | Request | Thành công |
@@ -176,8 +188,8 @@ Enum bổ sung đề xuất: Station `ACTIVE/INACTIVE`; Transaction `PENDING/SUC
 | PATCH `/users/me` | C/S/M | `{name}` | User |
 | POST `/users/me/change-password` | C/S/M | `{current_password, new_password}` | `{changed: true}` |
 | GET `/users/me/documents` | C/S/M | Phân trang | Document[] |
-| POST `/users/me/documents` | C/S/M | `{document_type, document_number, image_front_url, image_back_url?, expires_on?, birth_date?}` | 201 Document, trạng thái PENDING |
-| GET `/user-documents/{id}/sensitive` | Owner/S/M | — | `{id, document_number, image_front_url, image_back_url?, urls_expire_at}` |
+| POST `/users/me/documents` | C/S/M | `{document_type, document_number, front_file_id, back_file_id?, expires_on?, birth_date?}` | 201 Document, trạng thái PENDING |
+| GET `/user-documents/{id}/sensitive` | Owner/S/M | — | `{id, document_number, front_download_url, back_download_url?, urls_expire_at}` |
 | PATCH `/user-documents/{id}/verification` | S/M | `{verified_status: "VERIFIED" hoặc "REJECTED", verified_birth_date?, expires_on?}` | Document |
 | GET `/users` | S/M | `role?, status?, q?`, phân trang | User[] |
 | GET `/users/{id}` | S/M | — | User |
@@ -188,13 +200,15 @@ Enum bổ sung đề xuất: Station `ACTIVE/INACTIVE`; Transaction `PENDING/SUC
 
 M không tự khóa/hạ quyền tài khoản MANAGER cuối cùng; không đổi CUSTOMER thành nhân viên bằng PATCH để tránh nhập nhằng quyền sở hữu dữ liệu. Tạo nhân viên dùng POST `/users`. Không có DELETE tài khoản trong V1.
 
-Giấy tờ chỉ nhận loại CCCD/PASSPORT/DRIVER_LICENSE. URL ảnh đầu vào phải là đường dẫn HTTPS thuộc kho upload được hệ thống tin cậy, không nhận URL tùy ý để backend tải về. Kho file/upload vẫn cần tích hợp riêng. Endpoint sensitive trả URL ký ngắn hạn, không cache, ghi audit truy cập; các API danh sách không trả ảnh hoặc số đầy đủ. S/M không tự duyệt giấy tờ của mình. Nộp lại giấy tờ tạo bản PENDING mới, không sửa bằng chứng đã duyệt.
+Giấy tờ chỉ nhận loại CCCD/PASSPORT/DRIVER_LICENSE. `front_file_id` và `back_file_id` phải trỏ tới file READY do luồng upload của hệ thống cấp; không nhận URL tùy ý để backend tải về. Endpoint sensitive trả URL tải ký ngắn hạn, không cache, ghi audit truy cập; các API danh sách không trả ảnh hoặc số đầy đủ. S/M không tự duyệt giấy tờ của mình. Nộp lại giấy tờ tạo bản PENDING mới, không sửa bằng chứng đã duyệt.
+
+Khi POST giấy tờ, backend gắn các file đã upload với tài liệu mới bằng `USER_DOCUMENT_FRONT`/`USER_DOCUMENT_BACK` trong cùng transaction; client không gửi URL file hoặc ID tài liệu do mình chọn.
 
 Các trường ngày sinh/hạn giấy tờ đầu vào là thông tin khai báo; chỉ dùng ngày sinh và hạn CCCD đã được S/M xác minh để xét thuê. Xác minh CCCD thành VERIFIED bắt buộc có `verified_birth_date` và `expires_on`; server ghi `verified_by`, `verified_at`. Đề xuất endpoint kỹ thuật bổ sung: POST `/user-documents/{id}/revoke` (S/M, I), body `{reason}`, trả Document; lưu `revoked_at`, người thu hồi/lý do trong audit, không xóa lịch sử. Không tự xác minh/thu hồi hồ sơ của mình.
 
 CCCD hợp lệ khi VERIFIED, chưa thu hồi và ngày hiện tại tại Asia/Ho_Chi_Minh không sau expires_on. Khách đủ 16 tuổi ở cả ngày giữ và ngày nhận. Không bắt buộc GPLX/PASSPORT; bản CCCD VERIFIED cũ còn hạn vẫn có hiệu lực khi nộp bản mới PENDING. Đây là chính sách demo, không phải kết luận pháp lý về mọi loại xe máy điện.
 
-**Upload/kho ảnh chờ duyệt theo quyết định 10:** các endpoint nhận/trả ảnh là thiết kế dự kiến; chưa có tích hợp được duyệt thì trả FEATURE_NOT_ENABLED, không giả định có kho ảnh thật. Seed chỉ dùng dữ liệu giả.
+**Upload/kho ảnh chờ duyệt theo quyết định 10:** schema và API dự kiến được mô tả tại mục 5.1; chưa có tích hợp được duyệt thì trả `503 FEATURE_NOT_ENABLED`, không giả định có kho ảnh thật. Seed chỉ dùng dữ liệu giả.
 
 ## 5. Trạm và xe
 
@@ -209,12 +223,38 @@ CCCD hợp lệ khi VERIFIED, chưa thu hồi và ngày hiện tại tại Asia/
 | POST `/stations` | M | `{name, address, latitude, longitude, capacity, opens_at?, closes_at?}` | 201 Station ACTIVE |
 | PATCH `/stations/{id}` | M | Các trường tạo + `status`, tất cả optional | Station |
 | POST `/vehicles` | M | `{current_station_id, name, type, battery_percent, first_30_minutes_price, extra_minute_price, deposit_amount}` | 201 Vehicle AVAILABLE |
-| PATCH `/vehicles/{id}` | M | `{name?, type?, first_30_minutes_price?, extra_minute_price?, deposit_amount?}` | Vehicle |
-| POST `/vehicles/{id}/move` | S/M, I | `{target_station_id}` | Vehicle tại trạm mới |
+| PATCH `/vehicles/{id}` | M | `{name?, type?}` | Vehicle |
 | PATCH `/vehicles/{id}/battery` | S/M | `{battery_percent, note}` | Vehicle; có audit, không dùng để vượt qua bàn giao hoặc xử lý mất xe |
 | POST `/vehicles/{id}/status` | S/M, I | `{status: "AVAILABLE" hoặc "MAINTENANCE", note}` | Vehicle |
 
 `opens_at/closes_at`: cùng null nghĩa là 24/7; nếu có thì cả hai ở dạng `HH:mm:ss`, giờ Việt Nam. Cặp giờ qua nửa đêm là khoảng mở xuyên đêm; hai giờ bằng nhau bị từ chối, dùng null cho 24/7.
+
+### 5.1. Bảng giá, tệp đính kèm và điều chuyển (đề xuất, chưa triển khai)
+
+Các endpoint trong mục này là **đề xuất contract, chưa triển khai**. API bảo trì được mô tả tại mục 9 và cũng chưa triển khai. ID/tiền vẫn là chuỗi theo quy ước chung.
+
+| Method / path | Quyền | Request | Thành công |
+| --- | --- | --- | --- |
+| GET `/prices` | S/M | `vehicle_id?`, phân trang | PriceVersion[] |
+| GET `/prices/{id}` | S/M | — | PriceVersion |
+| POST `/prices` | M, I | `{vehicle_id, first_30_minutes_price, extra_minute_price, deposit_amount}` | 201 PriceVersion mới |
+| POST `/vehicles/{id}/move` | S/M, I | `{target_station_id, note?}` | Vehicle tại trạm mới |
+| GET `/vehicles/{id}/move-history` | S/M | Phân trang | VehicleMoveAudit[] |
+| POST `/files/upload-intents` | C/S/M, I | `{filename, content_type, size_bytes, sha256}` | 201 `{file_id, upload_url, method: "PUT", headers, expires_at}` |
+| PUT `upload_url` | URL ký, không dùng bearer token | Bytes của file | Thành công theo provider object storage, ngoài API envelope |
+| POST `/files/{id}/complete` | Người upload/S/M, I | `{}` | StoredFile READY hoặc lỗi kiểm tra |
+| POST `/files/{id}/attachments` | Owner/S/M, I | `{purpose, vehicle_id?, maintenance_order_id?, handover_id?, user_document_id?, support_ticket_id?}`; đúng một owner | 201 FileAttachment |
+| GET `/files/attachments` | Owner/S/M | `owner_type` (`VEHICLE`, `MAINTENANCE_ORDER`, `HANDOVER`, `USER_DOCUMENT`, `SUPPORT_TICKET`), `owner_id`, phân trang | FileAttachment[] |
+| GET `/files/{id}/download` | Public với ảnh xe công khai; nếu không Owner/S/M | — | `{download_url, expires_at}` |
+
+- Bảng giá được quản lý **theo từng xe**. `POST /vehicles` tạo phiên bản giá đầu tiên; `POST /prices` thêm phiên bản tiếp theo, không sửa/xóa phiên bản cũ. Trong một transaction, khóa xe, ghi `vehicle_pricing_history` với version tăng đơn điệu và giá/cọc cũ-mới, cập nhật giá hiện tại trên `vehicles`, rồi trả version mới. Snapshot của rental hiện có không thay đổi.
+- `GET /prices` mặc định trả phiên bản mới nhất của mỗi xe; khi có `vehicle_id`, trả lịch sử xe đó theo `version_number DESC`. Trang lịch sử là append-only, thứ tự phụ khi cần là `id DESC`. Giá/cọc là chuỗi tiền; ID là chuỗi.
+- Quyền mọi trạm của STAFF không bỏ qua việc điều chuyển: khóa trạm nguồn/đích theo ID tăng dần, sau đó khóa xe; kiểm tra status, capacity và quan hệ rental trước ghi. Cập nhật `vehicles.current_station_id` và append `vehicle_move_audits` cùng transaction. Ghi station nguồn/đích, actor, thời điểm server, note và idempotency record. Replay cùng key không tạo audit thứ hai.
+- Upload chỉ nhận JPEG/PNG/WebP tối đa 10 MiB/file. `POST /files/upload-intents` (C/S/M, I) nhận `{filename, content_type, size_bytes, sha256}` và trả `{file_id, upload_url, method: "PUT", headers, expires_at}`. URL upload ký có hiệu lực 5 phút; client PUT trực tiếp lên object storage riêng tư. `POST /files/{id}/complete` (C/S/M, I) xác minh object có thật, MIME và magic bytes, kích thước và SHA-256 rồi đánh dấu READY; file không khớp bị REJECTED, không được attach/download.
+- `POST /files/{id}/attachments` (C/S/M, I) nhận đúng một owner trong `{vehicle_id?, maintenance_order_id?, handover_id?, user_document_id?, support_ticket_id?}` cùng `purpose`; file chỉ attach một lần. Lưu liên kết FK trong `file_attachments`. Download qua `GET /files/{id}/download` trả URL ký ngắn hạn (5 phút), không trả `object_key`; kiểm tra quyền với tài nguyên cha trước khi cấp URL. Ảnh xe chỉ công khai nếu xe tương ứng được phép xem công khai; giấy tờ và bằng chứng nghiệp vụ chỉ Owner/S/M. Ghi audit tải ảnh nhạy cảm, không cache URL.
+- `GET /files/attachments` chỉ liệt kê metadata của tệp gắn với owner được phép xem; kiểm tra quyền trên tài nguyên cha trước khi trả kết quả, không cấp URL tải trong danh sách.
+- Khi object storage, malware/content validation hoặc ký URL chưa được cấu hình, endpoint liên quan trả `503 FEATURE_NOT_ENABLED`/`DEPENDENCY_UNAVAILABLE`, không tạo response giả hoặc chấp nhận URL bên ngoài. Xóa file và chính sách lưu trữ cần review riêng; V1 không xóa bằng chứng gắn với tài chính/giấy tờ.
+- Bảng `file_attachments` chỉ nhận file READY và đúng một owner FK; `purpose` phải phù hợp loại ảnh. CUSTOMER chỉ attach giấy tờ, bằng chứng ticket hoặc handover thuộc tài nguyên của mình; STAFF/MANAGER theo quyền tài nguyên. File không được attach nhiều lần. Download kiểm tra quyền cha mỗi lần cấp URL; URL hết hạn không thay quyền truy cập.
 
 Tạo xe khóa trạm đích; điều chuyển khóa cả trạm nguồn/đích theo ID tăng dần trước khi khóa xe và kiểm tra lại chỗ. Không điều chuyển xe RESERVED/RENTED/RETURN_PENDING/SUSPECTED_STOLEN/STOLEN. Không giảm capacity dưới số xe đang đỗ; không ngừng trạm khi còn xe hoặc lượt giữ chỗ ở trạm. Không đặt/nhận/trả tại trạm không hoạt động hoặc ngoài giờ mở.
 
@@ -376,6 +416,8 @@ Schema cần bổ sung ngày sinh đã xác minh, hạn CCCD, thông tin ngườ
 - Chuyển các rental đó sang EXPIRED; chỉ giải phóng xe nếu còn RESERVED cho chính lượt đó và không có lỗi/bảo trì chặn. Giữ lịch sử, hạn gốc và ngày tính hạn mức; không sửa lượt IN_RENT/RETURN_PENDING/STOLEN.
 - Ý nghĩa nghiệp vụ là `expires_at <= NOW()`. Với PostgreSQL, `NOW()` cố định từ đầu transaction: sau khi chờ lấy khóa phải lấy giờ thực tế mới bằng `clock_timestamp()` và dùng một mốc chung cho kiểm tra này. Không dùng thời gian cũ trước khi chờ khóa để nhận/đặt xe quá hạn.
 - Sau khi dọn, kiểm tra lại số lượt, hạn mức, tài khoản, ví, xe và trạm; chỉ tạo created_at/expires_at mới khi đủ điều kiện. Nếu từ chối đặt do điều kiện nghiệp vụ, vẫn commit việc dọn hết hạn đã hợp lệ rồi trả lỗi; lỗi hệ thống thì rollback. Không raise lỗi làm vô tình rollback việc dọn khi cần lưu kết quả.
+
+Các luồng TV1/TV2 và các module trước/sau khi tách `trips` phải theo cùng một orchestration contract: `station → customer → wallet → vehicle → rental`, khóa ID tăng dần trong từng nhóm, khóa xong đọc lại, xử lý expiration trong transaction, cùng quy tắc commit/rollback và idempotency. Không nhân đôi thao tác ghi trạng thái rental/xe/ví ở router hoặc module khác. Trước khi tách module, test PostgreSQL thật cho hai xe cùng customer, hai customer cùng xe, hai request cùng chỗ cuối, rollback giữa các bước ghi và retry sau timeout.
 - Job định kỳ chỉ giúp dọn sớm. Tính đúng ở mỗi thao tác không phụ thuộc job; đây không phải cam kết mọi dòng DB tự đổi trạng thái đúng từng giây khi không có request/job.
 
 #### Thứ tự khóa toàn cục (Global Lock Order)
@@ -488,7 +530,7 @@ Một user chỉ nhận một bản của mỗi mã (unique user_id/promotion_id
 
 ## 9. Sự cố, bảo trì và đánh giá
 
-**Quy trình sự cố/mất xe chờ bổ sung/chưa duyệt theo mục 12 của v1-decisions.** Schema ticket, endpoint và vòng đời ticket bên dưới là đề xuất giữ lại để review. Chưa duyệt chính sách phụ thuộc thì từ chối thao tác bằng 503 POLICY_NOT_CONFIGURED. Không thêm CLOSED_INCIDENT hoặc endpoint xác nhận/khôi phục mất xe. Chưa chốt cách xử lý cọc, hóa đơn, bồi thường hoặc giải phóng rental STOLEN. Ràng buộc STOLEN tại mục 6.7 vẫn có hiệu lực. Quy tắc đánh giá chuyến COMPLETED và bảo trì thông thường được tách khỏi quy trình mất xe.
+**Quy trình sự cố/mất xe chờ bổ sung/chưa duyệt theo mục 12 của v1-decisions.** Schema ticket, endpoint và vòng đời ticket bên dưới là đề xuất. Chưa duyệt chính sách phụ thuộc thì từ chối thao tác bằng 503 POLICY_NOT_CONFIGURED. Không thêm CLOSED_INCIDENT hoặc endpoint xác nhận/khôi phục mất xe. Chưa chốt cách xử lý cọc, hóa đơn, bồi thường hoặc giải phóng rental STOLEN. Ràng buộc STOLEN tại mục 6.7 vẫn có hiệu lực. Quy tắc đánh giá chuyến COMPLETED, bảo trì thông thường và ảnh bằng chứng là các luồng riêng. API phiếu bảo trì dưới đây là hợp đồng/schema đề xuất, **chưa có nghĩa chức năng đã được triển khai**.
 
 | Method / path | Quyền | Request | Thành công |
 | --- | --- | --- | --- |
@@ -496,12 +538,20 @@ Một user chỉ nhận một bản của mỗi mã (unique user_id/promotion_id
 | GET `/support-tickets` | C/S/M | `status?, rental_id?`, S/M thêm `assigned_to?`, phân trang | Ticket[]; C chỉ ticket của rental mình |
 | GET `/support-tickets/{id}` | Owner/S/M | — | Ticket |
 | PATCH `/support-tickets/{id}` | S/M | `{assigned_to?, status?}` | Ticket |
+| GET `/maintenance-orders` | S/M | `vehicle_id?, status?, assigned_to?`, phân trang | MaintenanceOrder[] |
+| POST `/maintenance-orders` | S/M, I | `{vehicle_id, title, description, assigned_to?}` | 201 MaintenanceOrder OPEN |
+| GET `/maintenance-orders/{id}` | S/M | — | MaintenanceOrder |
+| POST `/maintenance-orders/{id}/start` | S/M, I | `{assigned_to?}` | MaintenanceOrder IN_PROGRESS |
+| POST `/maintenance-orders/{id}/complete` | S/M, I | `{resolution_note}` | MaintenanceOrder COMPLETED |
+| POST `/maintenance-orders/{id}/cancel` | S/M, I | `{reason}` | MaintenanceOrder CANCELLED |
 | POST `/rentals/{id}/review` | C sở hữu | `{rating, comment?}` | 201 Review |
 | GET `/rentals/{id}/review` | Owner/S/M | — | Review hoặc 404 |
 
 Đề xuất ticket được tạo cho IN_RENT/RETURN_PENDING/STOLEN/COMPLETED; rental giữ chỗ chưa nhận không tạo báo hỏng trong chuyến. Assigned_to phải là STAFF/MANAGER ACTIVE; null bỏ phân công. Luồng OPEN → IN_PROGRESS → RESOLVED → CLOSED; cùng trạng thái là no-op; chuyển ngược trả 409 `INVALID_STATE_TRANSITION`.
 
-Ticket không tự dừng chuyến, tự hoàn tiền hoặc đổi xe MAINTENANCE. Xử lý bảo trì tối thiểu qua endpoint trạng thái xe mục 5; DBML **chưa có bảng phiếu bảo trì, vật tư, chi phí hoặc ảnh sự cố**, nên không giả lập các trường này trong Ticket. Chỉ đánh giá rental COMPLETED, mỗi rental một đánh giá; tạo lần hai trả 409 `ALREADY_REVIEWED`.
+`POST /maintenance-orders` chỉ nhận xe đang ở trạm và không có rental hiệu lực; tạo OPEN và đặt xe MAINTENANCE cùng transaction. Xe có rental RESERVED/IN_RENT/RETURN_PENDING/STOLEN trả 409 `ACTIVE_RENTAL_EXISTS`; không tự hủy chuyến. Một xe chỉ có tối đa một phiếu OPEN/IN_PROGRESS. Chuyển trạng thái theo OPEN → IN_PROGRESS → COMPLETED; chỉ OPEN được hủy. Thao tác hoàn tất/hủy không tự đưa xe về AVAILABLE: MANAGER phải kiểm tra xe và dùng endpoint trạng thái mục 5 sau khi không còn phiếu đang hoạt động hoặc rental/bộ chặn khác. Không có yêu cầu quản lý vật tư/chi phí trong schema V1 tối thiểu.
+
+Ticket không tự dừng chuyến, tự hoàn tiền hoặc đổi xe MAINTENANCE. Ảnh báo hỏng gắn với ticket qua `file_attachments` và `purpose="TICKET_EVIDENCE"`. Chỉ đánh giá rental COMPLETED, mỗi rental một đánh giá; tạo lần hai trả 409 `ALREADY_REVIEWED`.
 
 ## 10. GPS và chatbot
 
@@ -527,7 +577,7 @@ S/M được truy cập. Các endpoint dưới trả 200 theo envelope chung. Th
 | GET path | Query bổ sung | Schema `data` |
 | --- | --- | --- |
 | `/analytics/overview` | — | `{trip_count, revenue, average_trip_minutes, customer_count, vehicles_by_status: [{status, count}], recent_tickets: Ticket[], near_full_stations: Station[]}` |
-| `/analytics/peak-hours` | `station_id?`, `limit` mặc định 20, 1–100 | `{items: [{station_id, station_name, hour, rental_count}], filtered_trip_count, included_trip_count}` |
+| `/analytics/peak-hours` | `station_id?` | `{items: [{station_id, station_name, hour, rental_count}], filtered_trip_count, included_trip_count}`; tối đa 20 trạm |
 | `/analytics/revenue` | — | `{items: [{month, vehicle_type, rental_count, revenue, cumulative_revenue, share_percent}], total_revenue}` |
 | `/analytics/top-routes` | — | `{items: [{month, rank, pickup_station_id, return_station_id, rental_count}]}` |
 | `/analytics/idle-time` | `limit` mặc định 15, 1–100 | `{items: [{station_id, station_name, average_idle_minutes}], coverage: "OBSERVED_RETURN_PICKUP_PAIRS"}` |
@@ -535,7 +585,7 @@ S/M được truy cập. Các endpoint dưới trả 200 theo envelope chung. Th
 
 Định nghĩa:
 
-- Trip_count và heatmap đếm actual_start_time trong khoảng, không đếm RESERVED/CANCELLED/EXPIRED. Hour là 0–23 theo giờ Việt Nam. Heatmap trả đủ 24 giờ cho từng trạm được chọn; top trạm theo số lượt DESC, station_id ASC. included_trip_count là tổng các trạm hiển thị; filtered_trip_count có thể lớn hơn nếu có giới hạn top 20.
+- Trip_count và heatmap đếm actual_start_time trong khoảng, không đếm RESERVED/CANCELLED/EXPIRED. Hour là 0–23 theo giờ Việt Nam. Heatmap chọn tối đa 20 trạm theo tổng số lượt DESC, station_id ASC; trả đủ 24 giờ cho từng trạm. `station_id` lọc một trạm cụ thể và không vượt giới hạn 20. `included_trip_count` là tổng lượt của các trạm hiển thị; `filtered_trip_count` là tổng trong phạm vi lọc trước khi giới hạn top 20.
 - Revenue chỉ tính rental COMPLETED có hóa đơn PAID, theo actual_end_time; không cộng cọc/topup, không tính hai lần do JOIN nhiều giao dịch. Hoàn phần cọc dư đã có trong V1, không phải giảm doanh thu thuê. Hoàn phí thuê/hoàn tiền thủ công chưa mở; nếu mở phải bổ sung quy tắc doanh thu thuần. Không tính RETURN_PENDING là doanh thu đã thu; settled_at lưu thời điểm quyết toán riêng.
 - month dạng `YYYY-MM`; cumulative_revenue cộng trong khoảng lọc theo từng loại xe, share_percent là chuỗi số có 2 chữ số lẻ, tháng tổng 0 thì tỷ trọng 0. Phải lưu loại xe/giá đã áp dụng hoặc khóa thay đổi làm sai lịch sử.
 - Top routes đếm các chuyến COMPLETED theo actual_end_time, RANK theo số chuyến trong từng tháng, lấy rank <= 3; đồng hạng có thể trả hơn ba dòng.
@@ -544,7 +594,7 @@ S/M được truy cập. Các endpoint dưới trả 200 theo envelope chung. Th
 - Overview: average_trip_minutes tính trên chuyến COMPLETED kết thúc trong khoảng; không có thì 0. Customer_count là số khách khác nhau có chuyến bắt đầu trong khoảng. Xe theo trạng thái/trạm sắp đầy là snapshot hiện tại; near_full_stations có available_spaces <= 1, ACTIVE, tối đa 10 theo available_spaces ASC, id ASC. recent_tickets là 5 ticket mới nhất hiện tại.
 - Không có dữ liệu trả mảng rỗng/tổng 0, không trả 404. Truy vấn số liệu phải được đối chiếu độc lập khi kiểm thử.
 
-Endpoint `/prices` trong đặc tả cũ chưa thuộc V1. Quản lý first_30_minutes_price, extra_minute_price và deposit_amount trên xe; bắt buộc snapshot tại giữ xe và lịch sử đổi giá theo R2. Dữ liệu xe hiện tại không được làm sai báo cáo lịch sử.
+`/prices` là endpoint quản lý đề xuất ở mục 5.1; bảng giá theo từng xe, có lịch sử append-only và snapshot bất biến tại thời điểm giữ xe. Doanh thu nhóm theo `vehicle_type_snapshot` từ rental snapshot, không suy ra loại xe/giá lịch sử từ giá trị hiện tại của `vehicles`.
 
 ## 12. Kiểm tra hệ thống và tiêu chí nghiệm thu
 
@@ -553,6 +603,7 @@ GET `/health`: Public, 200 `{status: "ok"}` trong envelope, không lộ cấu h�
 | Ca kiểm thử | Kết quả bắt buộc |
 | --- | --- |
 | Hai khách đặt một xe đồng thời | Một 201, một 409 VEHICLE_UNAVAILABLE; chỉ một lượt giữ hiệu lực |
+| Cùng một customer đặt hai xe đồng thời | Một request thành công, request còn lại 409 ACTIVE_RENTAL_EXISTS; xác minh customer row lock và partial unique customer index |
 | Đặt trước nhiều ngày / truyền expires_at | 422 VALIDATION_ERROR |
 | Nhận xe ngay trước hạn | Thành công nếu vẫn đủ điều kiện sau khi giành khóa |
 | Nhận đúng hạn hoặc muộn hơn | 409 RESERVATION_EXPIRED |
@@ -571,6 +622,12 @@ GET `/health`: Public, 200 `{status: "ok"}` trong envelope, không lộ cấu h�
 | Token của tài khoản bị khóa | 403 ACCOUNT_DISABLED |
 | Dữ liệu báo cáo rỗng / khoảng ngày đảo | 200 với tổng 0 / 400 INVALID_DATE_RANGE |
 | Demo payment/GPS tắt | 503 FEATURE_NOT_ENABLED, không tác động dữ liệu |
+| Thay giá/cùng key replay | Chỉ có một version append-only, current price khớp version mới; replay không nhân đôi |
+| Ghi lỗi giữa cập nhật giá/xe và history | Cả current price và history rollback |
+| Mở/đóng maintenance order và xe active | Order chỉ OPEN/IN_PROGRESS chặn thuê; xe không tự AVAILABLE khi complete/cancel |
+| Move audit lỗi/retry | Vị trí và audit rollback cùng nhau; replay không tạo audit thứ hai |
+| Upload file không hợp lệ/chưa READY | 413/415 hoặc REJECTED theo lỗi; không tạo attachment/download URL |
+| Attachment sai owner hoặc download trái quyền | Từ chối; object key không xuất hiện trong response |
 
 Các ca bắt buộc bổ sung theo R2:
 
@@ -628,20 +685,21 @@ Migration phải bảo toàn nghĩa dữ liệu lịch sử. Nếu giá cũ chư
 
 | Mục trong v1-decisions | Trạng thái | Phần contract liên quan |
 | Thời hạn | Schema dùng rentals.expires_at, bỏ planned_start_time/planned_end_time; migration backfill hạn giữ chỗ 30 phút và backend phải kiểm tra/hết hạn |
-| Trạng thái | Rental dùng RESERVED/IN_RENT/STOLEN/COMPLETED/CANCELLED/EXPIRED; migration chuẩn hóa status cũ và áp dụng CHECK |
+| Trạng thái | Rental dùng RESERVED/IN_RENT/RETURN_PENDING/STOLEN/COMPLETED/CANCELLED/EXPIRED; vehicle có RETURN_PENDING; schema/migration phải có CHECK |
 | Tiền chưa tính | rentals.total_price nullable trước khi chốt phí; migration giữ null khác 0 |
-| Chống đặt trùng | Migration bảo đảm partial unique index vehicle_id cho RESERVED/IN_RENT/STOLEN; backend vẫn phải xử lý giao dịch hết hạn, không dùng NOW() trong predicate index |
+| Chống đặt trùng | Hai partial unique index theo vehicle_id và customer_id cho RESERVED/IN_RENT/RETURN_PENDING/STOLEN; expiration được cập nhật trong transaction, không dùng NOW() trong predicate |
 | Bàn giao | Đã khai báo UNIQUE handovers(rental_id, kind); cần tạo bằng migration |
 | Mã cá nhân | Có UNIQUE user_promotions(user_id, promotion_id); backend phải tiêu thụ voucher trong cùng transaction với thanh toán |
-| Snapshot thanh toán | Có rental_pricing_snapshots cho giá/loại xe/chính sách/cọc/giảm giá; backend phải ghi snapshot khi chốt lượt thuê |
+| Snapshot và lịch sử giá | Snapshot rental bất biến; `/prices` quản lý giá theo xe với version append-only, schema/API đề xuất tại mục 5.1 |
 | Ghi sổ một lần | Có liên kết duy nhất wallet_transactions.transaction_id; backend phải ghi transaction, số dư ví và bút toán cùng một DB transaction |
 | Idempotency | Có idempotency_records lưu scope, request hash, trạng thái, response và thời hạn tối thiểu 24 giờ; backend vẫn phải triển khai claim/replay/cleanup |
 | Audit / GPS thật | Có audit_logs cho actor/action/resource/before-after; backend phải ghi sự kiện, loại bỏ bí mật payload. GPS thật vẫn cần mô hình thiết bị khi tích hợp |
-| Bảo trì / bảng giá | Nếu cần phiếu bảo trì, lịch sử giá hoặc vị trí đầy đủ phải bổ sung bảng; support_tickets không thay thế toàn bộ |
+| Bảo trì / bảng giá | `maintenance_orders`, `vehicle_pricing_history` và `vehicle_move_audits` là schema đề xuất; support_tickets không thay thế phiếu bảo trì |
+| Ảnh đính kèm | `stored_files`/`file_attachments`, upload intent và download URL ký là schema/API đề xuất; object storage chưa tích hợp thì trả FEATURE_NOT_ENABLED |
 | Kiểm tra giá trị | Đã mô tả quy tắc trong DBML; cần CHECK enum, capacity > 0, pin 0–100, tiền không âm, thứ tự các mốc thời gian và expires_at = created_at + 30 phút trong migration/backend |
 | FK DBML | Đã sửa ký hiệu quan hệ nullable sang cột nullable và quan hệ chuẩn; dùng bản thiết kế mới khi xuất ERD |
 
-Giữ các ràng buộc unique sẵn có như wallets.user_id, invoices.rental_id, rental_reviews.rental_id và wallet_transactions.transaction_id. Không xóa dữ liệu lịch sử có liên quan tài chính. Các bảng lưu trữ đã có không đồng nghĩa endpoint/backend đã triển khai thao tác ghi hoặc replay.
+Giữ các ràng buộc unique sẵn có như users.email, wallets.user_id, invoices.rental_id, rental_reviews.rental_id, handovers(rental_id, kind), user_promotions(user_id, promotion_id), wallet_transactions.transaction_id. Partial unique index của rentals bảo đảm tối đa một lượt đang hiệu lực trên mỗi xe và mỗi khách, gồm `RESERVED/IN_RENT/RETURN_PENDING/STOLEN`; không đặt `NOW()` trong predicate. Lazy expiration cập nhật trạng thái trong transaction trước khi xét index. Không xóa dữ liệu lịch sử có liên quan tài chính. Các bảng lưu trữ đã có không đồng nghĩa endpoint/backend đã triển khai thao tác ghi hoặc replay.
 
 ## 14. Các quyết định cần nhóm duyệt trước khi đóng băng V1
 
