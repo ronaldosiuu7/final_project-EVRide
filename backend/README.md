@@ -1,6 +1,6 @@
 # Backend — FastAPI
 
-Nền tảng REST API bằng Python/FastAPI. Hiện có health endpoint và Swagger; chưa triển khai đăng nhập hoặc nghiệp vụ thuê xe. PostgreSQL sẽ được tích hợp ở bước sau, không cần cài để chạy backend hiện tại.
+Nền tảng REST API bằng Python/FastAPI. Hiện có health endpoint và Swagger; chưa triển khai đăng nhập hoặc nghiệp vụ thuê xe. PostgreSQL được cấu hình cho Alembic, ORM và seed tiện ích; health endpoint vẫn không cần kết nối database.
 
 ## Cài đặt và chạy
 
@@ -65,6 +65,22 @@ Tạo file `backend/.env` từ `backend/.env.example` (xem lệnh ở phần Cà
 
 `.gitignore` ở gốc repo đã loại trừ `.venv/`, `.env`, các biến thể `.env.*`, cache Python và log, đồng thời giữ `.env.example` trong Git. Chỉ lưu cấu hình/mật khẩu thật trong `.env` ở máy của bạn, không đưa chúng vào file mẫu hoặc commit lên Git.
 
+## Migration, dữ liệu demo và fixture dùng chung
+
+Chỉ chạy seed trên PostgreSQL local đã được cấu hình trong `backend/.env`. Revision mới nhất phải được áp dụng trước; migration sẽ dừng nếu dữ liệu legacy cần chuyển đổi chưa được xử lý. Seed chỉ chạy khi có cờ xác nhận và host là loopback; tất cả tài khoản, giấy tờ, trạm, xe, giá, giao dịch thuê và mã giảm giá đều là dữ liệu giả. Không dùng chung mật khẩu demo với môi trường thật.
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe -m alembic current
+.\.venv\Scripts\python.exe -m alembic upgrade head
+.\.venv\Scripts\python.exe -m app.seed_demo --allow-demo-seed
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+```
+
+Trên macOS/Linux, thay Python executable bằng `.venv/bin/python`. Chạy lại seed cập nhật các bản ghi có ID/email/mã fixture ổn định, không thêm bản sao; lịch sử giá và audit điều chuyển được insert một lần. Fixture chung nằm trong `app/demo_fixtures.py`, được cả `app/seed_demo.py` và `tests/test_demo_fixtures.py` dùng.
+
+Seed tạo CUSTOMER có CCCD `PENDING`, đã `VERIFIED` và chưa nộp giấy tờ; STAFF/MANAGER, ví và mã giảm giá; ba trạm (một trạm đầy, một trạm còn đúng một chỗ); xe nhiều trạng thái; các chuyến/hóa đơn từ tháng 3 đến tháng 10 năm 2026. Tài khoản demo dùng email `@evride.test`; mật khẩu giả chung được lệnh seed in ra sau khi chạy. Các hash mật khẩu fixture chỉ phục vụ demo, không dùng làm thông tin xác thực production.
+
 ## Cấu trúc
 
 | Thư mục | Trách nhiệm |
@@ -74,9 +90,11 @@ Tạo file `backend/.env` từ `backend/.env.example` (xem lệnh ở phần Cà
 | `app/core/` | Cấu hình môi trường, bảo mật, logging và xử lý lỗi chung. |
 | `app/database.py` | Cấu hình kết nối PostgreSQL. |
 | `app/models.py` | SQLAlchemy ORM cho bảng nghiệp vụ và bảng hạ tầng; migration nằm ở `../database/migrations/`. |
+| `app/demo_fixtures.py` | Dữ liệu demo giả dùng chung cho seed và unit tests. |
+| `app/seed_demo.py` | Seed idempotent, chỉ cho phép database PostgreSQL loopback đã ở Alembic head. |
 | `app/modules/` | Mã nghiệp vụ, tổ chức theo từng chức năng. |
 | `app/shared/` | Tiện ích và kiểu dữ liệu dùng chung, không gắn với một nghiệp vụ cụ thể. |
-| `tests/unit/` | Kiểm thử quy tắc nghiệp vụ độc lập. |
+| `tests/` | Unit test fixture/seed; kiểm thử nghiệp vụ có thể mở rộng sau. |
 | `tests/integration/` | Kiểm thử API và tương tác cơ sở dữ liệu. |
 
 ## Các module

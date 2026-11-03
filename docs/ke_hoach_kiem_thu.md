@@ -8,7 +8,7 @@ Tài liệu xác định phạm vi kiểm thử của hệ thống EVRide, công
 | --- | --- | --- |
 | Thành công | Thuê xe, trả xe, nạp ví, báo hỏng, lập và đóng phiếu bảo trì chạy đúng | Tự động (pytest) |
 | Dữ liệu sai | Mã xe không tồn tại, số tiền âm, mô tả quá ngắn, tệp không phải ảnh | Tự động |
-| Giá trị biên | Số dư 19.999đ / 20.000đ; pin 19% / 20%; trạm còn đúng 1 chỗ | Tự động |
+| Giá trị biên | Số dư 109.999đ / 110.000đ với xe seed (cọc 100.000đ + block đầu 10.000đ); pin 29% / 30%; trạm còn đúng 1 chỗ | Tự động |
 | Phân quyền | Chưa đăng nhập (401); khách gọi API nhân viên (403); khách xem dữ liệu khách khác | Tự động |
 | Bảo mật | Chuỗi SQL injection ở ô tìm kiếm; mật khẩu lưu dạng băm | Tự động |
 | Rollback | Lỗi giữa chừng khi thuê, trả xe, đóng phiếu → không bảng nào bị ghi dở | Tự động |
@@ -29,7 +29,9 @@ Tài liệu xác định phạm vi kiểm thử của hệ thống EVRide, công
 
 | Mã | Nhóm | Thao tác | Kết quả mong đợi | Kết quả thực tế | Người chạy | Ngày | Minh chứng |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| TC-01 | Giá trị biên | Khách có số dư 19.999đ bấm thuê xe | Từ chối, mã 402, thông báo "Số dư cần tối thiểu 20.000đ" | | | | tên test hoặc ảnh |
+| TC-01 | Giá trị biên | Khách có 109.999đ bấm giữ xe seed (cọc 100.000đ + block đầu 10.000đ) | Từ chối, HTTP 409 `INSUFFICIENT_BALANCE`; không ghi rental, ví hoặc giao dịch dở dang | | | | tên test hoặc ảnh |
+| TC-02 | Giá trị biên | Khách có đúng 110.000đ và xe seed đủ điều kiện | Giữ xe thành công; yêu cầu tối thiểu tính từ snapshot cọc + giá block đầu | | | | tên test hoặc ảnh |
+| TC-03 | Giá trị biên | Xe pin 29% / đúng 30% lúc giữ và pickup | 29% bị từ chối, 30% được phép nếu mọi điều kiện khác đạt | | | | tên test hoặc ảnh |
 
 Quy ước: mỗi ca kiểm thử tự động có tên hàm mô tả rõ (ví dụ `test_bien_so_du_toi_thieu`); ca thủ công có ảnh chụp lưu ở `docs/screenshots/`; kết quả tổng hợp ghi vào `docs/kiem_thu.md`.
 
@@ -37,16 +39,20 @@ Quy ước: mỗi ca kiểm thử tự động có tên hàm mô tả rõ (ví d
 
 | Mã | Thao tác | Kết quả mong đợi |
 | --- | --- | --- |
-| QT-01 | Gọi API giờ cao điểm (`/api/v1/analytics/peak-hours`) cho tháng 6 | Tổng `so_luot_thue` = số chuyến bắt đầu trong tháng 6 |
+| QT-01 | Gọi API giờ cao điểm (`/api/v1/analytics/peak-hours`) cho tháng 6 | `filtered_trip_count` = số chuyến có `actual_start_time` trong tháng 6; `included_trip_count` = tổng `rental_count` của tối đa 20 trạm hiển thị |
 | QT-02 | Gọi API doanh thu (`/api/v1/analytics/revenue`) cho 6 tháng | Tỷ trọng mỗi tháng cộng lại = 100% |
-| QT-03 | Gọi API khách lâu không đi với `so_ngay=30` | Mọi khách trả về đều có số dư > 0 và 0 chuyến trong 30 ngày |
-| QT-04 | Khách gọi bất kỳ API báo cáo | 403 |
-| QT-05 | Báo cáo với ngày kết thúc trước ngày bắt đầu | 400, giao diện hiện thông báo |
+| QT-03 | Gọi API khách lâu không đi với `days=30` | Mọi khách trả về đều ACTIVE, `balance > 0` và có 0 chuyến bắt đầu trong 30 ngày |
+| QT-04 | CUSTOMER gọi bất kỳ API báo cáo | 403 `FORBIDDEN`; STAFF/MANAGER ACTIVE được phép |
+| QT-05 | Báo cáo với ngày kết thúc trước ngày bắt đầu | 400 `INVALID_DATE_RANGE`, giao diện hiện thông báo |
 | QT-06 | Điều chuyển xe vào trạm đã đầy | 409 "Trạm đích đã đầy" |
 | QT-07 | Ngừng hoạt động xe đang được thuê | 409 "Xe đang được thuê" |
 | QT-08 | Mở các màn hình quản trị ở 390px | Không tràn ngang, bảng cuộn được |
 | QT-09 | Trên VM1 chạy `pg_isready -h <IP VM3>` | Không kết nối được (firewall chặn) |
 | QT-10 | Khởi động lại VM3 | Đăng nhập lại, dữ liệu và ảnh vẫn còn |
+| QT-11 | Hai giao dịch cùng CUSTOMER giữ hai xe khác nhau đồng thời | Một rental active thành công; request còn lại 409 `ACTIVE_RENTAL_EXISTS`; xác minh khóa customer, unique partial index và không có dữ liệu dở |
+| QT-12 | Replay cùng Idempotency-Key/body cho move, tạo giá hoặc phiếu bảo trì | Cùng HTTP status/body; không nhân đôi lịch sử giá, audit điều chuyển hoặc phiếu |
+| QT-13 | Gây lỗi sau cập nhật xe nhưng trước khi ghi move audit | Toàn transaction rollback; vị trí xe và audit đều không đổi |
+| QT-14 | Upload ảnh sai MIME/kích thước/hash; download file chưa READY | Upload bị từ chối/REJECTED; không tạo attachment hoặc URL download |
 
 ## 5. Lịch
 

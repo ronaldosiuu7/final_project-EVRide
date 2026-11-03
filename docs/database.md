@@ -1,5 +1,5 @@
 # EVRide – Hệ thống Quản lý Cho thuê Xe máy Điện theo Trạm
-> **Cập nhật thiết kế:** 21/10/2026  
+> **Cập nhật thiết kế:** 03/11/2026
 > **Định dạng gốc:** DBML (Database Markup Language) – Dùng để vẽ sơ đồ ERD & tham chiếu thiết kế backend.
 
 ---
@@ -9,7 +9,8 @@
 1. **Giữ chỗ xe:** Khách hàng chỉ được đặt xe đang ở trạng thái `AVAILABLE`. Thời gian giữ chỗ mặc định là **30 phút** (`expires_at = created_at + 30m`). Không hỗ trợ đặt trước nhiều ngày hoặc gia hạn lượt giữ chỗ.
 2. **Hết hạn giữ chỗ:** Tại hoặc sau `expires_at`, lượt đặt chuyển sang `EXPIRED`. Xe sẽ được giải phóng về trạng thái `AVAILABLE` (trừ khi gặp sự cố/sửa chữa).
 3. **Nhận xe (Pickup):** Khi nhân viên giao xe thành công, trạng thái chuyển sang `IN_RENT`. Xe rời trạm (`current_station_id = NULL`).
-4. **Trả xe (Return):** Khách trả xe tại trạm bất kỳ còn đủ sức chứa (`capacity`). Nhân viên kiểm tra, xác nhận trả xe để hoàn tất chuyến đi (`COMPLETED`).
+4. **Trả xe (Return):** Nhân viên tiếp nhận xe thực tế tại trạm còn chỗ, dừng cước và chuyển rental/vehicle sang `RETURN_PENDING`; quyết toán là giao dịch riêng, thành công mới chuyển rental `COMPLETED`.
+5. **Rental đang hiệu lực:** Partial unique index ngăn khách hoặc xe có nhiều rental `RESERVED`, `IN_RENT`, `RETURN_PENDING`, `STOLEN`; trạng thái hết hạn cập nhật trong transaction trước khi tạo rental mới.
 
 ---
 
@@ -31,7 +32,7 @@ Lưu trữ thông tin tài khoản người dùng (Khách hàng, Nhân viên, Qu
 | `created_at` | `timestamptz` | NOT NULL |
 
 #### Bảng `user_documents`
-Lưu trữ giấy tờ định danh (eKYC) và bằng lái xe.
+Lưu trữ giấy tờ định danh (eKYC) và bằng lái xe. Ảnh được tham chiếu qua `file_attachments`, không lưu URL file tùy ý.
 
 | Cột (Column) | Kiểu Dữ Liệu | Ràng Buộc / Mô Tả |
 | :--- | :--- | :--- |
@@ -39,9 +40,12 @@ Lưu trữ giấy tờ định danh (eKYC) và bằng lái xe.
 | `user_id` | `bigint` | **FK** -> `users.id`, NOT NULL |
 | `document_type` | `varchar(30)` | NOT NULL (`CCCD`, `PASSPORT`, `DRIVER_LICENSE`) |
 | `document_number` | `varchar(50)` | NOT NULL |
-| `image_front_url` | `text` | NOT NULL |
-| `image_back_url` | `text` | NULL |
 | `verified_status` | `varchar(20)` | NOT NULL (`PENDING`, `VERIFIED`, `REJECTED`) |
+| `verified_birth_date` | `date` | NULL |
+| `expires_on` | `date` | NULL |
+| `verified_by` | `bigint` | FK -> `users.id`, NULL |
+| `verified_at` | `timestamptz` | NULL |
+| `revoked_at` | `timestamptz` | NULL |
 | `created_at` | `timestamptz` | NOT NULL |
 
 #### Bảng `wallets`
@@ -85,8 +89,9 @@ Danh sách phương tiện và trạng thái thực tế.
 | `name` | `varchar(100)` | NOT NULL |
 | `type` | `varchar(50)` | NOT NULL |
 | `battery_percent` | `int` | NOT NULL (0 - 100) |
-| `status` | `varchar(20)` | NOT NULL (`AVAILABLE`, `RESERVED`, `RENTED`, `MAINTENANCE`, `SUSPECTED_STOLEN`, `STOLEN`) |
-| `daily_price` | `numeric(12,2)`| NOT NULL |
+| `status` | `varchar(20)` | NOT NULL (`AVAILABLE`, `RESERVED`, `RENTED`, `RETURN_PENDING`, `MAINTENANCE`, `SUSPECTED_STOLEN`, `STOLEN`) |
+| `first_30_minutes_price` | `numeric(12,2)` | NOT NULL, CHECK >= 0 |
+| `extra_minute_price` | `numeric(12,2)` | NOT NULL, CHECK >= 0 |
 | `deposit_amount` | `numeric(12,2)`| NOT NULL |
 | `created_at` | `timestamptz` | NOT NULL |
 
@@ -107,7 +112,13 @@ Thông tin chi tiết từng lượt đặt / thuê xe.
 | `expires_at` | `timestamptz` | NOT NULL (Backend ấn định bằng `created_at + 30m`; client không truyền) |
 | `actual_start_time` | `timestamptz` | NULL (Thời điểm nhận xe thực tế) |
 | `actual_end_time` | `timestamptz` | NULL (Thời điểm trả xe thực tế) |
-| `status` | `varchar(20)` | NOT NULL, Default: `'RESERVED'` (`RESERVED`, `IN_RENT`, `STOLEN`, `COMPLETED`, `CANCELLED`, `EXPIRED`) |
+| `return_initiated_at` | `timestamptz` | NULL (mốc dừng cước, bất biến sau tiếp nhận) |
+| `settled_at` | `timestamptz` | NULL (thời điểm quyết toán, sau `return_initiated_at`) |
+| `cancelled_at` | `timestamptz` | NULL |
+| `cancellation_reason` | `varchar(100)` | NULL |
+| `cancellation_limit_exempt` | `boolean` | NOT NULL, default false |
+| `deposit_held` | `numeric(12,2)` | NOT NULL, default 0, CHECK >= 0 |
+| `status` | `varchar(20)` | NOT NULL, Default: `'RESERVED'` (`RESERVED`, `IN_RENT`, `RETURN_PENDING`, `STOLEN`, `COMPLETED`, `CANCELLED`, `EXPIRED`) |
 | `total_price` | `numeric(12,2)`| NULL (Tổng chi phí sau khi tính toán) |
 | `created_at` | `timestamptz` | NOT NULL |
 
@@ -115,6 +126,8 @@ Thông tin chi tiết từng lượt đặt / thuê xe.
   - `idx_rentals_status_expires_at` (`status`, `expires_at`)
   - `idx_rentals_customer_created_at` (`customer_id`, `created_at`)
   - `idx_rentals_vehicle_id` (`vehicle_id`)
+  - Partial unique index theo `vehicle_id` và theo `customer_id` cho `RESERVED`, `IN_RENT`, `RETURN_PENDING`, `STOLEN`; predicate chỉ dựa trên trạng thái, không dùng `NOW()`.
+  - CHECK thời gian bắt đầu/kết thúc/nhận xe/quyết toán theo thứ tự; trạng thái hết hạn phải được cập nhật trong transaction trước khi đặt mới.
 
 #### Bảng `handovers`
 Biên bản giao/nhận xe do nhân viên xác thực tại trạm.
@@ -127,6 +140,7 @@ Biên bản giao/nhận xe do nhân viên xác thực tại trạm.
 | `kind` | `varchar(10)` | NOT NULL (`PICKUP` - Giao xe, `RETURN` - Nhận lại xe) |
 | `time` | `timestamptz` | NOT NULL |
 | `battery_percent` | `int` | NOT NULL |
+| `vehicle_condition` | `varchar(30)` | NULL (`OK`, `NEEDS_MAINTENANCE`) |
 | `note` | `text` | NULL |
 | `created_at` | `timestamptz` | NOT NULL |
 
@@ -206,7 +220,7 @@ Chương trình khuyến mãi và ví voucher của người dùng.
 Lưu bền vững request và response để nhận diện retry, phát hiện cùng key khác body và replay kết quả sau timeout. Khóa phạm vi là `(actor_id, http_method, request_path, idempotency_key)`; `request_hash` là SHA-256 của body. `PROCESSING` chưa có response; `COMPLETED` giữ HTTP status và JSON response. `expires_at` không sớm hơn 24 giờ sau khi tạo; chỉ dọn record đã hết hạn.
 
 #### Bảng `rental_pricing_snapshots`
-Mỗi lượt thuê có tối đa một snapshot bất biến theo quy ước ứng dụng: lưu tên/loại xe, giá ngày, phiên bản và JSON snapshot của chính sách giá, tiền cọc, promotion/code, phần trăm và số tiền giảm. Khóa ngoại promotion có thể rỗng nếu promotion bị xóa; code và giá trị áp dụng vẫn được giữ lại.
+Mỗi lượt thuê có tối đa một snapshot bất biến theo quy ước ứng dụng: lưu tên/loại xe, giá 30 phút đầu, giá phút thêm, tiền cọc, phiên bản/JSON chính sách giá, đơn vị tính phí và promotion/code/giảm giá. Khóa ngoại promotion có thể rỗng nếu promotion bị xóa; code và giá trị áp dụng vẫn được giữ lại.
 
 #### Bảng `audit_logs`
 Lưu actor, action, loại/ID tài nguyên, request ID, JSON trước/sau và thời điểm. Nhật ký được append-only theo quy ước ứng dụng; không ghi mật khẩu, token, dữ liệu giấy tờ nhạy cảm hoặc bí mật khác vào payload audit.
@@ -217,6 +231,18 @@ Lưu actor, action, loại/ID tài nguyên, request ID, JSON trước/sau và th
 
 * **`support_tickets`**: `id`, `rental_id` (FK), `created_by` (FK -> `users`), `assigned_to` (FK -> `users`), `title`, `description`, `status` (`OPEN`, `IN_PROGRESS`, `RESOLVED`, `CLOSED`), `created_at`.
 * **`gps_points`**: `id`, `rental_id` (FK), `latitude`, `longitude`, `recorded_at`.
+
+### 2.7. Bảng đề xuất cho quản trị giá, bảo trì, ảnh và điều chuyển
+
+Các bảng dưới đây chốt schema/API ở mức thiết kế; **chưa có nghĩa migration, endpoint hoặc chức năng đã triển khai**.
+
+* **`vehicle_pricing_history`**: `id`, `vehicle_id` (FK), `version_number`, giá/cọc cũ nullable và giá/cọc mới (`first_30_minutes_price`, `extra_minute_price`, `deposit_amount`), `changed_by` (FK -> users), `created_at`. UNIQUE (`vehicle_id`, `version_number`); CHECK version > 0, mọi giá không âm. Phiên bản đầu có giá cũ NULL. Ghi lịch sử và cập nhật `vehicles` trong cùng transaction; trigger DB chặn UPDATE/DELETE.
+* **`maintenance_orders`**: `id`, `vehicle_id` (FK), `created_by`/`assigned_to` (FK -> users), `title`, `description`, `status` (`OPEN`, `IN_PROGRESS`, `COMPLETED`, `CANCELLED`), `opened_at`, `started_at`, `completed_at`, `resolution_note`, `created_at`, `updated_at`. CHECK trạng thái/mốc thời gian; partial unique index một phiếu OPEN/IN_PROGRESS trên mỗi xe. Không coi `support_tickets` là phiếu bảo trì.
+* **`stored_files`**: metadata file riêng tư gồm object key UNIQUE, tên gốc, MIME, byte size, SHA-256, trạng thái (`PENDING`, `READY`, `REJECTED`), uploader (FK -> users), `created_at`, `verified_at`. CHECK chỉ JPEG/PNG/WebP, 1–10 MiB và SHA-256 64 ký tự.
+* **`file_attachments`**: `file_id` (FK UNIQUE), đúng một FK owner trong `vehicle_id`, `maintenance_order_id`, `handover_id`, `user_document_id`, `support_ticket_id`; `purpose`, `attached_by` (FK -> users), `created_at`. CHECK đúng một owner và purpose thuộc enum contract. Hình ảnh chỉ tải qua URL ký ngắn hạn sau kiểm tra quyền; không lưu URL public.
+* **`vehicle_move_audits`**: `vehicle_id`, `from_station_id`, `to_station_id`, `actor_id` (các FK), `idempotency_record_id` (FK nullable UNIQUE), `note`, `moved_at`. CHECK trạm nguồn khác trạm đích; trigger DB chặn UPDATE/DELETE. Cập nhật vị trí xe và audit cùng transaction.
+
+API đề xuất tương ứng (`/prices`, `/maintenance-orders`, `/files/*`, lịch sử điều chuyển) được mô tả trong `api-contract.md`. Tiền dùng `numeric(12,2)`, thời gian dùng `timestamptz` (UTC); JSON API dùng ID/tiền dạng string và thời gian UTC.
 
 ---
 
@@ -240,36 +266,46 @@ rentals (1) <---> (N) handovers (Max 2: PICKUP & RETURN)
 rentals (1) <---> (N) transactions
 rentals (1) <---> (N) gps_points
 rentals (1) <---> (N) support_tickets
+vehicles (1) <---> (N) vehicle_pricing_history / maintenance_orders / vehicle_move_audits
+stored_files (1) <---> (0..1) file_attachments
 
 wallets (1) <---> (N) wallet_transactions
 promotions (1) <---> (N) user_promotions
 rentals (1) <---> (1) rental_pricing_snapshots
 transactions (1) <---> (0..1) wallet_transactions
 idempotency_records (1) <---> (N) transactions / wallet_transactions
-users (1) <---> (N) audit_logs
+users (1) <---> (N) audit_logs / vehicle_move_audits
 ```
 
 ---
 
 ## 4. QUY TẮC KỸ THUẬT (MIGRATIONS & BACKEND LOGIC)
 
-Alembic revision được quản lý tập trung tại `database/migrations/`; chạy từ `backend/` bằng `alembic upgrade head`. ORM SQLAlchemy trong `backend/app/models.py` ánh xạ 15 bảng nghiệp vụ hiện có cùng các bảng bền vững bổ sung. Migration là nguồn thay đổi schema; không dùng `create_all()` trong lúc chạy ứng dụng.
+Alembic revision được quản lý tập trung tại `database/migrations/`; chạy từ `backend/` bằng `alembic upgrade head`. ORM SQLAlchemy trong `backend/app/models.py` mô tả schema hiện có và các bảng đề xuất bổ sung. Các thay đổi trong tài liệu/model chưa được áp dụng lên database cho tới khi có migration được duyệt; không dùng `create_all()` trong lúc chạy ứng dụng.
+
+Revision `888ad91e139e` bổ sung lịch sử giá, phiếu bảo trì, kho file/đính kèm, audit điều chuyển và báo giá trả xe; đồng thời thêm CHECK còn thiếu, mở rộng unique rental sang `RETURN_PENDING` và cấm UPDATE/DELETE lịch sử giá/audit điều chuyển. Migration cố ý dừng nếu database có xe hoặc snapshot giá cũ, URL ảnh giấy tờ chưa chuyển sang kho riêng tư, hay giấy tờ VERIFIED chưa có dữ liệu xác minh mới. Không suy diễn giá block đầu/phút từ `daily_price`; cần lập kế hoạch chuyển đổi dữ liệu trước khi chạy migration trên môi trường có dữ liệu. Revision chưa được áp dụng lên database trong quá trình tạo.
 
 ### 4.1. Xử lý Thời gian & Hết hạn giữ xe
 * **Múi giờ:** Luôn lưu dưới dạng `timestamptz` (thống nhất chuẩn UTC trong CSDL).
 * **Tự động hết hạn:** Backend tính toán `expires_at = created_at + INTERVAL '30 minutes'`.
-* **Ràng buộc khi nhận xe:** Khách chỉ được nhận xe khi `status = 'RESERVED'` và `NOW() < expires_at`.
-* **Giải phóng xe:** Tác vụ cronjob/background job sẽ cập nhật `RESERVED` -> `EXPIRED` và đưa xe về `AVAILABLE`.
+* **Ràng buộc khi nhận xe:** Khách chỉ được nhận xe khi `status = 'RESERVED'` và thời điểm server lấy sau khóa nhỏ hơn `expires_at`; không dùng `NOW()` của đầu transaction sau khi đã chờ khóa.
+* **Giải phóng xe:** Lazy expiration trong cùng transaction với thao tác đặt mới phải cập nhật `RESERVED` -> `EXPIRED` trước khi xét unique index; job nền chỉ là tối ưu, không phải nguồn quyết định duy nhất.
 
 ### 4.2. Khóa chống Tranh chấp (Concurrency & Locking)
 * **Partial Unique Index:** Khống chế 1 xe không thể có 2 đơn thuê hoạt động cùng lúc:
   ```sql
-  CREATE UNIQUE INDEX uq_active_vehicle_rental 
-  ON rentals (vehicle_id) 
-  WHERE status IN ('RESERVED', 'IN_RENT', 'STOLEN');
+  CREATE UNIQUE INDEX uq_active_vehicle_rental
+  ON rentals (vehicle_id)
+  WHERE status IN ('RESERVED', 'IN_RENT', 'RETURN_PENDING', 'STOLEN');
+
+  CREATE UNIQUE INDEX uq_active_customer_rental
+  ON rentals (customer_id)
+  WHERE status IN ('RESERVED', 'IN_RENT', 'RETURN_PENDING', 'STOLEN');
   ```
 * **Pessimistic Locking (`SELECT ... FOR UPDATE`):**
-  * Khi người dùng thực hiện các thao tác: **Đặt xe, Nhận xe, Trả xe, Hủy đơn**, bắt buộc phải thực hiện khóa dòng (`vehicles`, `rentals`, `stations`) trong cùng 1 Database Transaction để tránh race-condition.
+  * Thứ tự chung: `station → customer(users) → wallet → vehicle → rental`; trong nhóm khóa ID tăng dần. Thực hiện trên cùng DB transaction, sau khóa đọc lại và kiểm tra điều kiện.
+  * Cùng một customer đặt hai xe đồng thời phải khóa dòng customer và vẫn dựa vào unique index để bảo vệ cuối cùng. Test concurrency chạy trên PostgreSQL thật.
+  * Cập nhật trạng thái hết hạn, xe, snapshot, sổ cái và audit theo đúng phạm vi transaction. Lỗi trước commit rollback toàn bộ; retry cùng idempotency key/body replay kết quả, không ghi thêm lịch sử/audit; cùng key khác body trả `409 IDEMPOTENCY_CONFLICT`.
 
 ### 4.3. Kiểm tra Sức chứa Trạm (Station Capacity)
 * Số chỗ đang dùng tại trạm = Tổng tất cả xe có `current_station_id = station_id` (Bao gồm xe `AVAILABLE`, `RESERVED`, và `MAINTENANCE`).
@@ -278,5 +314,7 @@ Alembic revision được quản lý tập trung tại `database/migrations/`; c
 ### 4.4. Check Constraints & Ràng buộc Dữ liệu
 * `capacity > 0`
 * `battery_percent BETWEEN 0 AND 100`
+* `rating BETWEEN 1 AND 5`
 * Các trường giá tiền/số dư phải $\ge 0$.
+* Mốc thời gian chuyến, nhận xe, trả xe, quyết toán, bảo trì phải theo thứ tự; email, một ví/người, hóa đơn/chuyến, review/chuyến, handover/chuyến+loại và claim mã/người có UNIQUE.
 * Mật khẩu (`users.password`) **bắt buộc** phải là chuỗi đã được hash (Bcrypt, Argon2,...), tuyệt đối không lưu plaintext.

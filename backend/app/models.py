@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, time
+from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Any
 
@@ -8,6 +8,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Identity,
@@ -52,6 +53,44 @@ class User(Base):
     )
 
 
+class StoredFile(Base):
+    __tablename__ = "stored_files"
+    __table_args__ = (
+        CheckConstraint(
+            "content_type IN ('image/jpeg', 'image/png', 'image/webp')",
+            name="ck_stored_files_content_type",
+        ),
+        CheckConstraint(
+            "size_bytes BETWEEN 1 AND 10485760",
+            name="ck_stored_files_size_range",
+        ),
+        CheckConstraint(
+            "char_length(sha256) = 64", name="ck_stored_files_sha256_length"
+        ),
+        CheckConstraint(
+            "status IN ('PENDING', 'READY', 'REJECTED')",
+            name="ck_stored_files_status",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    object_key: Mapped[str] = mapped_column(String(500), unique=True, nullable=False)
+    original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    content_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default=text("'PENDING'")
+    )
+    uploaded_by: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.current_timestamp()
+    )
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class UserDocument(Base):
     __tablename__ = "user_documents"
     __table_args__ = (
@@ -63,6 +102,17 @@ class UserDocument(Base):
             "verified_status IN ('PENDING', 'VERIFIED', 'REJECTED')",
             name="ck_user_documents_verified_status",
         ),
+        CheckConstraint(
+            "verified_status <> 'VERIFIED' OR "
+            "(verified_by IS NOT NULL AND verified_at IS NOT NULL AND "
+            "(document_type <> 'CCCD' OR "
+            "(verified_birth_date IS NOT NULL AND expires_on IS NOT NULL)))",
+            name="ck_user_documents_verified_details",
+        ),
+        CheckConstraint(
+            "revoked_at IS NULL OR verified_at IS NULL OR revoked_at >= verified_at",
+            name="ck_user_documents_revocation_time_order",
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
@@ -71,9 +121,13 @@ class UserDocument(Base):
     )
     document_type: Mapped[str] = mapped_column(String(30), nullable=False)
     document_number: Mapped[str] = mapped_column(String(50), nullable=False)
-    image_front_url: Mapped[str] = mapped_column(Text, nullable=False)
-    image_back_url: Mapped[str | None] = mapped_column(Text)
+    birth_date: Mapped[date | None] = mapped_column(Date)
+    expires_on: Mapped[date | None] = mapped_column(Date)
+    verified_birth_date: Mapped[date | None] = mapped_column(Date)
     verified_status: Mapped[str] = mapped_column(String(20), nullable=False)
+    verified_by: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("users.id"))
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.current_timestamp()
     )
@@ -111,6 +165,15 @@ class Station(Base):
     __tablename__ = "stations"
     __table_args__ = (
         CheckConstraint("capacity > 0", name="ck_stations_capacity_positive"),
+        CheckConstraint(
+            "status IN ('ACTIVE', 'INACTIVE')", name="ck_stations_status"
+        ),
+        CheckConstraint(
+            "(opens_at IS NULL AND closes_at IS NULL) OR "
+            "(opens_at IS NOT NULL AND closes_at IS NOT NULL "
+            "AND opens_at <> closes_at)",
+            name="ck_stations_opening_hours_pair",
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
@@ -131,12 +194,20 @@ class Vehicle(Base):
             "battery_percent BETWEEN 0 AND 100",
             name="ck_vehicles_battery_percent_range",
         ),
-        CheckConstraint("daily_price >= 0", name="ck_vehicles_daily_price_nonnegative"),
+        CheckConstraint(
+            "first_30_minutes_price >= 0",
+            name="ck_vehicles_first_30_minutes_price_nonnegative",
+        ),
+        CheckConstraint(
+            "extra_minute_price >= 0",
+            name="ck_vehicles_extra_minute_price_nonnegative",
+        ),
         CheckConstraint(
             "deposit_amount >= 0", name="ck_vehicles_deposit_amount_nonnegative"
         ),
         CheckConstraint(
-            "status IN ('AVAILABLE', 'RESERVED', 'RENTED', 'MAINTENANCE', "
+            "status IN ('AVAILABLE', 'RESERVED', 'RENTED', 'RETURN_PENDING', "
+            "'MAINTENANCE', "
             "'SUSPECTED_STOLEN', 'STOLEN')",
             name="ck_vehicles_status",
         ),
@@ -150,7 +221,10 @@ class Vehicle(Base):
     type: Mapped[str] = mapped_column(String(50), nullable=False)
     battery_percent: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
-    daily_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    first_30_minutes_price: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False
+    )
+    extra_minute_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     deposit_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.current_timestamp()
@@ -161,12 +235,36 @@ class Rental(Base):
     __tablename__ = "rentals"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('RESERVED', 'IN_RENT', 'STOLEN', 'COMPLETED', "
-            "'CANCELLED', 'EXPIRED')",
+            "status IN ('RESERVED', 'IN_RENT', 'RETURN_PENDING', 'STOLEN', "
+            "'COMPLETED', 'CANCELLED', 'EXPIRED')",
             name="ck_rentals_status",
         ),
         CheckConstraint(
             "total_price >= 0", name="ck_rentals_total_price_nonnegative"
+        ),
+        CheckConstraint(
+            "actual_end_time IS NULL OR actual_start_time IS NULL OR "
+            "actual_end_time >= actual_start_time",
+            name="ck_rentals_time_order",
+        ),
+        CheckConstraint(
+            "return_initiated_at IS NULL OR "
+            "(actual_start_time IS NOT NULL AND "
+            "return_initiated_at >= actual_start_time AND "
+            "(actual_end_time IS NULL OR actual_end_time = return_initiated_at))",
+            name="ck_rentals_return_time_order",
+        ),
+        CheckConstraint(
+            "settled_at IS NULL OR "
+            "(return_initiated_at IS NOT NULL AND settled_at >= return_initiated_at)",
+            name="ck_rentals_settlement_time_order",
+        ),
+        CheckConstraint(
+            "cancelled_at IS NULL OR cancelled_at >= created_at",
+            name="ck_rentals_cancellation_time_order",
+        ),
+        CheckConstraint(
+            "deposit_held >= 0", name="ck_rentals_deposit_held_nonnegative"
         ),
         Index("idx_rentals_status_expires_at", "status", "expires_at"),
         Index("idx_rentals_customer_created_at", "customer_id", "created_at"),
@@ -175,7 +273,17 @@ class Rental(Base):
             "uq_active_vehicle_rental",
             "vehicle_id",
             unique=True,
-            postgresql_where=text("status IN ('RESERVED', 'IN_RENT', 'STOLEN')"),
+            postgresql_where=text(
+                "status IN ('RESERVED', 'IN_RENT', 'RETURN_PENDING', 'STOLEN')"
+            ),
+        ),
+        Index(
+            "uq_active_customer_rental",
+            "customer_id",
+            unique=True,
+            postgresql_where=text(
+                "status IN ('RESERVED', 'IN_RENT', 'RETURN_PENDING', 'STOLEN')"
+            ),
         ),
     )
 
@@ -195,6 +303,21 @@ class Rental(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     actual_start_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     actual_end_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    return_initiated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cancellation_reason: Mapped[str | None] = mapped_column(String(100))
+    cancellation_limit_exempt: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    cancelled_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("users.id")
+    )
+    deposit_held: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default=text("0.00")
+    )
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default=text("'RESERVED'")
     )
@@ -205,6 +328,9 @@ class Rental(Base):
     pricing_snapshot: Mapped[RentalPricingSnapshot | None] = relationship(
         back_populates="rental", uselist=False
     )
+    return_quotes: Mapped[list[RentalReturnQuote]] = relationship(
+        back_populates="rental"
+    )
 
 
 class Handover(Base):
@@ -213,9 +339,15 @@ class Handover(Base):
         CheckConstraint(
             "kind IN ('PICKUP', 'RETURN')", name="ck_handovers_kind"
         ),
+        CheckConstraint("time <= created_at", name="ck_handovers_time_order"),
         CheckConstraint(
             "battery_percent BETWEEN 0 AND 100",
             name="ck_handovers_battery_percent_range",
+        ),
+        CheckConstraint(
+            "vehicle_condition IS NULL OR "
+            "vehicle_condition IN ('OK', 'NEEDS_MAINTENANCE')",
+            name="ck_handovers_vehicle_condition",
         ),
         Index("uq_handovers_rental_kind", "rental_id", "kind", unique=True),
     )
@@ -230,6 +362,7 @@ class Handover(Base):
     kind: Mapped[str] = mapped_column(String(10), nullable=False)
     time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     battery_percent: Mapped[int] = mapped_column(Integer, nullable=False)
+    vehicle_condition: Mapped[str | None] = mapped_column(String(30))
     note: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.current_timestamp()
@@ -331,6 +464,7 @@ class WalletTransaction(Base):
             "balance_after >= 0",
             name="ck_wallet_transactions_balance_after_nonnegative",
         ),
+        CheckConstraint("amount >= 0", name="ck_wallet_transactions_amount_nonnegative"),
         CheckConstraint(
             "status IN ('PENDING', 'SUCCESS', 'FAILED')",
             name="ck_wallet_transactions_status",
@@ -384,6 +518,7 @@ class Promotion(Base):
             "status IN ('ACTIVE', 'EXPIRED', 'DISABLED')",
             name="ck_promotions_status",
         ),
+        CheckConstraint("end_date > start_date", name="ck_promotions_date_order"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
@@ -442,6 +577,154 @@ class SupportTicket(Base):
     description: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.current_timestamp()
+    )
+
+
+class MaintenanceOrder(Base):
+    __tablename__ = "maintenance_orders"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('OPEN', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED')",
+            name="ck_maintenance_orders_status",
+        ),
+        Index(
+            "uq_maintenance_orders_active_vehicle",
+            "vehicle_id",
+            unique=True,
+            postgresql_where=text("status IN ('OPEN', 'IN_PROGRESS')"),
+        ),
+        CheckConstraint(
+            "(started_at IS NULL OR started_at >= opened_at) AND "
+            "(completed_at IS NULL OR "
+            "(started_at IS NOT NULL AND completed_at >= started_at))",
+            name="ck_maintenance_orders_time_order",
+        ),
+        CheckConstraint(
+            "(status <> 'IN_PROGRESS' OR started_at IS NOT NULL) AND "
+            "(status <> 'COMPLETED' OR completed_at IS NOT NULL)",
+            name="ck_maintenance_orders_status_times",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    vehicle_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("vehicles.id", ondelete="RESTRICT"), nullable=False
+    )
+    created_by: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id"), nullable=False
+    )
+    assigned_to: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("users.id"))
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    opened_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.current_timestamp()
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    resolution_note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.current_timestamp()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.current_timestamp()
+    )
+
+
+class FileAttachment(Base):
+    __tablename__ = "file_attachments"
+    __table_args__ = (
+        CheckConstraint(
+            "num_nonnulls(vehicle_id, maintenance_order_id, handover_id, "
+            "user_document_id, support_ticket_id) = 1",
+            name="ck_file_attachments_single_owner",
+        ),
+        CheckConstraint(
+            "purpose IN ('VEHICLE_PHOTO', 'MAINTENANCE_BEFORE', "
+            "'MAINTENANCE_AFTER', 'HANDOVER_PICKUP', 'HANDOVER_RETURN', "
+            "'USER_DOCUMENT_FRONT', 'USER_DOCUMENT_BACK', 'TICKET_EVIDENCE')",
+            name="ck_file_attachments_purpose",
+        ),
+        CheckConstraint(
+            "(purpose = 'VEHICLE_PHOTO' AND vehicle_id IS NOT NULL) OR "
+            "(purpose IN ('MAINTENANCE_BEFORE', 'MAINTENANCE_AFTER') "
+            "AND maintenance_order_id IS NOT NULL) OR "
+            "(purpose IN ('HANDOVER_PICKUP', 'HANDOVER_RETURN') "
+            "AND handover_id IS NOT NULL) OR "
+            "(purpose IN ('USER_DOCUMENT_FRONT', 'USER_DOCUMENT_BACK') "
+            "AND user_document_id IS NOT NULL) OR "
+            "(purpose = 'TICKET_EVIDENCE' AND support_ticket_id IS NOT NULL)",
+            name="ck_file_attachments_purpose_owner",
+        ),
+        UniqueConstraint("file_id", name="uq_file_attachments_file"),
+        Index("idx_file_attachments_vehicle", "vehicle_id"),
+        Index("idx_file_attachments_maintenance", "maintenance_order_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    file_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("stored_files.id", ondelete="RESTRICT"), nullable=False
+    )
+    vehicle_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("vehicles.id", ondelete="RESTRICT")
+    )
+    maintenance_order_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("maintenance_orders.id", ondelete="RESTRICT")
+    )
+    handover_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("handovers.id", ondelete="RESTRICT")
+    )
+    user_document_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("user_documents.id", ondelete="RESTRICT")
+    )
+    support_ticket_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("support_tickets.id", ondelete="RESTRICT")
+    )
+    purpose: Mapped[str] = mapped_column(String(30), nullable=False)
+    attached_by: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.current_timestamp()
+    )
+
+
+class VehicleMoveAudit(Base):
+    __tablename__ = "vehicle_move_audits"
+    __table_args__ = (
+        CheckConstraint(
+            "from_station_id <> to_station_id",
+            name="ck_vehicle_move_audits_different_stations",
+        ),
+        UniqueConstraint(
+            "idempotency_record_id",
+            name="uq_vehicle_move_audits_idempotency_record",
+        ),
+        Index("idx_vehicle_move_audits_vehicle_time", "vehicle_id", "moved_at"),
+        Index("idx_vehicle_move_audits_source_time", "from_station_id", "moved_at"),
+        Index("idx_vehicle_move_audits_target_time", "to_station_id", "moved_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    vehicle_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("vehicles.id", ondelete="RESTRICT"), nullable=False
+    )
+    from_station_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("stations.id", ondelete="RESTRICT"), nullable=False
+    )
+    to_station_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("stations.id", ondelete="RESTRICT"), nullable=False
+    )
+    actor_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    idempotency_record_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("idempotency_records.id", ondelete="SET NULL"),
+    )
+    note: Mapped[str | None] = mapped_column(Text)
+    moved_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.current_timestamp()
     )
 
@@ -526,9 +809,17 @@ class RentalPricingSnapshot(Base):
     __tablename__ = "rental_pricing_snapshots"
     __table_args__ = (
         UniqueConstraint("rental_id", name="uq_rental_pricing_snapshots_rental"),
-        CheckConstraint("daily_price >= 0", name="ck_rental_price_daily_nonnegative"),
         CheckConstraint(
-            "deposit_amount >= 0", name="ck_rental_price_deposit_nonnegative"
+            "first_30_minutes_price_snapshot >= 0",
+            name="ck_rental_price_first_30_minutes_nonnegative",
+        ),
+        CheckConstraint(
+            "extra_minute_price_snapshot >= 0",
+            name="ck_rental_price_extra_minute_nonnegative",
+        ),
+        CheckConstraint(
+            "deposit_amount_snapshot >= 0",
+            name="ck_rental_price_deposit_nonnegative",
         ),
         CheckConstraint(
             "discount_percent IS NULL OR discount_percent BETWEEN 0 AND 100",
@@ -558,13 +849,21 @@ class RentalPricingSnapshot(Base):
         nullable=False,
     )
     vehicle_name: Mapped[str] = mapped_column(String(100), nullable=False)
-    vehicle_type: Mapped[str] = mapped_column(String(50), nullable=False)
-    daily_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    vehicle_type_snapshot: Mapped[str] = mapped_column(String(50), nullable=False)
+    first_30_minutes_price_snapshot: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False
+    )
+    extra_minute_price_snapshot: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False
+    )
     pricing_policy_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    billing_unit: Mapped[str] = mapped_column(String(64), nullable=False)
     pricing_policy_snapshot: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False
     )
-    deposit_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    deposit_amount_snapshot: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False
+    )
     promotion_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("promotions.id", ondelete="SET NULL")
     )
@@ -578,6 +877,122 @@ class RentalPricingSnapshot(Base):
         DateTime(timezone=True), nullable=False, server_default=func.current_timestamp()
     )
     rental: Mapped[Rental] = relationship(back_populates="pricing_snapshot")
+
+
+class VehiclePricingHistory(Base):
+    __tablename__ = "vehicle_pricing_history"
+    __table_args__ = (
+        UniqueConstraint(
+            "vehicle_id", "version_number", name="uq_vehicle_pricing_history_version"
+        ),
+        CheckConstraint(
+            "(old_first_30_minutes_price IS NULL OR old_first_30_minutes_price >= 0) "
+            "AND new_first_30_minutes_price >= 0",
+            name="ck_vehicle_pricing_history_first_30_nonnegative",
+        ),
+        CheckConstraint(
+            "(old_extra_minute_price IS NULL OR old_extra_minute_price >= 0) "
+            "AND new_extra_minute_price >= 0",
+            name="ck_vehicle_pricing_history_extra_minute_nonnegative",
+        ),
+        CheckConstraint(
+            "(old_deposit_amount IS NULL OR old_deposit_amount >= 0) "
+            "AND new_deposit_amount >= 0",
+            name="ck_vehicle_pricing_history_deposit_nonnegative",
+        ),
+        CheckConstraint("version_number > 0", name="ck_vehicle_pricing_history_version"),
+        Index("idx_vehicle_pricing_history_vehicle_created", "vehicle_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    vehicle_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("vehicles.id", ondelete="RESTRICT"), nullable=False
+    )
+    changed_by: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id"), nullable=False
+    )
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    old_first_30_minutes_price: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2)
+    )
+    new_first_30_minutes_price: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False
+    )
+    old_extra_minute_price: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2)
+    )
+    new_extra_minute_price: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False
+    )
+    old_deposit_amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    new_deposit_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.current_timestamp()
+    )
+
+
+class RentalReturnQuote(Base):
+    __tablename__ = "rental_return_quotes"
+    __table_args__ = (
+        CheckConstraint(
+            "elapsed_seconds >= 0", name="ck_return_quotes_elapsed_nonnegative"
+        ),
+        CheckConstraint(
+            "rental_fee >= 0 AND discount_amount >= 0 AND total_amount >= 0 "
+            "AND deposit_held >= 0 AND deposit_applied >= 0 "
+            "AND additional_payment >= 0 AND deposit_refund >= 0",
+            name="ck_return_quotes_amounts_nonnegative",
+        ),
+        CheckConstraint(
+            "quote_expires_at > quote_created_at",
+            name="ck_return_quotes_expiry_after_creation",
+        ),
+        CheckConstraint(
+            "return_initiated_at IS NULL OR "
+            "return_initiated_at <= quote_created_at",
+            name="ck_return_quotes_return_time_order",
+        ),
+        CheckConstraint(
+            "is_estimate OR return_initiated_at IS NOT NULL",
+            name="ck_return_quotes_final_requires_return",
+        ),
+        UniqueConstraint("quote_token_hash", name="uq_return_quotes_token_hash"),
+        Index("idx_return_quotes_rental_created", "rental_id", "quote_created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    rental_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("rentals.id", ondelete="RESTRICT"), nullable=False
+    )
+    return_station_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("stations.id", ondelete="RESTRICT"), nullable=False
+    )
+    is_estimate: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    return_initiated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    quote_created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    quote_expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    elapsed_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    currency: Mapped[str] = mapped_column(
+        String(3), nullable=False, server_default=text("'VND'")
+    )
+    pricing_policy_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    rental_fee: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    discount_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    total_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    deposit_held: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    deposit_applied: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    additional_payment: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    deposit_refund: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    promotion_code: Mapped[str | None] = mapped_column(String(50))
+    quote_token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    rental: Mapped[Rental] = relationship(back_populates="return_quotes")
 
 
 class AuditLog(Base):
