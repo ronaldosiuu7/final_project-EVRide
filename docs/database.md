@@ -7,7 +7,7 @@
 ## 1. TỔNG QUAN VỀ QUY TẮC VẬN HÀNH (BUSINESS RULES)
 
 1. **Giữ chỗ xe:** Khách hàng chỉ được đặt xe đang ở trạng thái `AVAILABLE`. Thời gian giữ chỗ mặc định là **30 phút** (`expires_at = created_at + 30m`). Không hỗ trợ đặt trước nhiều ngày hoặc gia hạn lượt giữ chỗ.
-2. **Hết hạn giữ chỗ:** Khi quá thời gian `expires_at`, lượt đặt chuyển sang `EXPIRED`. Xe sẽ được giải phóng về trạng thái `AVAILABLE` (trừ khi gặp sự cố/sửa chữa).
+2. **Hết hạn giữ chỗ:** Tại hoặc sau `expires_at`, lượt đặt chuyển sang `EXPIRED`. Xe sẽ được giải phóng về trạng thái `AVAILABLE` (trừ khi gặp sự cố/sửa chữa).
 3. **Nhận xe (Pickup):** Khi nhân viên giao xe thành công, trạng thái chuyển sang `IN_RENT`. Xe rời trạm (`current_station_id = NULL`).
 4. **Trả xe (Return):** Khách trả xe tại trạm bất kỳ còn đủ sức chứa (`capacity`). Nhân viên kiểm tra, xác nhận trả xe để hoàn tất chuyến đi (`COMPLETED`).
 
@@ -104,7 +104,7 @@ Thông tin chi tiết từng lượt đặt / thuê xe.
 | `vehicle_id` | `bigint` | **FK** -> `vehicles.id`, NOT NULL |
 | `pickup_station_id` | `bigint` | **FK** -> `stations.id`, NOT NULL |
 | `actual_return_station_id` | `bigint` | **FK** -> `stations.id`, NULL |
-| `expires_at` | `timestamptz` | NOT NULL (Mặc định `created_at + 30m`) |
+| `expires_at` | `timestamptz` | NOT NULL (Backend ấn định bằng `created_at + 30m`; client không truyền) |
 | `actual_start_time` | `timestamptz` | NULL (Thời điểm nhận xe thực tế) |
 | `actual_end_time` | `timestamptz` | NULL (Thời điểm trả xe thực tế) |
 | `status` | `varchar(20)` | NOT NULL, Default: `'RESERVED'` (`RESERVED`, `IN_RENT`, `STOLEN`, `COMPLETED`, `CANCELLED`, `EXPIRED`) |
@@ -168,9 +168,10 @@ Lịch sử giao dịch liên quan đến đơn thuê.
 | `rental_id` | `bigint` | **FK** -> `rentals.id`, NOT NULL |
 | `invoice_id` | `bigint` | **FK** -> `invoices.id`, NULL |
 | `actor_id` | `bigint` | **FK** -> `users.id`, NOT NULL |
+| `idempotency_record_id` | `bigint` | **FK** -> `idempotency_records.id`, NULL |
 | `amount` | `numeric(12,2)`| NOT NULL |
 | `kind` | `varchar(20)` | NOT NULL (`PAYMENT`, `DEPOSIT`, `REFUND`, `FEE`) |
-| `status` | `varchar(20)` | NOT NULL |
+| `status` | `varchar(20)` | NOT NULL (`PENDING`, `SUCCESS`, `FAILED`) |
 | `created_at` | `timestamptz` | NOT NULL |
 
 #### Bảng `wallet_transactions`
@@ -181,6 +182,8 @@ Biến động số dư ví cá nhân.
 | `id` | `bigint` | **PK** |
 | `wallet_id` | `bigint` | **FK** -> `wallets.id`, NOT NULL |
 | `rental_id` | `bigint` | **FK** -> `rentals.id`, NULL |
+| `transaction_id` | `bigint` | **FK** -> `transactions.id`, UNIQUE, NULL |
+| `idempotency_record_id` | `bigint` | **FK** -> `idempotency_records.id`, NULL |
 | `amount` | `numeric(12,2)`| NOT NULL |
 | `type` | `varchar(30)` | NOT NULL (`TOPUP`, `WITHDRAW`, `RENTAL_PAYMENT`, `RENTAL_DEPOSIT`, `RENTAL_REFUND`) |
 | `balance_before` | `numeric(12,2)`| NOT NULL |
@@ -193,10 +196,24 @@ Chương trình khuyến mãi và ví voucher của người dùng.
 
 * **`promotions`**: `id`, `code` (UNIQUE), `description`, `discount_percent`, `max_discount_amount`, `min_rental_amount`, `start_date`, `end_date`, `status` (`ACTIVE`/`EXPIRED`/`DISABLED`), `created_at`.
 * **`user_promotions`**: `id`, `user_id` (FK), `promotion_id` (FK), `is_used` (boolean), `used_at` (timestamptz).
+  `UNIQUE (user_id, promotion_id)` prevents duplicate claims.
 
 ---
 
-### 2.5. Hỗ trợ & Giám sát (Support & Tracking)
+### 2.5. Idempotency, audit và snapshot tài chính
+
+#### Bảng `idempotency_records`
+Lưu bền vững request và response để nhận diện retry, phát hiện cùng key khác body và replay kết quả sau timeout. Khóa phạm vi là `(actor_id, http_method, request_path, idempotency_key)`; `request_hash` là SHA-256 của body. `PROCESSING` chưa có response; `COMPLETED` giữ HTTP status và JSON response. `expires_at` không sớm hơn 24 giờ sau khi tạo; chỉ dọn record đã hết hạn.
+
+#### Bảng `rental_pricing_snapshots`
+Mỗi lượt thuê có tối đa một snapshot bất biến theo quy ước ứng dụng: lưu tên/loại xe, giá ngày, phiên bản và JSON snapshot của chính sách giá, tiền cọc, promotion/code, phần trăm và số tiền giảm. Khóa ngoại promotion có thể rỗng nếu promotion bị xóa; code và giá trị áp dụng vẫn được giữ lại.
+
+#### Bảng `audit_logs`
+Lưu actor, action, loại/ID tài nguyên, request ID, JSON trước/sau và thời điểm. Nhật ký được append-only theo quy ước ứng dụng; không ghi mật khẩu, token, dữ liệu giấy tờ nhạy cảm hoặc bí mật khác vào payload audit.
+
+---
+
+### 2.6. Hỗ trợ & Giám sát (Support & Tracking)
 
 * **`support_tickets`**: `id`, `rental_id` (FK), `created_by` (FK -> `users`), `assigned_to` (FK -> `users`), `title`, `description`, `status` (`OPEN`, `IN_PROGRESS`, `RESOLVED`, `CLOSED`), `created_at`.
 * **`gps_points`**: `id`, `rental_id` (FK), `latitude`, `longitude`, `recorded_at`.
@@ -226,11 +243,17 @@ rentals (1) <---> (N) support_tickets
 
 wallets (1) <---> (N) wallet_transactions
 promotions (1) <---> (N) user_promotions
+rentals (1) <---> (1) rental_pricing_snapshots
+transactions (1) <---> (0..1) wallet_transactions
+idempotency_records (1) <---> (N) transactions / wallet_transactions
+users (1) <---> (N) audit_logs
 ```
 
 ---
 
 ## 4. QUY TẮC KỸ THUẬT (MIGRATIONS & BACKEND LOGIC)
+
+Alembic revision được quản lý tập trung tại `database/migrations/`; chạy từ `backend/` bằng `alembic upgrade head`. ORM SQLAlchemy trong `backend/app/models.py` ánh xạ 15 bảng nghiệp vụ hiện có cùng các bảng bền vững bổ sung. Migration là nguồn thay đổi schema; không dùng `create_all()` trong lúc chạy ứng dụng.
 
 ### 4.1. Xử lý Thời gian & Hết hạn giữ xe
 * **Múi giờ:** Luôn lưu dưới dạng `timestamptz` (thống nhất chuẩn UTC trong CSDL).
