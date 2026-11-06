@@ -60,6 +60,50 @@ Ví điện tử và số dư của người dùng.
 | `created_at` | `timestamptz` | NOT NULL |
 | `updated_at` | `timestamptz` | NOT NULL |
 
+#### Bảng `user_sessions`
+Quản lý phiên đăng nhập Rolling Session (mỗi lần đăng nhập tạo một phiên riêng, chia sẻ giữa các tab cùng trình duyệt).
+
+| Cột (Column) | Kiểu Dữ Liệu | Ràng Buộc / Mô Tả |
+| :--- | :--- | :--- |
+| `id` | `uuid` | **PK** |
+| `user_id` | `bigint` | **FK** -> `users.id` (`ON DELETE RESTRICT`), NOT NULL |
+| `created_at` | `timestamptz` | NOT NULL |
+| `last_used_at` | `timestamptz` | NOT NULL (`CHECK (last_used_at >= created_at)`) |
+| `expires_at` | `timestamptz` | NOT NULL (`CHECK (expires_at > created_at)`) |
+| `revoked_at` | `timestamptz` | NULL |
+| `revoke_reason` | `varchar(40)` | NULL (`LOGOUT`, `PASSWORD_CHANGED`, `ACCOUNT_DISABLED`, `REFRESH_REUSE`) |
+| `user_agent` | `varchar(512)` | NULL |
+| `ip_address` | `varchar(64)` | NULL |
+
+- **Indexes:** `ix_sessions_user` (`user_id`), `ix_sessions_expiry` (`expires_at`), `ix_sessions_revoked` (`revoked_at`).
+
+#### Bảng `refresh_tokens`
+Lưu lịch sử băm (SHA-256) của các thế hệ refresh token trong từng phiên để thực hiện Refresh Token Rotation, Grace Replay (15 giây) và phát hiện Reuse.
+
+| Cột (Column) | Kiểu Dữ Liệu | Ràng Buộc / Mô Tả |
+| :--- | :--- | :--- |
+| `id` | `uuid` | **PK** |
+| `session_id` | `uuid` | **FK** -> `user_sessions.id` (`ON DELETE CASCADE`), NOT NULL |
+| `generation` | `int` | NOT NULL (`CHECK (generation >= 0)`) |
+| `token_hash` | `varchar(64)` | UNIQUE, NOT NULL (`CHECK (char_length(token_hash) = 64)`) |
+| `created_at` | `timestamptz` | NOT NULL |
+| `expires_at` | `timestamptz` | NOT NULL (`CHECK (expires_at > created_at)`) |
+| `used_at` | `timestamptz` | NULL (`CHECK (used_at IS NULL OR used_at >= created_at)`) |
+| `replay_until` | `timestamptz` | NULL |
+| `replay_ciphertext` | `text` | NULL (Bản mã Fernet cho kết quả replay trong grace) |
+
+- **Constraints & Indexes:**
+  - `uq_refresh_generation`: `UNIQUE (session_id, generation)` (nhận diện token kế tiếp bằng `generation + 1`, không cần self-FK `replacement_id`).
+  - `ck_refresh_replay`: `(used_at IS NULL AND replay_until IS NULL AND replay_ciphertext IS NULL) OR (used_at IS NOT NULL AND replay_until IS NOT NULL AND replay_until >= used_at)`.
+  - `uq_refresh_current`: Partial unique index trên `session_id` với `WHERE used_at IS NULL` (mỗi phiên chỉ có tối đa một refresh token chưa dùng).
+  - `ix_refresh_replay_until` (`replay_until`).
+
+```mermaid
+erDiagram
+    users ||--o{ user_sessions : owns
+    user_sessions ||--o{ refresh_tokens : contains
+```
+
 ---
 
 ### 2.2. Quản lý Trạm & Phương tiện (Stations & Vehicles)
@@ -250,6 +294,8 @@ API đề xuất tương ứng (`/prices`, `/maintenance-orders`, `/files/*`, l�
 
 ```text
 users (1) <---> (1) wallets
+users (1) <---> (N) user_sessions
+user_sessions (1) <---> (N) refresh_tokens
 users (1) <---> (N) user_documents
 users (1) <---> (N) rentals (as customer)
 users (1) <---> (N) handovers (as staff)
