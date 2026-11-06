@@ -18,8 +18,9 @@ Phạm vi hệ thống gồm quản lý phương tiện, trạm xe, khách hàng
 
 Cập nhật ngày 20/10/2026: repo đang ở giai đoạn thiết kế và chuẩn bị triển khai. Đã có tài liệu nghiệp vụ, thiết kế CSDL, kế hoạch kiểm thử và hạ tầng; chưa có mã ứng dụng backend/frontend, migration thực thi, kiểm thử tự động hay workflow CI/CD. Các chức năng nêu trên là phạm vi cần triển khai, chưa phải tính năng đã chạy được.
 
-Cập nhật backend ngày 30/10/2026: đã khởi tạo FastAPI với `GET /api/v1/health` và Swagger tại `/docs`. Xem [hướng dẫn cài đặt và chạy backend](backend/README.md). Chưa triển khai đăng nhập hoặc nghiệp vụ thuê xe.
+Cập nhật backend ngày 30/10/2026: đã khởi tạo FastAPI với `GET /api/v1/health` và Swagger tại `/docs`. Xem [hướng dẫn cài đặt và chạy backend](backend/README.md).
 
+Cập nhật xác thực backend ngày 06/11/2026: đã triển khai cơ chế **Rolling Session và Refresh Token Rotation** phía backend (`POST /api/v1/auth/login`, `/auth/refresh`, `/auth/logout`, `/users/me/change-password`, thu hồi phiên khi khóa tài khoản, kiểm thử tự động trên PostgreSQL 16).
 Xem [quy tắc nghiệp vụ](docs/requirements.md).
 
 

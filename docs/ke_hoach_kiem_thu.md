@@ -53,6 +53,12 @@ Quy ước: mỗi ca kiểm thử tự động có tên hàm mô tả rõ (ví d
 | QT-12 | Replay cùng Idempotency-Key/body cho move, tạo giá hoặc phiếu bảo trì | Cùng HTTP status/body; không nhân đôi lịch sử giá, audit điều chuyển hoặc phiếu |
 | QT-13 | Gây lỗi sau cập nhật xe nhưng trước khi ghi move audit | Toàn transaction rollback; vị trí xe và audit đều không đổi |
 | QT-14 | Upload ảnh sai MIME/kích thước/hash; download file chưa READY | Upload bị từ chối/REJECTED; không tạo attachment hoặc URL download |
+| AUTH-01 | Login tạo phiên mới và refresh rotation (`test_login_and_rolling`) | Mỗi login sinh `session_id` riêng; refresh tăng `generation`, đánh dấu `used_at` token cũ, gia hạn rolling 30 ngày và không lưu raw token trong DB |
+| AUTH-02 | Mất response refresh và retry trong grace 15 giây (`test_lost_response_replay_does_not_extend_grace`) | Trả lại nguyên kết quả đã mã hóa, không tạo token thứ 3 và không kéo dài `replay_until` |
+| AUTH-03 | Dùng lại refresh token cũ ngoài grace (`test_many_generations_and_reuse_committed`, `test_http_reuse_is_committed_without_set_cookie`) | Trả 401 `REFRESH_REUSED`, commit thu hồi phiên (`REFRESH_REUSE`) mà không bị rollback bởi `HTTPException`, không gửi `Set-Cookie` |
+| AUTH-04 | Rollback nguyên tử khi lỗi giữa lúc xoay vòng token hoặc đổi mật khẩu (`test_atomic_rollback`, `test_password_rollback`) | Token cũ vẫn `used_at = NULL` / mật khẩu và trạng thái các phiên giữ nguyên nếu lỗi xảy ra trước khi commit |
+| AUTH-05 | Tranh chấp đồng thời: 2 luồng cùng refresh, hoặc refresh đua với logout / đổi mật khẩu / khóa tài khoản (`test_concurrent_refresh_rotates_once`, `test_refresh_races_revocation`, `test_refresh_races_account_lock`) | Chỉ xoay vòng 1 lần; sau khi logout/đổi mật khẩu/khóa tài khoản thì phiên bị thu hồi nhất quán; mở khóa lại không hồi sinh phiên cũ (`test_disable_reenable_does_not_resurrect`) |
+| AUTH-06 | Kiểm tra Cookie versioned, CSRF, CORS và JWT claims (`test_http_cookie_csrf_and_cors`, `test_access_expired_and_invalid_claims`, `test_late_cookie_cannot_overwrite_new_generation`) | Cookie `HttpOnly; Secure; SameSite=Lax; Path=/api/v1/auth`; chặn thiếu `Origin`/`X-EVRide-CSRF`; cookie thế hệ cũ không ghi đè thế hệ mới |
 
 ## 5. Lịch
 

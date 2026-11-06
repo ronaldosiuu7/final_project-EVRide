@@ -1017,3 +1017,58 @@ class AuditLog(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.current_timestamp()
     )
+
+from uuid import UUID as UUIDValue, uuid4
+from sqlalchemy import Uuid
+
+
+class UserSession(Base):
+    __tablename__ = "user_sessions"
+    __table_args__ = (
+        CheckConstraint("expires_at > created_at", name="ck_sessions_expiry"),
+        CheckConstraint("last_used_at >= created_at", name="ck_sessions_usage"),
+        Index("ix_sessions_user", "user_id"),
+        Index("ix_sessions_expiry", "expires_at"),
+        Index("ix_sessions_revoked", "revoked_at"),
+    )
+    id: Mapped[UUIDValue] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoke_reason: Mapped[str | None] = mapped_column(String(40))
+    user_agent: Mapped[str | None] = mapped_column(String(512))
+    ip_address: Mapped[str | None] = mapped_column(String(64))
+
+
+class RefreshToken(Base):
+    __tablename__ = "refresh_tokens"
+    __table_args__ = (
+        UniqueConstraint("session_id", "generation", name="uq_refresh_generation"),
+        CheckConstraint("generation >= 0", name="ck_refresh_generation"),
+        CheckConstraint("char_length(token_hash) = 64", name="ck_refresh_hash"),
+        CheckConstraint("expires_at > created_at", name="ck_refresh_expiry"),
+        CheckConstraint("used_at IS NULL OR used_at >= created_at", name="ck_refresh_usage"),
+        CheckConstraint(
+            "(used_at IS NULL AND replay_until IS NULL AND replay_ciphertext IS NULL) OR "
+            "(used_at IS NOT NULL AND replay_until IS NOT NULL AND replay_until >= used_at)",
+            name="ck_refresh_replay",
+        ),
+        Index("uq_refresh_current", "session_id", unique=True,
+              postgresql_where=text("used_at IS NULL")),
+        Index("ix_refresh_replay_until", "replay_until"),
+    )
+    id: Mapped[UUIDValue] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    session_id: Mapped[UUIDValue] = mapped_column(
+        Uuid, ForeignKey("user_sessions.id", ondelete="CASCADE"), nullable=False
+    )
+    generation: Mapped[int] = mapped_column(Integer, nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    replay_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    replay_ciphertext: Mapped[str | None] = mapped_column(Text)

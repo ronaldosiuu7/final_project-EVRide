@@ -32,7 +32,7 @@ Giá, cọc, điều kiện CCCD/tuổi, ngưỡng pin và quy trình trả xe �
 
 | Kiểu | Quy ước |
 | --- | --- | 
-| ID | Chuỗi số nguyên dương, ví dụ `"101"`; DB dùng bigint, JSON dùng string tránh mất chính xác trong JavaScript |
+| ID | Chuỗi số nguyên dương, ví dụ `"101"`; DB dùng bigint, JSON dùng string tránh mất chính xác trong JavaScript. **Ngoại lệ rõ ràng:** `session_id` của phiên đăng nhập là chuỗi UUID (ví dụ `"a1348af3-05a0-4a12-8bc8-657bc97703c0"`), và `generation` của refresh token là số nguyên không âm (`integer`) |
 | Tiền | Chuỗi số thập phân không âm, tối đa 2 chữ số lẻ, ví dụ `"150000.00"`; đơn vị VND; không dùng float để tính tiền |
 | Thời gian | RFC 3339 có múi giờ; response UTC dạng `2026-10-21T03:00:00Z` |
 | Ngày báo cáo | `YYYY-MM-DD`, hiểu theo `Asia/Ho_Chi_Minh` |
@@ -96,11 +96,11 @@ Frontend xử lý theo `error.code`, không so sánh `message`. Không trả sta
 
 | HTTP | Code tiêu biểu | Ý nghĩa |
 | --- | --- | --- |
-| 400 | `INVALID_DATE_RANGE`, `INVALID_REQUEST` | Khoảng ngày đảo ngược hoặc request sai cấu trúc |
-| 401 | `UNAUTHENTICATED`, `INVALID_CREDENTIALS`, `TOKEN_EXPIRED` | Thiếu/sai thông tin xác thực |
-| 403 | `FORBIDDEN`, `ACCOUNT_DISABLED`, `CUSTOMER_NOT_ELIGIBLE` | Sai quyền, tài khoản bị khóa, chưa đủ điều kiện |
+| 400 | `INVALID_DATE_RANGE`, `INVALID_REQUEST`, `SESSION_SELECTION_REQUIRED`, `TOO_MANY_AUTH_COOKIES` | Khoảng ngày đảo ngược, request sai cấu trúc, thiếu `X-Session-ID` hợp lệ hoặc quá giới hạn cookie phiên |
+| 401 | `UNAUTHENTICATED`, `INVALID_CREDENTIALS`, `TOKEN_EXPIRED`, `SESSION_INVALID`, `SESSION_EXPIRED`, `SESSION_REVOKED`, `REFRESH_INVALID`, `REFRESH_EXPIRED`, `REFRESH_REUSED` | Thiếu/sai thông tin xác thực, access token hết hạn, phiên không hợp lệ/hết hạn/đã thu hồi hoặc refresh token bị reuse |
+| 403 | `FORBIDDEN`, `ACCOUNT_DISABLED`, `CUSTOMER_NOT_ELIGIBLE`, `CSRF_REJECTED` | Sai quyền, tài khoản bị khóa, chưa đủ điều kiện hoặc vi phạm kiểm tra Origin/CSRF header |
 | 404 | `NOT_FOUND` | Không tồn tại hoặc không thuộc phạm vi được xem |
-| 409 | `EMAIL_EXISTS`, `VEHICLE_UNAVAILABLE`, `STATION_FULL`, `STATION_UNAVAILABLE` | Xung đột tài nguyên |
+| 409 | `EMAIL_EXISTS`, `VEHICLE_UNAVAILABLE`, `STATION_FULL`, `STATION_UNAVAILABLE`, `REFRESH_RETRY_UNAVAILABLE` | Xung đột tài nguyên hoặc không thể replay kết quả refresh cũ trong grace |
 | 409 | `RESERVATION_EXPIRED`, `INVALID_RENTAL_STATE`, `PICKUP_STATION_MISMATCH` | Sai trạng thái hoặc hết hạn |
 | 409 | `WALLET_UNAVAILABLE`, `INSUFFICIENT_BALANCE`, `PROMOTION_INVALID`, `ALREADY_REVIEWED` | Điều kiện nghiệp vụ không đáp ứng |
 | 409 | `IDEMPOTENCY_CONFLICT`, `REQUEST_IN_PROGRESS`, `STALE_QUOTE`, `INVALID_STATE_TRANSITION` | Request lặp khác nội dung hoặc dữ liệu đã thay đổi |
@@ -112,9 +112,20 @@ Frontend xử lý theo `error.code`, không so sánh `message`. Không trả sta
 | 503 | `POLICY_NOT_CONFIGURED`, `FEATURE_NOT_ENABLED`, `DEPENDENCY_UNAVAILABLE` | Chính sách/tích hợp chưa sẵn sàng |
 | 500 | `INTERNAL_ERROR` | Lỗi bất ngờ; trả request_id để tra cứu |
 
-### 2.4. Xác thực và quyền
+### 2.4. Xác thực, Rolling Session và quyền
 
-`Authorization: Bearer <access_token>`. JWT access token đề xuất sống 30 phút, response login trả `expires_in: 1800`. V1 chưa có refresh token/logout phía server; client xóa token để đăng xuất, đăng nhập lại khi hết hạn. Backend kiểm tra role và trạng thái tài khoản hiện tại trên mỗi request; khóa tài khoản phải có hiệu lực dù JWT chưa hết hạn.
+- **Access Token:** `Authorization: Bearer <access_token>`. JWT HS256 sống 1.800 giây (30 phút), bắt buộc các claim `sub` (chuỗi user ID bigint), `sid` (chuỗi UUID phiên), `iat`, `exp`, `iss`, `aud`, `typ="access"`, `jti`. Không tin role cũ trong JWT; backend đọc trạng thái `User` (`ACTIVE`) và `UserSession` từ database trên mỗi request.
+- **Rolling Session & Refresh Token Rotation:** Mỗi lần đăng nhập thành công tạo một bản ghi `user_sessions` mới (UUID) và `refresh_tokens` thế hệ `generation = 0` có hạn 30 ngày. Refresh token là chuỗi ngẫu nhiên 256 bit, chỉ lưu bản băm SHA-256 trong DB và chỉ gửi qua cookie `HttpOnly` có tên riêng theo phiên và thế hệ: `evr_rt_<session_uuid_hex>_<generation>` (`Path=/api/v1/auth; HttpOnly; SameSite=Lax`, bật `Secure` trên HTTPS/production, không đặt `Domain`). Không trả hoặc nhận refresh token trong JSON body.
+- **Grace Replay & Reuse Detection:** Mỗi lần refresh thành công đánh dấu `used_at` cho token cũ, tạo token `generation + 1` và kéo dài hạn phiên/token mới thành `now + 30 ngày` (rolling, không có absolute lifetime). Trong thời gian ân hạn `REFRESH_GRACE_SECONDS` (mặc định 15 giây tính từ `used_at` đầu tiên), nếu client retry cùng token vừa dùng và token kế tiếp vẫn chưa dùng/còn hạn, server giải mã `replay_ciphertext` (Fernet) trong chính dòng `refresh_tokens` đó để trả lại nguyên kết quả mà không xoay vòng tiếp hay kéo dài grace. Ngoài grace, việc gửi lại token đã dùng bị coi là reuse (`401 REFRESH_REUSED`) và thu hồi nguyên tử phiên đó (`revoke_reason = "REFRESH_REUSE"`).
+- **Thu hồi phiên (Revocation):**
+  - `POST /auth/logout` thu hồi phiên hiện tại (`LOGOUT`) và xóa các cookie của phiên đó trong request.
+  - `POST /users/me/change-password` và `PATCH /users/{id}` khi chuyển trạng thái tài khoản khỏi `ACTIVE` thu hồi **mọi phiên** của tài khoản trong cùng transaction. Mở khóa lại tài khoản không hồi sinh phiên đã thu hồi.
+  - Thứ tự kiểm tra trên protected API: `ACCOUNT_DISABLED` (403) → `SESSION_REVOKED` (401) → `SESSION_EXPIRED` (401) → `TOKEN_EXPIRED` (401). Chỉ `TOKEN_EXPIRED` mới được phép kích hoạt refresh tự động phía frontend.
+- **CSRF, CORS và phối hợp phía Frontend:**
+  - Các endpoint `/auth/login`, `/auth/refresh`, `/auth/logout` và `/users/me/change-password` bắt buộc `Origin` nằm trong allowlist `AUTH_ORIGINS` (không dùng `*`), header `X-EVRide-CSRF: 1` và `Content-Type: application/json`.
+  - `/auth/refresh` và `/auth/logout` bắt buộc header `X-Session-ID: <session_uuid>` và body `{}`.
+  - Mọi response auth và lỗi auth đều đặt `Cache-Control: no-store`.
+  - Frontend chỉ giữ `access_token` trong bộ nhớ (RAM), chỉ lưu `session_id` và trạng thái không bí mật trong `localStorage`, đồng thời dùng Web Locks (`evride-auth`) kết hợp BroadcastChannel để điều phối liên tab.
 
 Ký hiệu quyền trong bảng endpoint:
 
@@ -180,13 +191,15 @@ Với `file_attachments`, `owner_id` là trường response suy ra từ đúng m
 
 ## 4. Đăng ký, đăng nhập, hồ sơ và giấy tờ
 
-| Method / path | Quyền | Request | Thành công |
+|Method / path | Quyền | Request | Thành công |
 | --- | --- | --- | --- |
 | POST `/auth/register` | Public | `{name, email, password}` | 201 `{user: User, wallet: Wallet}` |
-| POST `/auth/login` | Public | `{email, password}` | 200 `{access_token, token_type: "bearer", expires_in: 1800, user: User}` |
+| POST `/auth/login` | Public (Web CSRF) | `{email, password}`; header `Origin`, `X-EVRide-CSRF: 1` | 200 `{access_token, token_type: "bearer", expires_in: 1800, access_expires_at, session_id, generation: 0, session_expires_at, user: User}` + `Set-Cookie` HttpOnly |
+| POST `/auth/refresh` | Cookie phiên (Web CSRF) | `{}`; header `Origin`, `X-EVRide-CSRF: 1`, `X-Session-ID`, cookie `evr_rt_*` | 200 `{access_token, token_type: "bearer", expires_in: 1800, access_expires_at, session_id, generation, session_expires_at, user: User}` + `Set-Cookie` mới & xóa cookie thế hệ cũ |
+| POST `/auth/logout` | Cookie phiên (Web CSRF) | `{}`; header `Origin`, `X-EVRide-CSRF: 1`, `X-Session-ID`, cookie `evr_rt_*` | 200 `{logged_out: true}` + xóa cookie phiên |
 | GET `/users/me` | C/S/M | — | User |
 | PATCH `/users/me` | C/S/M | `{name}` | User |
-| POST `/users/me/change-password` | C/S/M | `{current_password, new_password}` | `{changed: true}` |
+| POST `/users/me/change-password` | C/S/M (Web CSRF) | `{current_password, new_password}`; header `Origin`, `X-EVRide-CSRF: 1` | 200 `{changed: true, reauthenticate: true}` |
 | GET `/users/me/documents` | C/S/M | Phân trang | Document[] |
 | POST `/users/me/documents` | C/S/M | `{document_type, document_number, front_file_id, back_file_id?, expires_on?, birth_date?}` | 201 Document, trạng thái PENDING |
 | GET `/user-documents/{id}/sensitive` | Owner/S/M | — | `{id, document_number, front_download_url, back_download_url?, urls_expire_at}` |
@@ -196,7 +209,7 @@ Với `file_attachments`, `owner_id` là trường response suy ra từ đúng m
 | POST `/users` | M | `{name, email, password, role}`; role STAFF hoặc MANAGER | 201 User |
 | PATCH `/users/{id}` | M | `{name?, status?, role?}` | User |
 
-Đăng ký luôn tạo CUSTOMER ACTIVE và ví ACTIVE số dư `"0.00"` trong cùng giao dịch. Email chuẩn hóa trim/lowercase và unique; trùng trả 409. Đề xuất mật khẩu 12–128 ký tự, lưu hash, login lỗi không tiết lộ email có tồn tại. Thay mật khẩu cần mật khẩu hiện tại; JWT cũ chỉ bị thu hồi nếu nhóm bổ sung token version/kho phiên, không tuyên bố thu hồi trong thiết kế 15 bảng hiện tại.
+Đăng ký luôn tạo CUSTOMER ACTIVE và ví ACTIVE số dư `"0.00"` trong cùng giao dịch. Email chuẩn hóa trim/lowercase và unique; trùng trả 409. Đề xuất mật khẩu 12–128 ký tự, lưu hash, login lỗi không tiết lộ email có tồn tại. Thay mật khẩu cần mật khẩu hiện tại, cập nhật mật khẩu và thu hồi toàn bộ phiên (`user_sessions`) của tài khoản trong cùng một transaction (`PASSWORD_CHANGED`); sau đó frontend gọi `/auth/logout` để dọn cookie ở đường dẫn `/api/v1/auth` rồi yêu cầu đăng nhập lại. Khi MANAGER khóa tài khoản (`status != "ACTIVE"`), toàn bộ phiên của tài khoản bị thu hồi nguyên tử (`ACCOUNT_DISABLED`).
 
 M không tự khóa/hạ quyền tài khoản MANAGER cuối cùng; không đổi CUSTOMER thành nhân viên bằng PATCH để tránh nhập nhằng quyền sở hữu dữ liệu. Tạo nhân viên dùng POST `/users`. Không có DELETE tài khoản trong V1.
 
@@ -657,10 +670,11 @@ Kiểm thử tranh chấp dùng PostgreSQL thật với các kết nối độc 
 
 ## 13. Đối chiếu DBML và yêu cầu lưu trữ
 
-Contract này chưa xác minh DBML hiện tại hoặc migration đã chạy. Thiết kế 15 bảng cũ là nền ban đầu; các yêu cầu sau phải được đồng bộ trước khi API liên quan sẵn sàng. Không trả dữ liệu giả để che thiếu schema.
+Contract này phân biệt rõ: **15 bảng nghiệp vụ gốc** trong DBML ban đầu, **24 bảng ORM** sau khi bổ sung hạ tầng báo giá/bảo trì/file/idempotency/audit, và **26 bảng ORM** sau khi thêm hai bảng xác thực `user_sessions` và `refresh_tokens` (không tính `alembic_version`). Các yêu cầu sau phải được đồng bộ trước khi API liên quan sẵn sàng. Không trả dữ liệu giả để che thiếu schema.
 
 | Hạng mục | Yêu cầu |
 | --- | --- |
+| Phiên & Refresh token | Bổ sung bảng `user_sessions` (UUID PK, FK `users.id` RESTRICT, `created_at`, `last_used_at`, `expires_at`, `revoked_at`, `revoke_reason`, metadata) và `refresh_tokens` (UUID PK, FK `user_sessions.id` CASCADE, `generation`, `token_hash` SHA-256 64 ký tự unique, `used_at`, `replay_until`, `replay_ciphertext`, partial unique `used_at IS NULL`). Grace replay lưu mã hóa Fernet có TTL ngắn ngay trong `refresh_tokens`; **tuyệt đối không** lưu raw token vào `idempotency_records`, `audit_logs` hay response log |
 | Giá xe | Thay daily_price/price_per_30_minutes bằng first_30_minutes_price, extra_minute_price; giữ deposit_amount. Không tự chia giá ngày cũ để suy ra giá mới |
 | Seed | 10.000đ/30 phút đầu, 350đ/phút thêm, cọc 100.000đ; chỉ áp dụng dữ liệu demo mới |
 | Snapshot | Lưu first_30_minutes_price_snapshot, extra_minute_price_snapshot, deposit_amount_snapshot, vehicle_type_snapshot, pricing_policy_version, billing_unit ngay khi reserve thành công; lịch sử đổi giá/cọc |
