@@ -20,8 +20,7 @@ Cập nhật ngày 20/10/2026: repo đang ở giai đoạn thiết kế và chu�
 
 Cập nhật backend ngày 30/10/2026: đã khởi tạo FastAPI với `GET /api/v1/health` và Swagger tại `/docs`. Xem [hướng dẫn cài đặt và chạy backend](backend/README.md).
 
-Cập nhật xác thực backend ngày 06/11/2026: đã triển khai cơ chế **Rolling Session và Refresh Token Rotation** phía backend (`POST /api/v1/auth/login`, `/auth/refresh`, `/auth/logout`, `/users/me/change-password`, thu hồi phiên khi khóa tài khoản, kiểm thử tự động trên PostgreSQL 16). Xem chi tiết tại [backend/README.md](backend/README.md), [docs/api-contract.md](docs/api-contract.md) và [docs/rolling-session-backend-guide.md](docs/rolling-session-backend-guide.md).
-
+Cập nhật xác thực backend ngày 06/11/2026: đã triển khai cơ chế **Rolling Session và Refresh Token Rotation** phía backend (`POST /api/v1/auth/login`, `/auth/refresh`, `/auth/logout`, `/users/me/change-password`, thu hồi phiên khi khóa tài khoản, kiểm thử tự động trên PostgreSQL 16).
 Xem [quy tắc nghiệp vụ](docs/requirements.md).
 
 
