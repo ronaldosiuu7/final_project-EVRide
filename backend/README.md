@@ -55,11 +55,18 @@ Tạo file `backend/.env` từ `backend/.env.example` (xem lệnh ở phần Cà
 | Biến | Ý nghĩa | Giá trị mẫu / lưu ý |
 | --- | --- | --- |
 | `APP_NAME` | Tên ứng dụng hiển thị trên Swagger UI. | `EVRide`; mặc định trong ứng dụng cũng là `EVRide`. |
+| `APP_ENV` | Môi trường chạy (`development`, `test`, `production`). | `development` ở local; `production` bắt buộc HTTPS origin và cookie `Secure`. |
 | `DB_HOST` | Địa chỉ máy chủ PostgreSQL. | `127.0.0.1` nếu database chạy trên máy đang chạy backend. |
 | `DB_PORT` | Cổng PostgreSQL. | `5432`, cổng mặc định của PostgreSQL. |
 | `DB_NAME` | Tên database PostgreSQL cần kết nối. | Thay `database_name` bằng tên database đã tạo. |
 | `DB_USER` | Tài khoản PostgreSQL dùng để kết nối. | Thay `username` bằng tài khoản có quyền truy cập database. |
 | `DB_PASSWORD` | Mật khẩu của tài khoản PostgreSQL. | Thay giá trị hướng dẫn trong file mẫu bằng mật khẩu của bạn; không commit mật khẩu thật. |
+| `JWT_SECRET_KEY` | Khóa bí mật ký Access JWT (HS256, tối thiểu 32 byte ngẫu nhiên). | Sinh bằng `python -c "import secrets; print(secrets.token_urlsafe(48))"`. |
+| `JWT_ISSUER` / `JWT_AUDIENCE` | Định danh issuer và audience của Access JWT. | `evride-api` / `evride-web`. |
+| `REFRESH_REPLAY_KEYS` | Khóa Fernet (hỗ trợ danh sách phân tách dấu phẩy khi xoay khóa) mã hóa kết quả replay trong grace. | Sinh bằng `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`. |
+| `REFRESH_GRACE_SECONDS` | Thời gian ân hạn (1..60 giây) cho phép replay kết quả refresh khi mất gói tin mạng. | `15` |
+| `AUTH_ORIGINS` | Danh sách Origin được phép gọi auth và CORS (phân tách dấu phẩy, không dùng `*`). | Local: `http://localhost:5173`; Production: `https://thuexedien.me`. |
+| `AUTH_COOKIE_SECURE` | Cờ `Secure` cho refresh cookie (`true` hoặc `false`). | Local HTTP: `false`; Production HTTPS: `true`. |
 
 `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER` và `DB_PASSWORD` được dùng để tạo kết nối trong `app/database.py`; khi thiếu biến bắt buộc, module này báo lỗi. Health endpoint hiện tại chỉ kiểm tra ứng dụng hoạt động, không kiểm tra kết nối database. Prefix `/api/v1` được khai báo tại `app/api/v1/router.py`; `/docs` và `/openapi.json` nằm ngoài prefix này.
 
@@ -75,6 +82,20 @@ cd backend
 .\.venv\Scripts\python.exe -m alembic upgrade head
 .\.venv\Scripts\python.exe -m app.seed_demo --allow-demo-seed
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
+```
+
+Kiểm thử tự động cho cơ chế Rolling Session & Refresh Token Rotation (yêu cầu cài `requirements-dev.txt` và một database PostgreSQL riêng có tên kết thúc bằng `_test`):
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+$env:TEST_DATABASE_URL = 'postgresql+psycopg://test_user:YOUR_TEST_PASSWORD@localhost:5432/evride_test'
+.\.venv\Scripts\python.exe -m pytest tests/test_auth_sessions.py -q
+```
+
+Tác vụ dọn dẹp (`app.cleanup_auth`) xóa `replay_ciphertext` đã qua thời gian grace và xóa các phiên đã kết thúc (revoked/expired) quá 30 ngày:
+
+```powershell
+.\.venv\Scripts\python.exe -m app.cleanup_auth
 ```
 
 Trên macOS/Linux, thay Python executable bằng `.venv/bin/python`. Chạy lại seed cập nhật các bản ghi có ID/email/mã fixture ổn định, không thêm bản sao; lịch sử giá và audit điều chuyển được insert một lần. Fixture chung nằm trong `app/demo_fixtures.py`, được cả `app/seed_demo.py` và `tests/test_demo_fixtures.py` dùng.
