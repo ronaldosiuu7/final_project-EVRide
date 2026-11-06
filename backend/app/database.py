@@ -5,7 +5,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from sqlalchemy import URL, create_engine
-
+from collections.abc import Generator
+from sqlalchemy.orm import Session, sessionmaker
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 load_dotenv(BACKEND_DIR / ".env")
 
@@ -25,3 +26,14 @@ database_url = URL.create(
 )
 
 engine = create_engine(database_url, pool_pre_ping=True)
+
+from collections.abc import Generator
+from sqlalchemy.orm import Session, sessionmaker
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+def get_db() -> Generator[Session, None, None]:
+    """Mở một DB session cho mỗi request, tự đóng khi xong."""
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
