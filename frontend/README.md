@@ -173,6 +173,7 @@ npm run build
 3. **Phối hợp liên tab (Cross-tab Coordination):**
    - Sử dụng **Web Locks API** (`navigator.locks.request('evride-auth', ...)`) kết hợp **BroadcastChannel** cho mọi thao tác login/refresh/logout/đổi mật khẩu để các tab cùng chia sẻ một phiên, không gọi refresh trùng lặp và chỉ cập nhật bộ nhớ nếu `session_id`/`epoch` khớp và `generation` không thấp hơn bản đang giữ.
    - Chỉ tự động gọi `/api/v1/auth/refresh` và thử lại request gốc tối đa 1 lần khi protected API trả về `401 TOKEN_EXPIRED`. Với các mã `UNAUTHENTICATED`, `SESSION_INVALID`, `SESSION_EXPIRED`, `SESSION_REVOKED`, `REFRESH_INVALID`, `REFRESH_EXPIRED`, `REFRESH_REUSED` hoặc `403 ACCOUNT_DISABLED`, xóa trạng thái đăng nhập ngay và không lặp refresh.
- ---
+   - Chi tiết bảng mã lỗi và kịch bản kiểm thử trình duyệt xem tại mục 6 
+---
 
 **EVRide Frontend** — Giao diện quản lý hệ thống cho thuê ô tô điện theo trạm.
