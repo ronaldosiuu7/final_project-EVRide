@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
@@ -14,6 +13,8 @@ from sqlalchemy import inspect, select, text
 from sqlalchemy.orm import Session
 
 from app.database import database_url, engine
+from app.core.security import hash_password
+from app.services.rentals import BILLING_UNIT
 from database.seeds.demo_fixtures import (
     ACTIVE_RENTALS,
     DEPOSIT_AMOUNT,
@@ -49,7 +50,7 @@ from app.models import (
     Wallet,
 )
 
-EXPECTED_HEAD = "f73c21e84a6b"
+EXPECTED_HEAD = "b18f7e4c2a91"
 UTC = timezone.utc
 
 
@@ -58,14 +59,6 @@ def _timestamp(value: str) -> datetime:
     if parsed.tzinfo is None:
         raise ValueError(f"Fixture timestamp must include a timezone: {value}")
     return parsed.astimezone(UTC)
-
-
-def _password_hash(email: str) -> str:
-    salt = hashlib.sha256(f"evride-demo:{email}".encode("utf-8")).digest()[:16]
-    digest = hashlib.pbkdf2_hmac(
-        "sha256", DEMO_PASSWORD.encode("utf-8"), salt, 600_000
-    )
-    return f"pbkdf2_sha256$600000${salt.hex()}${digest.hex()}"
 
 
 def _put_by_id(
@@ -159,11 +152,12 @@ def _verify_database_target(allow_demo_seed: bool) -> None:
 
 def _seed_users(session: Session) -> dict[str, int]:
     user_ids: dict[str, int] = {}
+    password_hash = hash_password(DEMO_PASSWORD)
     for fixture in USERS:
         values = {
             "name": fixture["name"],
             "email": fixture["email"],
-            "password": _password_hash(fixture["email"]),
+            "password": password_hash,
             "role": fixture["role"],
             "status": fixture["status"],
         }
@@ -215,7 +209,6 @@ def _seed_vehicles(
             ),
             "name": fixture["name"],
             "model": fixture["model"],
-            "type": fixture["type"],
             "battery_percent": fixture["battery_percent"],
             "status": fixture["status"],
             "first_30_minutes_price": Decimal(FIRST_30_MINUTES_PRICE),
@@ -294,8 +287,16 @@ def _seed_promotions(session: Session) -> dict[str, int]:
             "description": fixture["description"],
             "discount_type": fixture["discount_type"],
             "discount_value": Decimal(fixture["discount_value"]),
-            "max_discount_amount": Decimal(fixture["max_discount_amount"]),
-            "min_rental_amount": Decimal(fixture["min_rental_amount"]),
+            "max_discount_amount": (
+                Decimal(fixture["max_discount_amount"])
+                if fixture["max_discount_amount"] is not None
+                else None
+            ),
+            "min_rental_amount": (
+                Decimal(fixture["min_rental_amount"])
+                if fixture["min_rental_amount"] is not None
+                else None
+            ),
             "vehicle_model": fixture["vehicle_model"],
             "usage_limit": fixture["usage_limit"],
             "used_count": fixture["used_count"],
@@ -507,17 +508,16 @@ def _seed_one_rental(
 
     snapshot_values = {
         "vehicle_name": vehicle_fixture["name"],
-        "vehicle_type_snapshot": vehicle_fixture["type"],
         "vehicle_model_snapshot": vehicle_fixture["model"],
         "first_30_minutes_price_snapshot": Decimal(FIRST_30_MINUTES_PRICE),
         "extra_minute_price_snapshot": Decimal(EXTRA_MINUTE_PRICE),
         "pricing_policy_version": "EVRIDE_DEMO_V1_20261102_R2",
-        "billing_unit": "MINUTE_AFTER_FIRST_30",
+        "billing_unit": BILLING_UNIT,
         "pricing_policy_snapshot": {
             "is_demo": True,
             "first_30_minutes_price": FIRST_30_MINUTES_PRICE,
             "extra_minute_price": EXTRA_MINUTE_PRICE,
-            "billing_unit": "MINUTE_AFTER_FIRST_30",
+            "billing_unit": BILLING_UNIT,
         },
         "deposit_amount_snapshot": Decimal(DEPOSIT_AMOUNT),
         "promotion_id": None,

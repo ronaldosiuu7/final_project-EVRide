@@ -118,7 +118,6 @@ def rental_out(rental, pricing_snapshot=None, *, now=None) -> dict:
                 "extra_minute_price_snapshot": f"{pricing_snapshot.extra_minute_price_snapshot:.2f}",
                 "deposit_amount_snapshot": f"{pricing_snapshot.deposit_amount_snapshot:.2f}",
                 "vehicle_name": pricing_snapshot.vehicle_name,
-                "vehicle_type_snapshot": pricing_snapshot.vehicle_type_snapshot,
                 "vehicle_model_snapshot": pricing_snapshot.vehicle_model_snapshot,
                 "pricing_policy_version": pricing_snapshot.pricing_policy_version,
                 "billing_unit": pricing_snapshot.billing_unit,

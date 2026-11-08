@@ -62,6 +62,14 @@ USERS = (
         "role": "MANAGER",
         "status": "ACTIVE",
     },
+    {
+        "id": 990008,
+        "key": "customer_checkout",
+        "name": "Demo Checkout Customer",
+        "email": "checkout.customer@evride.test",
+        "role": "CUSTOMER",
+        "status": "ACTIVE",
+    },
 )
 
 STATIONS = (
@@ -100,7 +108,6 @@ VEHICLES = (
         "key": "available_full",
         "name": "[DEMO] EV-001",
         "model": "DEMO-CITY",
-        "type": "CITY",
         "battery_percent": 85,
         "status": "AVAILABLE",
         "station": "full",
@@ -110,7 +117,6 @@ VEHICLES = (
         "key": "reserved",
         "name": "[DEMO] EV-002",
         "model": "DEMO-CITY",
-        "type": "CITY",
         "battery_percent": 72,
         "status": "RESERVED",
         "station": "full",
@@ -120,7 +126,6 @@ VEHICLES = (
         "key": "maintenance",
         "name": "[DEMO] EV-003",
         "model": "DEMO-CITY",
-        "type": "CITY",
         "battery_percent": 41,
         "status": "MAINTENANCE",
         "station": "full",
@@ -130,7 +135,6 @@ VEHICLES = (
         "key": "available_one_slot",
         "name": "[DEMO] EV-004",
         "model": "DEMO-LONG-RANGE",
-        "type": "LONG_RANGE",
         "battery_percent": 96,
         "status": "AVAILABLE",
         "station": "one_slot",
@@ -140,7 +144,6 @@ VEHICLES = (
         "key": "rented",
         "name": "[DEMO] EV-005",
         "model": "DEMO-LONG-RANGE",
-        "type": "LONG_RANGE",
         "battery_percent": 66,
         "status": "RENTED",
         "station": None,
@@ -150,7 +153,6 @@ VEHICLES = (
         "key": "return_pending",
         "name": "[DEMO] EV-006",
         "model": "DEMO-CITY",
-        "type": "CITY",
         "battery_percent": 29,
         "status": "RETURN_PENDING",
         "station": "spacious",
@@ -160,7 +162,6 @@ VEHICLES = (
         "key": "suspected_stolen",
         "name": "[DEMO] EV-007",
         "model": "DEMO-LONG-RANGE",
-        "type": "LONG_RANGE",
         "battery_percent": 18,
         "status": "SUSPECTED_STOLEN",
         "station": None,
@@ -170,7 +171,6 @@ VEHICLES = (
         "key": "stolen",
         "name": "[DEMO] EV-008",
         "model": "DEMO-CITY",
-        "type": "CITY",
         "battery_percent": 10,
         "status": "STOLEN",
         "station": None,
@@ -180,7 +180,6 @@ VEHICLES = (
         "key": "available_spacious",
         "name": "[DEMO] EV-009",
         "model": "DEMO-CITY",
-        "type": "CITY",
         "battery_percent": 78,
         "status": "AVAILABLE",
         "station": "spacious",
@@ -190,7 +189,6 @@ VEHICLES = (
         "key": "available_one_slot_2",
         "name": "[DEMO] EV-010",
         "model": "DEMO-LONG-RANGE",
-        "type": "LONG_RANGE",
         "battery_percent": 91,
         "status": "AVAILABLE",
         "station": "one_slot",
@@ -200,7 +198,6 @@ VEHICLES = (
         "key": "available_one_slot_3",
         "name": "[DEMO] EV-011",
         "model": "DEMO-CITY",
-        "type": "CITY",
         "battery_percent": 64,
         "status": "MAINTENANCE",
         "station": "one_slot",
@@ -238,14 +235,25 @@ DOCUMENTS = (
         "verified_by": "manager",
         "verified_at": "2026-03-02T10:00:00+00:00",
     },
+    {
+        "user": "customer_checkout",
+        "document_number": "DEMO-CCCD-0004",
+        "birth_date": "1998-06-15",
+        "expires_on": "2038-06-15",
+        "verified_status": "VERIFIED",
+        "verified_birth_date": "1998-06-15",
+        "verified_by": "manager",
+        "verified_at": "2026-03-03T10:00:00+00:00",
+    },
 )
 
 WALLETS = (
     {"user": "customer_verified", "balance": "500000.00", "status": "ACTIVE"},
-    {"user": "customer_pending", "balance": "110000.00", "status": "ACTIVE"},
+    {"user": "customer_pending", "balance": "10000.00", "status": "ACTIVE"},
     {"user": "customer_without_document", "balance": "0.00", "status": "ACTIVE"},
     {"user": "customer_history", "balance": "250000.00", "status": "ACTIVE"},
     {"user": "customer_blocked", "balance": "75000.00", "status": "FROZEN"},
+    {"user": "customer_checkout", "balance": "250000.00", "status": "ACTIVE"},
 )
 
 PROMOTIONS = (
@@ -279,11 +287,27 @@ PROMOTIONS = (
         "end_date": "2025-12-31T23:59:59+00:00",
         "status": "EXPIRED",
     },
+    {
+        "id": 994003,
+        "code": "DEMO-CITY-2500",
+        "description": "Fictional 2,500 VND discount for DEMO-CITY vehicles",
+        "discount_type": "FIXED_AMOUNT",
+        "discount_value": "2500.00",
+        "max_discount_amount": None,
+        "min_rental_amount": "10000.00",
+        "vehicle_model": "DEMO-CITY",
+        "usage_limit": 50,
+        "used_count": 0,
+        "start_date": "2026-01-01T00:00:00+00:00",
+        "end_date": "2027-01-01T00:00:00+00:00",
+        "status": "ACTIVE",
+    },
 )
 
 PROMOTION_CLAIMS = (
     {"user": "customer_verified", "promotion": "DEMO-MARCH-10", "is_used": True},
     {"user": "customer_pending", "promotion": "DEMO-MARCH-10", "is_used": False},
+    {"user": "customer_checkout", "promotion": "DEMO-CITY-2500", "is_used": False},
 )
 
 HISTORICAL_RENTALS = (

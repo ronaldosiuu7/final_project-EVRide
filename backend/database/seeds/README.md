@@ -3,6 +3,9 @@
 Lưu dữ liệu mẫu cho môi trường phát triển, kiểm thử và demo.
 
 Dữ liệu gồm trạm, xe, tài khoản thử nghiệm, khuyến mãi và các chuyến đi mẫu.
+Tài khoản `checkout.customer@evride.test` có giấy tờ đã duyệt, ví demo và mã
+`DEMO-CITY-2500` (giảm cố định 2.500 VND, chỉ áp dụng xe `DEMO-CITY`) để thử
+luồng thuê. Mật khẩu chung cho tài khoản demo được in sau khi seed thành công.
 
 Chạy từ thư mục `backend/` sau khi cấu hình `.env` trỏ đến PostgreSQL local và áp dụng migration mới nhất:
 

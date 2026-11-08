@@ -310,7 +310,6 @@ def create_rental(
     snapshot = RentalPricingSnapshot(
         rental_id=rental.id,
         vehicle_name=vehicle.name,
-        vehicle_type_snapshot=vehicle.type,
         vehicle_model_snapshot=vehicle.model,
         first_30_minutes_price_snapshot=vehicle.first_30_minutes_price,
         extra_minute_price_snapshot=vehicle.extra_minute_price,

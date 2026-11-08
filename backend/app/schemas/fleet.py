@@ -75,7 +75,6 @@ class VehicleCreate(StrictRequest):
     current_station_id: int = Field(gt=0)
     name: str = Field(min_length=1, max_length=100)
     model: str = Field(min_length=1, max_length=100)
-    type: str = Field(min_length=1, max_length=50)
     battery_percent: int = Field(ge=0, le=100)
     first_30_minutes_price: Decimal = Field(ge=0, max_digits=12, decimal_places=2)
     extra_minute_price: Decimal = Field(ge=0, max_digits=12, decimal_places=2)
@@ -90,7 +89,7 @@ class VehicleCreate(StrictRequest):
             raise ValueError("ID phải được gửi dưới dạng chuỗi.")
         return value
 
-    @field_validator("name", "model", "type")
+    @field_validator("name", "model")
     @classmethod
     def trim_vehicle_values(cls, value: str) -> str:
         value = value.strip()
@@ -115,9 +114,8 @@ class VehicleCreate(StrictRequest):
 class VehicleUpdate(StrictRequest):
     name: str | None = Field(default=None, min_length=1, max_length=100)
     model: str | None = Field(default=None, min_length=1, max_length=100)
-    type: str | None = Field(default=None, min_length=1, max_length=50)
 
-    @field_validator("name", "model", "type", mode="before")
+    @field_validator("name", "model", mode="before")
     @classmethod
     def trim_optional_text(cls, value):
         if value is None:
@@ -205,7 +203,6 @@ def vehicle_out(vehicle) -> dict:
         ),
         "name": vehicle.name,
         "model": vehicle.model,
-        "type": vehicle.type,
         "battery_percent": vehicle.battery_percent,
         "status": vehicle.status,
         "first_30_minutes_price": f"{vehicle.first_30_minutes_price:.2f}",

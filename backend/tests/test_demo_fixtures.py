@@ -10,9 +10,12 @@ from database.seeds.demo_fixtures import (
     EXTRA_MINUTE_PRICE,
     FIRST_30_MINUTES_PRICE,
     HISTORICAL_RENTALS,
+    PROMOTION_CLAIMS,
+    PROMOTIONS,
     STATIONS,
     USERS,
     VEHICLES,
+    WALLETS,
 )
 
 
@@ -85,7 +88,41 @@ class DemoFixtureTests(unittest.TestCase):
         self.assertTrue(all(user["email"].endswith("@evride.test") for user in USERS))
         self.assertTrue(all(vehicle["name"].startswith("[DEMO]") for vehicle in VEHICLES))
         self.assertTrue(all(vehicle["model"] for vehicle in VEHICLES))
+        self.assertTrue(all("type" not in vehicle for vehicle in VEHICLES))
         self.assertEqual(Decimal(DEPOSIT_AMOUNT), Decimal("100000.00"))
+
+    def test_checkout_demo_account_supports_fixed_model_promotion(self) -> None:
+        checkout_user = next(user for user in USERS if user["key"] == "customer_checkout")
+        checkout_document = next(
+            document
+            for document in DOCUMENTS
+            if document["user"] == "customer_checkout"
+        )
+        checkout_wallet = next(
+            wallet for wallet in WALLETS if wallet["user"] == "customer_checkout"
+        )
+        checkout_claim = next(
+            claim
+            for claim in PROMOTION_CLAIMS
+            if claim["user"] == "customer_checkout"
+        )
+        promotion = next(
+            promotion
+            for promotion in PROMOTIONS
+            if promotion["code"] == checkout_claim["promotion"]
+        )
+
+        self.assertEqual(checkout_user["role"], "CUSTOMER")
+        self.assertEqual(checkout_document["verified_status"], "VERIFIED")
+        self.assertGreaterEqual(
+            Decimal(checkout_wallet["balance"]),
+            Decimal(DEPOSIT_AMOUNT) + Decimal(FIRST_30_MINUTES_PRICE),
+        )
+        self.assertFalse(checkout_claim["is_used"])
+        self.assertEqual(promotion["discount_type"], "FIXED_AMOUNT")
+        self.assertEqual(promotion["vehicle_model"], "DEMO-CITY")
+        self.assertEqual(promotion["usage_limit"], 50)
+        self.assertEqual(promotion["used_count"], 0)
 
 
 if __name__ == "__main__":

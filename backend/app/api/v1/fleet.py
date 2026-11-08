@@ -170,7 +170,7 @@ def get_station(station_id: int, db: Session = Depends(get_db)):
 @router.get("/stations/{station_id}/vehicles")
 def list_station_vehicles(
     station_id: int,
-    type: str | None = None,
+    model: str | None = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
@@ -180,8 +180,8 @@ def list_station_vehicles(
         raise HTTPException(404, detail={"code": "NOT_FOUND", "message": "Trạm không tồn tại."})
     query = _public_vehicle_query().where(Vehicle.current_station_id == station_id)
     count_query = select(func.count()).select_from(query.subquery())
-    if type:
-        query = query.where(Vehicle.type == type.upper())
+    if model:
+        query = query.where(func.upper(Vehicle.model) == model.strip().upper())
         count_query = select(func.count()).select_from(query.subquery())
     vehicles, total = _paginate(
         query.order_by(Vehicle.id), count_query, db, page, page_size
@@ -197,7 +197,7 @@ def list_station_vehicles(
 @router.get("/vehicles")
 def list_vehicles(
     station_id: int | None = None,
-    type: str | None = None,
+    model: str | None = None,
     status_filter: str | None = Query(default=None, alias="status"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -212,8 +212,8 @@ def list_vehicles(
             query = query.where(Vehicle.status == status_filter.upper())
     if station_id is not None:
         query = query.where(Vehicle.current_station_id == station_id)
-    if type:
-        query = query.where(Vehicle.type == type.upper())
+    if model:
+        query = query.where(func.upper(Vehicle.model) == model.strip().upper())
     count_query = select(func.count()).select_from(query.subquery())
     vehicles, total = _paginate(
         query.order_by(Vehicle.id), count_query, db, page, page_size

@@ -219,7 +219,6 @@ class Vehicle(Base):
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     model: Mapped[str] = mapped_column(String(100), nullable=False)
-    type: Mapped[str] = mapped_column(String(50), nullable=False)
     battery_percent: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     first_30_minutes_price: Mapped[Decimal] = mapped_column(
@@ -874,7 +873,6 @@ class RentalPricingSnapshot(Base):
         nullable=False,
     )
     vehicle_name: Mapped[str] = mapped_column(String(100), nullable=False)
-    vehicle_type_snapshot: Mapped[str] = mapped_column(String(50), nullable=False)
     vehicle_model_snapshot: Mapped[str] = mapped_column(String(100), nullable=False)
     first_30_minutes_price_snapshot: Mapped[Decimal] = mapped_column(
         Numeric(12, 2), nullable=False

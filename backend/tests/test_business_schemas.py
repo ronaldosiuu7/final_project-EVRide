@@ -2,7 +2,7 @@ import unittest
 
 from pydantic import ValidationError
 
-from app.schemas.fleet import PriceCreate, VehicleCreate
+from app.schemas.fleet import PriceCreate, VehicleCreate, vehicle_out
 from app.schemas.wallet import PromotionCreate, TopUpRequest
 
 
@@ -22,20 +22,54 @@ class BusinessSchemaTests(unittest.TestCase):
             VehicleCreate(
                 current_station_id="1",
                 name="Xe",
-                model="CITY",
-                type="CITY",
+                model="DEMO-CITY",
                 battery_percent=80,
                 first_30_minutes_price=10000,
                 extra_minute_price="350.00",
                 deposit_amount="100000.00",
             )
+        vehicle = VehicleCreate(
+            current_station_id="1",
+            name="Xe",
+            model="DEMO-CITY",
+            battery_percent=80,
+            first_30_minutes_price="10000.00",
+            extra_minute_price="350.00",
+            deposit_amount="100000.00",
+        )
+        self.assertEqual(vehicle.model, "DEMO-CITY")
         with self.assertRaises(ValidationError):
-            PriceCreate(
-                vehicle_id=1,
+            VehicleCreate(
+                current_station_id="1",
+                name="Xe",
+                model="DEMO-CITY",
+                type="CITY",
+                battery_percent=80,
                 first_30_minutes_price="10000.00",
                 extra_minute_price="350.00",
                 deposit_amount="100000.00",
             )
+
+    def test_vehicle_response_exposes_model_without_type(self):
+        from datetime import datetime, timezone
+        from decimal import Decimal
+        from types import SimpleNamespace
+
+        vehicle = SimpleNamespace(
+            id=1,
+            current_station_id=2,
+            name="Xe demo",
+            model="DEMO-CITY",
+            battery_percent=80,
+            status="AVAILABLE",
+            first_30_minutes_price=Decimal("10000.00"),
+            extra_minute_price=Decimal("350.00"),
+            deposit_amount=Decimal("100000.00"),
+            created_at=datetime.now(timezone.utc),
+        )
+        response = vehicle_out(vehicle)
+        self.assertEqual(response["model"], "DEMO-CITY")
+        self.assertNotIn("type", response)
 
     def test_percentage_promotion_requires_integer_value_and_model_only_scope(self):
         valid = PromotionCreate(
