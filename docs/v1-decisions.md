@@ -14,7 +14,7 @@ Các giá trị dưới đây bao gồm quy ước từ hợp đồng API và ph
 | Cấu hình/quy tắc | Giá trị áp dụng | Ghi chú |
 | --- | --- | --- |
 | Thời gian giữ xe | 30 phút (`expires_at = created_at + 30 phút`) | Quy tắc nghiệp vụ đã chốt trong hợp đồng; không gia hạn. Hết hạn phải đặt lượt mới. |
-| Thời hạn access token | 1.800 giây (30 phút) | Đề xuất kỹ thuật; V1 chưa có refresh token/logout phía server. |
+| Thời hạn access token & phiên | Access JWT: 1.800 giây (30 phút); Refresh token & Session: 30 ngày (rolling) | Bắt buộc `sub`/`sid` trong JWT; mỗi login tạo phiên riêng, có refresh token rotation (cookie HttpOnly có version), grace 15 giây và thu hồi phiên phía server khi logout/đổi mật khẩu/khóa tài khoản. |
 | Hiệu lực báo giá | 10 phút (`quote_expires_at = quote_created_at + 10 phút`) | **Đã chốt (R2):** Thay đề xuất 120 giây trước đây trong luồng trả xe; quote gắn với chuyến, trạm thực tế, khuyến mãi, phiên bản chính sách và trạng thái các nguồn liên quan. |
 | Phân trang | `page = 1`, `page_size = 20`, tối đa 100 | Giá trị mặc định/giới hạn theo hợp đồng. |
 | Đơn vị tiền | VND; Decimal/NUMERIC, chuỗi số thập phân không âm, tối đa 2 chữ số lẻ (ví dụ `"10000.00"`) | Không dùng float để tính tiền. Tổng tiền thuê sau giảm giá làm tròn đến 1 đồng bằng `HALF_UP` (đã chốt ở mục 1 R2); quy tắc riêng của khuyến mãi vẫn chờ duyệt. |
@@ -242,6 +242,10 @@ Giữ nguyên để hỏi ý kiến các thành viên; lần cập nhật này k
 - Các phương án đã trao đổi, bao gồm trạng thái `CLOSED_INCIDENT`, chỉ là đề xuất; chưa được coi là quyết định triển khai V1.
 - Giữ nguyên ràng buộc đã chốt tại mục 6: rental `STOLEN` chưa giải quyết chặn khách đặt mới và chặn xe tham gia chuyến khác; không tự giải phóng theo timeout.
 - Ticket không tự kết thúc chuyến hoặc hoàn tiền. Không tự suy diễn chính sách tài chính hay chuyển trạng thái khi chưa được duyệt.
+
+## 13. Thiết kế kỹ thuật xác thực: Rolling Session và Refresh Token Rotation
+
+> Thiết kế xác thực theo yêu cầu ngày 06/11/2026. Access JWT sống 1.800 giây, bắt buộc `sub`/`sid`. Refresh token ngẫu nhiên sống 30 ngày, rolling cùng phiên sau mỗi rotation thành công; không có absolute lifetime. Mỗi login tạo phiên riêng, các tab chia sẻ phiên. Grace 15 giây cấu hình được, replay kết quả mã hóa nếu token kế tiếp còn hiện hành; ngoài grace thu hồi phiên bị reuse. Logout thu hồi phiên hiện tại, đổi mật khẩu/khóa tài khoản thu hồi mọi phiên nguyên tử. Tài khoản phải ACTIVE trên mỗi request. Không hủy được request đã qua xác thực trước lúc thu hồi commit. Giữ lịch sử hash toàn bộ vòng đời phiên. Frontend có trách nhiệm phối hợp liên tab và không lưu access token bền vững.
 
 ## Thay đổi cần đưa vào issue #14 và hai issue backend
 

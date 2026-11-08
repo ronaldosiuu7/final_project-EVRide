@@ -158,4 +158,23 @@ npm run build
 
 ---
 
+## 8. Yêu cầu bàn giao tích hợp xác thực (Rolling Session & Refresh Token Rotation)
+
+> **Lưu ý:** Backend đã triển khai cơ chế Rolling Session & Refresh Token Rotation; phần tích hợp dưới đây là hợp đồng bàn giao để Frontend triển khai (hiện giao diện vẫn đang dùng dữ liệu mock).
+
+1. **Lưu trữ Token:**
+   - `access_token` chỉ được lưu trong bộ nhớ (React state / module memory), tuyệt đối không lưu vào `localStorage`/`sessionStorage`/cookie.
+   - `refresh_token` nằm hoàn toàn trong cookie `HttpOnly` (`evr_rt_<session_uuid_hex>_<generation>`, `Path=/api/v1/auth`) do trình duyệt tự quản lý.
+   - `localStorage` chỉ được lưu `session_id` (UUID), `epoch` ngẫu nhiên và cờ trạng thái đang logout (không lưu thông tin bí mật).
+2. **Header & Request bắt buộc:**
+   - Khi gọi `/api/v1/auth/login`, `/api/v1/auth/refresh`, `/api/v1/auth/logout` và `/api/v1/users/me/change-password`: luôn dùng `credentials: 'include'`, `Content-Type: application/json` và gửi kèm header `X-EVRide-CSRF: 1`.
+   - Khi gọi `/api/v1/auth/refresh` và `/api/v1/auth/logout`: gửi thêm header `X-Session-ID: <session_id>` và body JSON rỗng `{}`.
+   - Khi đổi mật khẩu thành công (`POST /api/v1/users/me/change-password`), tiếp tục gọi `POST /api/v1/auth/logout` với `X-Session-ID` hiện tại để xóa cookie ở đường dẫn `/api/v1/auth`, sau đó chuyển về màn hình đăng nhập.
+3. **Phối hợp liên tab (Cross-tab Coordination):**
+   - Sử dụng **Web Locks API** (`navigator.locks.request('evride-auth', ...)`) kết hợp **BroadcastChannel** cho mọi thao tác login/refresh/logout/đổi mật khẩu để các tab cùng chia sẻ một phiên, không gọi refresh trùng lặp và chỉ cập nhật bộ nhớ nếu `session_id`/`epoch` khớp và `generation` không thấp hơn bản đang giữ.
+   - Chỉ tự động gọi `/api/v1/auth/refresh` và thử lại request gốc tối đa 1 lần khi protected API trả về `401 TOKEN_EXPIRED`. Với các mã `UNAUTHENTICATED`, `SESSION_INVALID`, `SESSION_EXPIRED`, `SESSION_REVOKED`, `REFRESH_INVALID`, `REFRESH_EXPIRED`, `REFRESH_REUSED` hoặc `403 ACCOUNT_DISABLED`, xóa trạng thái đăng nhập ngay và không lặp refresh.
+   - Chi tiết bảng mã lỗi và kịch bản kiểm thử trình duyệt xem tại mục 6 
+
+---
+
 **EVRide Frontend** — Giao diện quản lý hệ thống cho thuê ô tô điện theo trạm.
