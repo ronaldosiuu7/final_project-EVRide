@@ -1,10 +1,10 @@
 # EVRide V1 — Hợp đồng API
 
-Ngày soạn: **21/10/2026**. Cập nhật: **03/11/2026** theo `v1-decisions.md` và thống nhất schema/API quản lý giá, bảo trì, tệp đính kèm và điều chuyển. Base URL: `/api/v1`. Định dạng: JSON, UTF-8.
+Ngày soạn: **21/10/2026**. Cập nhật: **08/11/2026** theo `v1-decisions.md`, schema/API quản lý giá, bảo trì, tệp đính kèm/điều chuyển và các yêu cầu khuyến mãi mới. Base URL: `/api/v1`. Định dạng: JSON, UTF-8.
 
 Đây là hợp đồng đề xuất để nhóm triển khai và review, **không phải danh sách API đã chạy được**. Căn cứ: [15 bảng nghiệp vụ trong DBML và các bảng hạ tầng bổ sung](database.md), [phạm vi nghiệp vụ](requirements.md) và [đặc tả báo cáo](dac_ta_quan_tri_bao_cao.md).
 
-Nguồn chính sách: [Sổ quyết định V1](v1-decisions.md). **Đã chốt:** mục 1–7, 9 và 11. **Chờ duyệt:** mục 8 (khuyến mãi), 10 (GPS/upload), 12 (sự cố/mất xe). Số mục chính sách là số trong sổ quyết định, không phải số mục của contract này. Các cập nhật dưới đây là yêu cầu triển khai, không xác nhận DBML/migration hoặc mã nguồn đã được cập nhật.
+Nguồn chính sách: [Sổ quyết định V1](v1-decisions.md). **Đã chốt:** mục 1–7, 9 và 11; yêu cầu loại giảm, phạm vi xe và hạn mức lượt dùng của mục 8. **Chờ duyệt:** các chính sách khuyến mãi còn lại, 10 (GPS/upload) và 12 (sự cố/mất xe). Số mục chính sách là số trong sổ quyết định, không phải số mục của contract này. API thanh toán/khuyến mãi vẫn là contract đề xuất; migration và service khuyến mãi đã được bổ sung nhưng chưa có luồng quote/thanh toán gọi service.
 
 ## 1. Phạm vi và mức độ thống nhất
 
@@ -102,7 +102,7 @@ Frontend xử lý theo `error.code`, không so sánh `message`. Không trả sta
 | 404 | `NOT_FOUND` | Không tồn tại hoặc không thuộc phạm vi được xem |
 | 409 | `EMAIL_EXISTS`, `VEHICLE_UNAVAILABLE`, `STATION_FULL`, `STATION_UNAVAILABLE`, `REFRESH_RETRY_UNAVAILABLE` | Xung đột tài nguyên hoặc không thể replay kết quả refresh cũ trong grace |
 | 409 | `RESERVATION_EXPIRED`, `INVALID_RENTAL_STATE`, `PICKUP_STATION_MISMATCH` | Sai trạng thái hoặc hết hạn |
-| 409 | `WALLET_UNAVAILABLE`, `INSUFFICIENT_BALANCE`, `PROMOTION_INVALID`, `ALREADY_REVIEWED` | Điều kiện nghiệp vụ không đáp ứng |
+| 409 | `WALLET_UNAVAILABLE`, `INSUFFICIENT_BALANCE`, `PROMOTION_INVALID`, `PROMOTION_EXHAUSTED`, `ALREADY_REVIEWED` | Điều kiện nghiệp vụ không đáp ứng hoặc đã hết lượt dùng |
 | 409 | `IDEMPOTENCY_CONFLICT`, `REQUEST_IN_PROGRESS`, `STALE_QUOTE`, `INVALID_STATE_TRANSITION` | Request lặp khác nội dung hoặc dữ liệu đã thay đổi |
 | 409 | `ACTIVE_RENTAL_EXISTS`, `DAILY_CANCELLATION_LIMIT_REACHED` | Đã có chuyến chưa giải quyết hoặc đã đủ 3 lượt hủy/hết hạn trong ngày |
 | 413 | `FILE_TOO_LARGE` | File upload vượt 10 MiB |
@@ -173,7 +173,7 @@ Các schema bên dưới liệt kê trường response. ID/tiền/thời gian th
 | `transactions` | Transaction: `id, rental_id, invoice_id?, actor_id, amount, kind, status, created_at` | Owner/S/M |
 | `wallets` | Wallet: `id, user_id, balance, status, created_at, updated_at` | Chủ ví/M |
 | `wallet_transactions` | WalletTransaction: `id, wallet_id, rental_id?, amount, type, balance_before, balance_after, status, created_at` | Chủ ví/M |
-| `promotions` | Promotion: `id, code, description?, discount_percent?, max_discount_amount?, min_rental_amount?, start_date, end_date, status, created_at` | C xem mã đủ điều kiện; M xem tất cả |
+| `promotions` | Promotion: `id, code, description?, discount_type, discount_value, max_discount_amount?, min_rental_amount?, vehicle_model?, usage_limit?, used_count, start_date, end_date, status, created_at` | C xem mã đủ điều kiện; M xem tất cả |
 | `user_promotions` | UserPromotion: `id, user_id, promotion_id, is_used, used_at?, promotion` | Chủ sở hữu/M |
 | `support_tickets` | Ticket: `id, rental_id, created_by, assigned_to?, title, description, status, created_at` | Owner/S/M |
 | `gps_points` | GpsPoint: `id, rental_id, latitude, longitude, recorded_at` | Owner/S/M |
@@ -525,21 +525,21 @@ Không tích hợp hoặc bật thanh toán thật trong V1. Tài liệu thiết
 
 ## 8. Khuyến mãi
 
-**Chờ duyệt theo mục 8 của v1-decisions.** Toàn bộ endpoint/quy tắc dưới đây là thiết kế dự kiến, không được coi là đã chốt. Chưa cấu hình chính sách đã duyệt thì thao tác phụ thuộc trả 503 POLICY_NOT_CONFIGURED. Làm tròn tổng tiền thuê HALF_UP đã chốt; làm tròn riêng phần giảm giá vẫn chờ duyệt.
+Yêu cầu đã chốt cho phần xử lý: có giảm theo phần trăm hoặc số tiền cố định; phạm vi tùy chọn theo mẫu xe; mỗi mã có hạn mức tổng số lượt. Do EVRide chỉ phục vụ xe điện, không lọc promotion theo `vehicle_type`. Các endpoint dưới đây vẫn là thiết kế contract, chưa được triển khai. Backend hiện có service tính giảm và tiêu thụ lượt dùng, nhưng chưa có luồng quote/thanh toán để gọi service; không coi service độc lập là thanh toán đã tích hợp.
 
 | Method / path | Quyền | Request | Thành công |
 | --- | --- | --- | --- |
 | GET `/promotions` | C/M | `status?`, phân trang | Promotion[]; C chỉ ACTIVE trong thời hạn |
-| POST `/promotions` | M | `{code, description?, discount_percent, max_discount_amount?, min_rental_amount?, start_date, end_date}` | 201 Promotion ACTIVE |
+| POST `/promotions` | M | `{code, description?, discount_type, discount_value, max_discount_amount?, min_rental_amount?, vehicle_model?, usage_limit, start_date, end_date}` | 201 Promotion ACTIVE |
 | PATCH `/promotions/{id}` | M | `{status: "ACTIVE" hoặc "DISABLED"}` | Promotion |
 | POST `/promotions/{id}/claim` | C, I | `{}` | 201 UserPromotion |
 | GET `/users/me/promotions` | C | `is_used?`, phân trang | UserPromotion[] |
 
-Đề xuất V1 hỗ trợ phần trăm, integer 1–100; code viết hoa, tối đa 50 ký tự và unique; end_date > start_date. Không sửa giá trị giảm của mã đã phát hành; tạo mã mới để giữ lịch sử.
+`discount_type` nhận `PERCENTAGE` (giá trị nguyên 1–100) hoặc `FIXED_AMOUNT` (số tiền VND dương, tối đa 2 chữ số thập phân). `max_discount_amount` chỉ hợp lệ cho `PERCENTAGE`; giảm cố định và giảm phần trăm đều không vượt tiền thuê. Code viết hoa, tối đa 50 ký tự và unique; `end_date > start_date`. `usage_limit` bắt buộc là số nguyên dương khi tạo mã; `used_count` do server quản lý. Mã cũ chưa có hạn mức có `usage_limit = null` và chưa bị giới hạn cho tới khi quản trị cấu hình. Không sửa giá trị giảm/phạm vi của mã đã phát hành; tạo mã mới để giữ lịch sử.
 
-Một user chỉ nhận một bản của mỗi mã (unique user_id/promotion_id). Claim lặp khác key trả 200 bản đang có, không nhân bản. Hiệu lực: start_date <= thời điểm thanh toán < end_date, ACTIVE, thuộc user, chưa dùng, đủ min_rental_amount. Mỗi rental dùng tối đa một mã.
+Một user chỉ nhận một bản của mỗi mã (unique user_id/promotion_id). Claim lặp khác key trả 200 bản đang có, không nhân bản. Claim không giữ chỗ lượt dùng. Khi thanh toán, điều kiện gồm `start_date <= thời điểm thanh toán < end_date`, ACTIVE, claim thuộc user và chưa dùng, chưa hết hạn mức, đủ `min_rental_amount` nếu có. Nếu promotion có `vehicle_model`, mẫu phải khớp `vehicles.model` không phân biệt hoa thường. Mỗi rental dùng tối đa một mã.
 
-Đề xuất công thức: giảm theo rental_fee, giới hạn max_discount_amount nếu có, không vượt rental_fee; không giảm cọc/phí sự cố. Quy tắc làm tròn tiền cần chốt ở mục 14. Quote chưa tiêu thụ mã; chỉ cập nhật is_used/used_at cùng giao dịch thanh toán thành công. Cần lưu mã và số tiền giảm đã áp dụng theo mục 13 để truy vết.
+Giảm trên rental_fee, không giảm cọc/phí sự cố. `PERCENTAGE` áp dụng `discount_value` phần trăm và giới hạn `max_discount_amount` nếu có; `FIXED_AMOUNT` trừ tối đa bằng tiền thuê. Tổng thuê sau giảm làm tròn đến 1 VND bằng `HALF_UP` theo R2. Quote không tiêu thụ mã; khi thanh toán thành công, service `app.services.promotions.consume_promotion` khóa promotion/claim, tăng `used_count` và cập nhật `is_used/used_at`; caller phải chạy cùng transaction quyết toán để rollback đồng bộ nếu thanh toán thất bại. Mức cap bị tranh chấp giữa các giao dịch được quyết định lại dưới khóa promotion, hết lượt trả `409 PROMOTION_EXHAUSTED`. Snapshot giữ loại/giá trị giảm, code, mẫu xe và số tiền giảm.
 
 ## 9. Sự cố, bảo trì và đánh giá
 

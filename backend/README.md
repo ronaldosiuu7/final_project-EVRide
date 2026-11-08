@@ -80,7 +80,7 @@ Chỉ chạy seed trên PostgreSQL local đã được cấu hình trong `backen
 cd backend
 .\.venv\Scripts\python.exe -m alembic current
 .\.venv\Scripts\python.exe -m alembic upgrade head
-.\.venv\Scripts\python.exe -m app.seed_demo --allow-demo-seed
+.\.venv\Scripts\python.exe -m database.seeds.seed_demo --allow-demo-seed
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
@@ -98,7 +98,7 @@ Tác vụ dọn dẹp (`app.cleanup_auth`) xóa `replay_ciphertext` đã qua th�
 .\.venv\Scripts\python.exe -m app.cleanup_auth
 ```
 
-Trên macOS/Linux, thay Python executable bằng `.venv/bin/python`. Chạy lại seed cập nhật các bản ghi có ID/email/mã fixture ổn định, không thêm bản sao; lịch sử giá và audit điều chuyển được insert một lần. Fixture chung nằm trong `app/demo_fixtures.py`, được cả `app/seed_demo.py` và `tests/test_demo_fixtures.py` dùng.
+Trên macOS/Linux, thay Python executable bằng `.venv/bin/python`. Chạy lại seed cập nhật các bản ghi có ID/email/mã fixture ổn định, không thêm bản sao; lịch sử giá và audit điều chuyển được insert một lần. Toàn bộ script và fixture seed nằm trong `database/seeds/`; fixture chung được script seed và `tests/test_demo_fixtures.py` dùng.
 
 Seed tạo CUSTOMER có CCCD `PENDING`, đã `VERIFIED` và chưa nộp giấy tờ; STAFF/MANAGER, ví và mã giảm giá; ba trạm (một trạm đầy, một trạm còn đúng một chỗ); xe nhiều trạng thái; các chuyến/hóa đơn từ tháng 3 đến tháng 10 năm 2026. Tài khoản demo dùng email `@evride.test`; mật khẩu giả chung được lệnh seed in ra sau khi chạy. Các hash mật khẩu fixture chỉ phục vụ demo, không dùng làm thông tin xác thực production.
 
@@ -111,8 +111,7 @@ Seed tạo CUSTOMER có CCCD `PENDING`, đã `VERIFIED` và chưa nộp giấy t
 | `app/core/` | Cấu hình môi trường, bảo mật, logging và xử lý lỗi chung. |
 | `app/database.py` | Cấu hình kết nối PostgreSQL. |
 | `app/models.py` | SQLAlchemy ORM cho bảng nghiệp vụ và bảng hạ tầng; migration nằm ở `../database/migrations/`. |
-| `app/demo_fixtures.py` | Dữ liệu demo giả dùng chung cho seed và unit tests. |
-| `app/seed_demo.py` | Seed idempotent, chỉ cho phép database PostgreSQL loopback đã ở Alembic head. |
+| `database/seeds/` | Script seed idempotent, fixture dữ liệu demo và hướng dẫn; chỉ cho phép PostgreSQL loopback đã ở Alembic head. |
 | `app/modules/` | Mã nghiệp vụ, tổ chức theo từng chức năng. |
 | `app/shared/` | Tiện ích và kiểu dữ liệu dùng chung, không gắn với một nghiệp vụ cụ thể. |
 | `tests/` | Unit test fixture/seed; kiểm thử nghiệp vụ có thể mở rộng sau. |

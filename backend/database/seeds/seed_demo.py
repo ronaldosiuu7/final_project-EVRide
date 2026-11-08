@@ -14,7 +14,7 @@ from sqlalchemy import inspect, select, text
 from sqlalchemy.orm import Session
 
 from app.database import database_url, engine
-from app.demo_fixtures import (
+from database.seeds.demo_fixtures import (
     ACTIVE_RENTALS,
     DEPOSIT_AMOUNT,
     DEMO_PASSWORD,
@@ -49,7 +49,7 @@ from app.models import (
     Wallet,
 )
 
-EXPECTED_HEAD = "888ad91e139e"
+EXPECTED_HEAD = "f73c21e84a6b"
 UTC = timezone.utc
 
 
@@ -214,6 +214,7 @@ def _seed_vehicles(
                 station_ids[fixture["station"]] if fixture["station"] else None
             ),
             "name": fixture["name"],
+            "model": fixture["model"],
             "type": fixture["type"],
             "battery_percent": fixture["battery_percent"],
             "status": fixture["status"],
@@ -291,9 +292,13 @@ def _seed_promotions(session: Session) -> dict[str, int]:
     for fixture in PROMOTIONS:
         values = {
             "description": fixture["description"],
-            "discount_percent": fixture["discount_percent"],
+            "discount_type": fixture["discount_type"],
+            "discount_value": Decimal(fixture["discount_value"]),
             "max_discount_amount": Decimal(fixture["max_discount_amount"]),
             "min_rental_amount": Decimal(fixture["min_rental_amount"]),
+            "vehicle_model": fixture["vehicle_model"],
+            "usage_limit": fixture["usage_limit"],
+            "used_count": fixture["used_count"],
             "start_date": _timestamp(fixture["start_date"]),
             "end_date": _timestamp(fixture["end_date"]),
             "status": fixture["status"],
@@ -503,6 +508,7 @@ def _seed_one_rental(
     snapshot_values = {
         "vehicle_name": vehicle_fixture["name"],
         "vehicle_type_snapshot": vehicle_fixture["type"],
+        "vehicle_model_snapshot": vehicle_fixture["model"],
         "first_30_minutes_price_snapshot": Decimal(FIRST_30_MINUTES_PRICE),
         "extra_minute_price_snapshot": Decimal(EXTRA_MINUTE_PRICE),
         "pricing_policy_version": "EVRIDE_DEMO_V1_20261102_R2",
@@ -516,7 +522,8 @@ def _seed_one_rental(
         "deposit_amount_snapshot": Decimal(DEPOSIT_AMOUNT),
         "promotion_id": None,
         "promotion_code": None,
-        "discount_percent": None,
+        "discount_type": None,
+        "discount_value": None,
         "max_discount_amount": None,
         "discount_amount": Decimal("0.00"),
         "created_at": created_at,

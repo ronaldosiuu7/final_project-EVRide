@@ -3,7 +3,7 @@ from collections import Counter
 from datetime import datetime
 from decimal import Decimal
 
-from app.demo_fixtures import (
+from database.seeds.demo_fixtures import (
     ACTIVE_RENTALS,
     DEPOSIT_AMOUNT,
     DOCUMENTS,
@@ -84,6 +84,7 @@ class DemoFixtureTests(unittest.TestCase):
     def test_fake_seed_accounts_and_policy_values_are_marked(self) -> None:
         self.assertTrue(all(user["email"].endswith("@evride.test") for user in USERS))
         self.assertTrue(all(vehicle["name"].startswith("[DEMO]") for vehicle in VEHICLES))
+        self.assertTrue(all(vehicle["model"] for vehicle in VEHICLES))
         self.assertEqual(Decimal(DEPOSIT_AMOUNT), Decimal("100000.00"))
 
 
