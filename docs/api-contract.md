@@ -20,7 +20,7 @@ Nguồn chính sách: [Sổ quyết định V1](v1-decisions.md). **Đã chốt:
 
 ### 1.2. Đề xuất kỹ thuật của hợp đồng này
 
-Tên endpoint, schema JSON, HTTP status, JWT, idempotency, phân quyền chi tiết và trạng thái bổ sung dưới đây là đề xuất triển khai V1. Các API giá, bảo trì, file và audit điều chuyển được chốt ở mức contract/schema đề xuất; **chưa có nghĩa là API hoặc chức năng đã được triển khai**.
+Tên endpoint, schema JSON, HTTP status, JWT, idempotency, phân quyền chi tiết và trạng thái bổ sung dưới đây là contract V1. Backend hiện triển khai các luồng trạm/xe/bảng giá/điều chuyển, ví demo, khuyến mãi và vòng đời thuê/nhận/trả/quyết toán được nêu tại mục 5–8. Upload tệp và API bảo trì tại mục 5.1/9 vẫn là contract đề xuất, chưa tích hợp.
 
 Hợp đồng này chọn thiết kế từ nhánh `docs/update-database-design`, hiện đã được đồng bộ trong `docs/database.md`: có `expires_at`, trạng thái `RESERVED`/`EXPIRED`, bỏ `planned_start_time`/`planned_end_time` và cho phép `total_price` là null trước khi chốt phí. Alembic quản lý schema tại `database/migrations/`; các quy tắc nghiệp vụ và thao tác ghi/replay vẫn cần được thực thi trong backend.
 
@@ -161,7 +161,7 @@ Các schema bên dưới liệt kê trường response. ID/tiền/thời gian th
 | `users` | User: `id, name, email, role, status, created_at` | Chính mình/S/M qua API được phép; tuyệt đối không trả password/hash |
 | `user_documents` | Document: `id, user_id, document_type, document_number_masked, verified_status, expires_on?, verified_birth_date?, verified_by?, verified_at?, revoked_at?, created_at` | Chính mình/S/M; ảnh và số đầy đủ chỉ qua endpoint riêng |
 | `stations` | Station: `id, name, address, latitude, longitude, capacity, opens_at?, closes_at?, status, occupied_spaces, available_spaces, available_vehicle_count` | Public |
-| `vehicles` | Vehicle: `id, current_station_id?, name, type, battery_percent, status, first_30_minutes_price, extra_minute_price, deposit_amount, created_at` | Public chỉ xe có thể thuê; S/M xem tất cả |
+| `vehicles` | Vehicle: `id, current_station_id?, name, model, type, battery_percent, status, first_30_minutes_price, extra_minute_price, deposit_amount, created_at` | Public chỉ xe có thể thuê; S/M xem tất cả |
 | `rentals` | Rental: `id, customer_id, vehicle_id, pickup_station_id, actual_return_station_id?, created_at, expires_at, actual_start_time?, actual_end_time?, return_initiated_at?, settled_at?, cancelled_at?, cancellation_reason?, cancellation_limit_exempt, first_30_minutes_price_snapshot, extra_minute_price_snapshot, deposit_amount_snapshot, vehicle_type_snapshot, pricing_policy_version, billing_unit, deposit_held, status, total_price?, remaining_hold_seconds, elapsed_seconds` | Owner/S/M |
 | `handovers` | Handover: `id, rental_id, staff_id, kind, time, battery_percent, vehicle_condition?, note?, created_at` | Owner/S/M |
 | `vehicle_pricing_history` | PriceVersion: `id, vehicle_id, version_number, old_first_30_minutes_price?, new_first_30_minutes_price, old_extra_minute_price?, new_extra_minute_price, old_deposit_amount?, new_deposit_amount, changed_by, created_at` | S/M |
@@ -235,22 +235,22 @@ CCCD hợp lệ khi VERIFIED, chưa thu hồi và ngày hiện tại tại Asia/
 | GET `/admin/stations` | S/M | `status?, q?`, phân trang | Station[] mọi trạng thái |
 | POST `/stations` | M | `{name, address, latitude, longitude, capacity, opens_at?, closes_at?}` | 201 Station ACTIVE |
 | PATCH `/stations/{id}` | M | Các trường tạo + `status`, tất cả optional | Station |
-| POST `/vehicles` | M | `{current_station_id, name, type, battery_percent, first_30_minutes_price, extra_minute_price, deposit_amount}` | 201 Vehicle AVAILABLE |
-| PATCH `/vehicles/{id}` | M | `{name?, type?}` | Vehicle |
+| POST `/vehicles` | M | `{current_station_id, name, model, type, battery_percent, first_30_minutes_price, extra_minute_price, deposit_amount}` | 201 Vehicle AVAILABLE |
+| PATCH `/vehicles/{id}` | M | `{name?, model?, type?}` | Vehicle |
 | PATCH `/vehicles/{id}/battery` | S/M | `{battery_percent, note}` | Vehicle; có audit, không dùng để vượt qua bàn giao hoặc xử lý mất xe |
 | POST `/vehicles/{id}/status` | S/M, I | `{status: "AVAILABLE" hoặc "MAINTENANCE", note}` | Vehicle |
 
 `opens_at/closes_at`: cùng null nghĩa là 24/7; nếu có thì cả hai ở dạng `HH:mm:ss`, giờ Việt Nam. Cặp giờ qua nửa đêm là khoảng mở xuyên đêm; hai giờ bằng nhau bị từ chối, dùng null cho 24/7.
 
-### 5.1. Bảng giá, tệp đính kèm và điều chuyển (đề xuất, chưa triển khai)
+### 5.1. Bảng giá, tệp đính kèm và điều chuyển
 
-Các endpoint trong mục này là **đề xuất contract, chưa triển khai**. API bảo trì được mô tả tại mục 9 và cũng chưa triển khai. ID/tiền vẫn là chuỗi theo quy ước chung.
+Bảng giá và điều chuyển xe đã được triển khai; các API tệp đính kèm dưới đây vẫn là **đề xuất contract, chưa triển khai**. API bảo trì được mô tả tại mục 9 và cũng chưa triển khai. ID/tiền vẫn là chuỗi theo quy ước chung.
 
 | Method / path | Quyền | Request | Thành công |
 | --- | --- | --- | --- |
 | GET `/prices` | S/M | `vehicle_id?`, phân trang | PriceVersion[] |
 | GET `/prices/{id}` | S/M | — | PriceVersion |
-| POST `/prices` | M, I | `{vehicle_id, first_30_minutes_price, extra_minute_price, deposit_amount}` | 201 PriceVersion mới |
+| POST `/prices` | M, I | `{vehicle_id, first_30_minutes_price, extra_minute_price, deposit_amount}`; tiền gửi dạng string | 201 PriceVersion mới |
 | POST `/vehicles/{id}/move` | S/M, I | `{target_station_id, note?}` | Vehicle tại trạm mới |
 | GET `/vehicles/{id}/move-history` | S/M | Phân trang | VehicleMoveAudit[] |
 | POST `/files/upload-intents` | C/S/M, I | `{filename, content_type, size_bytes, sha256}` | 201 `{file_id, upload_url, method: "PUT", headers, expires_at}` |
@@ -497,7 +497,7 @@ Trong IN_RENT, return-quote chỉ trả ước tính (`is_estimate=true`, return
 
 Token phải ràng buộc rental, phiên tiếp nhận, trạm, snapshot/version, tiền cọc, mã giảm giá và phiên bản/trạng thái nguồn liên quan. Token hết hạn đúng tại quote_expires_at; sai nguồn hoặc token ước tính trả 409 STALE_QUOTE trước mọi tác động tài chính. Thay giá hiện hành của xe không đổi snapshot và không làm chuyến cũ tăng giá.
 
-Chưa có chính sách khuyến mãi được duyệt: request có promotion_code trả 503 POLICY_NOT_CONFIGURED, không âm thầm bỏ mã. Request không chọn mã dùng discount_amount=0 một cách tường minh; không coi đây là phê duyệt quy tắc khuyến mãi.
+Request không chọn mã dùng `discount_amount=0` một cách tường minh. Nếu chọn mã, quote kiểm tra claim, thời hạn, trạng thái, hạn mức, mức tối thiểu và scope mẫu xe; quote không tiêu thụ lượt dùng.
 
 Gọi initiate-return lần nữa với cùng dữ liệu trả phiên đã có, kể cả key khác, không tạo RETURN thứ hai hoặc đổi timestamp. Dữ liệu khác phiên đã lưu bị từ chối 409 INVALID_RENTAL_STATE; sau COMPLETED chỉ replay key đã thành công, không mở lại chuyến. Return retry cùng key replay kết quả; key khác khi đã COMPLETED trả 409 INVALID_RENTAL_STATE, không thu lại tiền.
 
@@ -525,7 +525,7 @@ Không tích hợp hoặc bật thanh toán thật trong V1. Tài liệu thiết
 
 ## 8. Khuyến mãi
 
-Yêu cầu đã chốt cho phần xử lý: có giảm theo phần trăm hoặc số tiền cố định; phạm vi tùy chọn theo mẫu xe; mỗi mã có hạn mức tổng số lượt. Do EVRide chỉ phục vụ xe điện, không lọc promotion theo `vehicle_type`. Các endpoint dưới đây vẫn là thiết kế contract, chưa được triển khai. Backend hiện có service tính giảm và tiêu thụ lượt dùng, nhưng chưa có luồng quote/thanh toán để gọi service; không coi service độc lập là thanh toán đã tích hợp.
+Yêu cầu đã chốt cho phần xử lý: có giảm theo phần trăm hoặc số tiền cố định; phạm vi tùy chọn theo mẫu xe; mỗi mã có hạn mức tổng số lượt. Do EVRide chỉ phục vụ xe điện, không lọc promotion theo `vehicle_type`. Các endpoint dưới đây đã được triển khai; việc nhận mã không giữ lượt sử dụng, lượt chỉ được tiêu thụ nguyên tử cùng transaction quyết toán thành công.
 
 | Method / path | Quyền | Request | Thành công |
 | --- | --- | --- | --- |
@@ -607,7 +607,7 @@ S/M được truy cập. Các endpoint dưới trả 200 theo envelope chung. Th
 - Overview: average_trip_minutes tính trên chuyến COMPLETED kết thúc trong khoảng; không có thì 0. Customer_count là số khách khác nhau có chuyến bắt đầu trong khoảng. Xe theo trạng thái/trạm sắp đầy là snapshot hiện tại; near_full_stations có available_spaces <= 1, ACTIVE, tối đa 10 theo available_spaces ASC, id ASC. recent_tickets là 5 ticket mới nhất hiện tại.
 - Không có dữ liệu trả mảng rỗng/tổng 0, không trả 404. Truy vấn số liệu phải được đối chiếu độc lập khi kiểm thử.
 
-`/prices` là endpoint quản lý đề xuất ở mục 5.1; bảng giá theo từng xe, có lịch sử append-only và snapshot bất biến tại thời điểm giữ xe. Doanh thu nhóm theo `vehicle_type_snapshot` từ rental snapshot, không suy ra loại xe/giá lịch sử từ giá trị hiện tại của `vehicles`.
+`/prices` là endpoint quản lý đã triển khai ở mục 5.1; bảng giá theo từng xe, có lịch sử append-only và snapshot bất biến tại thời điểm giữ xe. Doanh thu nhóm theo `vehicle_type_snapshot` từ rental snapshot, không suy ra loại xe/giá lịch sử từ giá trị hiện tại của `vehicles`.
 
 ## 12. Kiểm tra hệ thống và tiêu chí nghiệm thu
 

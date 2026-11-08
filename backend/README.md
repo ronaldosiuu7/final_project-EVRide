@@ -1,6 +1,6 @@
 # Backend — FastAPI
 
-Nền tảng REST API bằng Python/FastAPI. Hiện có health endpoint và Swagger; chưa triển khai đăng nhập hoặc nghiệp vụ thuê xe. PostgreSQL được cấu hình cho Alembic, ORM và seed tiện ích; health endpoint vẫn không cần kết nối database.
+Nền tảng REST API bằng Python/FastAPI. Backend có health/auth/users/documents/files cùng các luồng trạm, xe, bảng giá, ví demo, khuyến mãi và thuê/nhận/trả/quyết toán. PostgreSQL được cấu hình cho Alembic, ORM và seed tiện ích; health endpoint vẫn không cần kết nối database.
 
 ## Cài đặt và chạy
 
@@ -67,6 +67,7 @@ Tạo file `backend/.env` từ `backend/.env.example` (xem lệnh ở phần Cà
 | `REFRESH_GRACE_SECONDS` | Thời gian ân hạn (1..60 giây) cho phép replay kết quả refresh khi mất gói tin mạng. | `15` |
 | `AUTH_ORIGINS` | Danh sách Origin được phép gọi auth và CORS (phân tách dấu phẩy, không dùng `*`). | Local: `http://localhost:5173`; Production: `https://thuexedien.me`. |
 | `AUTH_COOKIE_SECURE` | Cờ `Secure` cho refresh cookie (`true` hoặc `false`). | Local HTTP: `false`; Production HTTPS: `true`. |
+| `DEMO_PAYMENTS_ENABLED` | Bật nạp ví mô phỏng; không kết nối cổng thanh toán thật. | Mặc định `false`; chỉ bật cho môi trường demo được kiểm soát. |
 
 `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER` và `DB_PASSWORD` được dùng để tạo kết nối trong `app/database.py`; khi thiếu biến bắt buộc, module này báo lỗi. Health endpoint hiện tại chỉ kiểm tra ứng dụng hoạt động, không kiểm tra kết nối database. Prefix `/api/v1` được khai báo tại `app/api/v1/router.py`; `/docs` và `/openapi.json` nằm ngoài prefix này.
 
@@ -107,41 +108,24 @@ Seed tạo CUSTOMER có CCCD `PENDING`, đã `VERIFIED` và chưa nộp giấy t
 | Thư mục | Trách nhiệm |
 | --- | --- |
 | `app/main.py` | Khởi tạo ứng dụng FastAPI và đăng ký router. |
-| `app/api/v1/` | Tập hợp router dưới tiền tố `/api/v1`, hiện có `health.py`. |
+| `app/api/v1/` | Router dưới tiền tố `/api/v1`: auth, users, documents/files, fleet, wallets và rentals. |
 | `app/core/` | Cấu hình môi trường, bảo mật, logging và xử lý lỗi chung. |
 | `app/database.py` | Cấu hình kết nối PostgreSQL. |
 | `app/models.py` | SQLAlchemy ORM cho bảng nghiệp vụ và bảng hạ tầng; migration nằm ở `../database/migrations/`. |
+| `app/schemas/` | Pydantic request/response cho API. |
+| `app/services/` | Quy tắc nghiệp vụ, tính giá/khuyến mãi, idempotency và giao dịch ví/thuê. |
 | `database/seeds/` | Script seed idempotent, fixture dữ liệu demo và hướng dẫn; chỉ cho phép PostgreSQL loopback đã ở Alembic head. |
-| `app/modules/` | Mã nghiệp vụ, tổ chức theo từng chức năng. |
-| `app/shared/` | Tiện ích và kiểu dữ liệu dùng chung, không gắn với một nghiệp vụ cụ thể. |
-| `tests/` | Unit test fixture/seed; kiểm thử nghiệp vụ có thể mở rộng sau. |
-| `tests/integration/` | Kiểm thử API và tương tác cơ sở dữ liệu. |
+| `tests/` | Unit test fixture, khuyến mãi và quy tắc tính giá; kiểm thử DB cần PostgreSQL riêng. |
 
-## Các module
+## Các luồng nghiệp vụ
 
-| Module | Phạm vi dự kiến |
+| Luồng | Endpoint chính |
 | --- | --- |
-| `auth` | Đăng ký, đăng nhập, xác thực và phân quyền. |
-| `users` | Tài khoản và hồ sơ khách hàng/nhân viên. |
-| `stations` | Trạm nhận/trả xe, vị trí và sức chứa. |
-| `vehicles` | Danh mục xe, trạng thái, mức pin và giá thuê. |
-| `bookings` | Giữ xe có sẵn trong 30 phút, hủy và hết hạn; không đặt trước nhiều ngày. |
-| `trips` | Nhân viên bàn giao/nhận lại xe, trả khác trạm còn chỗ, thời gian thuê thực tế và tính phí. |
-| `wallets` | Ví trả trước, nạp tiền và lịch sử giao dịch. |
-| `maintenance` | Báo lỗi, lịch bảo trì và tình trạng sửa chữa. |
-| `analytics` | Báo cáo doanh thu, chuyến đi và mức sử dụng xe. |
+| Trạm/xe/bảng giá/điều chuyển | `/stations`, `/vehicles`, `/prices` |
+| Ví và khuyến mãi | `/wallets`, `/promotions`, `/users/me/promotions` |
+| Giữ xe và vòng đời thuê | `/rentals`, pickup, initiate-return, return-quote, return |
+| Tệp và bảo trì | Một số schema/contract đã có; xem `docs/api-contract.md` để biết phần chưa tích hợp. |
 
-Khi triển khai một module, có thể thêm các file sau theo nhu cầu:
-
-```text
-vehicles/
-├── router.py       # Nhận request, gọi service, trả response
-├── schemas.py      # Dữ liệu đầu vào/đầu ra
-├── service.py      # Quy tắc nghiệp vụ
-├── repository.py   # Truy vấn dữ liệu
-└── models.py       # Mô hình ORM
-```
-
-Các file ví dụ trên chưa được tạo. Router gọi service; service dùng repository để truy cập dữ liệu. Tránh đặt logic tính phí hoặc cập nhật ví trực tiếp trong router.
+Mọi thay đổi tài chính được xử lý trong transaction PostgreSQL; các endpoint ghi được contract gắn `I` yêu cầu `Idempotency-Key`. Top-up chỉ là mô phỏng và trả `503 FEATURE_NOT_ENABLED` nếu `DEMO_PAYMENTS_ENABLED` không bật.
 
 Các thư mục nghiệp vụ còn lại là khung dự kiến, chưa có mã triển khai.
