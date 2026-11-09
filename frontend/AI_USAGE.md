@@ -5,3 +5,4 @@
 
 - **Cập nhật (#16):** Dùng trợ lý AI (Antigravity) để đối chiếu mock data với `docs/api-contract.md` mới (đổi `daily_price` sang `first_30_minutes_price`/`extra_minute_price`, bổ sung trạng thái xe `RETURN_PENDING`/`SUSPECTED_STOLEN`), cập nhật trang danh sách xe, Dashboard và README. Người thực hiện đã kiểm tra lại bằng `npm run build`.
 - **Cập nhật (khung giao diện chung):** Dùng trợ lý AI (Antigravity) hỗ trợ viết lớp API giả lập `mockApi.js`, hook `useApiQuery`, các component trạng thái đang tải/rỗng/lỗi, bộ lọc khoảng ngày và CSS responsive. Người thực hiện đã kiểm tra lại bằng `npm run build`.
+- **Cập nhật (màn hình M4 Xe và trạm):** Dùng trợ lý AI (Antigravity) hỗ trợ bổ sung bộ lọc, phân trang, cảnh báo pin < 30%, modal điều chuyển xe và modal đổi trạng thái `AVAILABLE ↔ MAINTENANCE` trên dữ liệu giả lập. Người thực hiện đã kiểm tra lại bằng `npm run build`.
