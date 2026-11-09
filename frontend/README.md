@@ -92,6 +92,9 @@ Mọi đường dẫn không khớp sẽ được chuyển về `/admin`.
 | `src/components/common/EmptyState.jsx` | Trạng thái **rỗng**, kèm hướng dẫn việc tiếp theo. |
 | `src/components/common/ErrorState.jsx` | Trạng thái **lỗi**, hiển thị `error.code` và nút **Tải lại**. |
 | `src/components/common/DateRangeFilter.jsx` | Bộ lọc khoảng ngày dùng chung (`from_date`, `to_date` đi cùng nhau, `from_date <= to_date`). |
+| `src/components/common/Pagination.jsx` | Thanh phân trang theo `meta` (`page`, `page_size`, `total`). |
+| `src/features/vehicles/VehicleMoveModal.jsx` | Modal điều chuyển xe sang trạm ACTIVE còn chỗ (`POST /vehicles/{id}/move`). |
+| `src/features/vehicles/VehicleStatusModal.jsx` | Modal đổi trạng thái xe `AVAILABLE ↔ MAINTENANCE` bắt buộc có `note` (`POST /vehicles/{id}/status`). |
 
 Các trang không import trực tiếp `mockData.js` nữa mà gọi qua `mockApi.js`.
 
