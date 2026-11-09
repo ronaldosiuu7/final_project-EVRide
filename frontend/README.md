@@ -67,6 +67,21 @@ Sau khi ứng dụng khởi chạy, có thể truy cập các trang quản trị
 
 Lưu ý: Các đường dẫn trên cần tương ứng với cấu hình routing thực tế của dự án.
 
+### Dữ liệu mẫu (mock data)
+
+Toàn bộ dữ liệu mẫu nằm tại `src/utils/mockData.js`, tên trường và kiểu dữ liệu bám theo `docs/api-contract.md`:
+
+- ID và tiền là chuỗi (ví dụ `"101"`, `"10000.00"`), enum viết hoa, timestamp RFC 3339 UTC, trường chưa có trả `null`.
+- Station: `id, name, address, latitude, longitude, capacity, opens_at, closes_at, status, occupied_spaces, available_spaces, available_vehicle_count`.
+- Vehicle: `id, current_station_id, name, type, battery_percent, status, first_30_minutes_price, extra_minute_price, deposit_amount, created_at` (không còn `daily_price`).
+- Dashboard dùng dạng response `GET /analytics/overview`.
+
+Giao diện khách hàng (#15) nên dùng chung file này để tên trường thống nhất. Chưa kết nối API thật.
+
+### Router
+
+Mọi đường dẫn không khớp sẽ được chuyển về `/admin`.
+
 ## 5. Kiểm tra và xây dựng dự án
 
 Sau khi cài đặt thư viện, thực hiện kiểm tra khả năng build của ứng dụng.
@@ -135,6 +150,14 @@ Chỉ xóa thư mục `dist` khi đã xác nhận không cần giữ lại bản
 Cài đặt Node.js từ trang chính thức: https://nodejs.org/
 
 Sau khi cài đặt, mở lại Terminal và kiểm tra phiên bản Node.js, npm.
+
+### Lỗi PowerShell `npm.ps1 cannot be loaded because running scripts is disabled`
+
+Dùng `npm.cmd` thay cho `npm` (ví dụ `npm.cmd install`, `npm.cmd run dev`), hoặc cho phép script cho người dùng hiện tại:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
 
 ### Lỗi thiếu thư viện
 

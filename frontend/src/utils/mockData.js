@@ -1,3 +1,6 @@
+// Mock data theo docs/api-contract.md (EVRide V1).
+// Quy ước: ID và tiền là chuỗi, enum viết hoa, timestamp RFC 3339 UTC, nullable trả null.
+
 export const mockStations = [
   {
     id: "1",
@@ -23,8 +26,8 @@ export const mockStations = [
     opens_at: "06:00:00",
     closes_at: "22:00:00",
     status: "ACTIVE",
-    occupied_spaces: 2,
-    available_spaces: 10,
+    occupied_spaces: 3,
+    available_spaces: 9,
     available_vehicle_count: 1
   },
   {
@@ -43,61 +46,92 @@ export const mockStations = [
   }
 ];
 
+// Vehicle: id, current_station_id?, name, type, battery_percent, status,
+// first_30_minutes_price, extra_minute_price, deposit_amount, created_at
 export const mockVehicles = [
   {
     id: "101",
     current_station_id: "1",
     name: "VinFast VF 3 - 30K-102.34",
-    type: "MINI_SUV",
+    type: "CITY",
     battery_percent: 92,
     status: "AVAILABLE",
-    daily_price: "600000.00",
-    deposit_amount: "3000000.00",
+    first_30_minutes_price: "10000.00",
+    extra_minute_price: "350.00",
+    deposit_amount: "100000.00",
     created_at: "2026-10-15T08:00:00Z"
   },
   {
     id: "102",
     current_station_id: "1",
     name: "VinFast VF 5 Plus - 30K-554.12",
-    type: "A_SUV",
+    type: "CITY",
     battery_percent: 85,
     status: "RESERVED",
-    daily_price: "800000.00",
-    deposit_amount: "5000000.00",
+    first_30_minutes_price: "10000.00",
+    extra_minute_price: "350.00",
+    deposit_amount: "100000.00",
     created_at: "2026-10-16T09:15:00Z"
   },
   {
     id: "103",
     current_station_id: null,
     name: "VinFast VF e34 - 30K-889.01",
-    type: "C_SUV",
+    type: "LONG_RANGE",
     battery_percent: 64,
     status: "RENTED",
-    daily_price: "1100000.00",
-    deposit_amount: "7000000.00",
+    first_30_minutes_price: "12000.00",
+    extra_minute_price: "400.00",
+    deposit_amount: "100000.00",
     created_at: "2026-10-17T10:30:00Z"
   },
   {
     id: "104",
     current_station_id: "2",
     name: "VinFast VF 8 Eco - 30K-332.79",
-    type: "D_SUV",
+    type: "LONG_RANGE",
     battery_percent: 18,
     status: "MAINTENANCE",
-    daily_price: "1500000.00",
-    deposit_amount: "10000000.00",
+    first_30_minutes_price: "12000.00",
+    extra_minute_price: "400.00",
+    deposit_amount: "100000.00",
     created_at: "2026-10-18T14:20:00Z"
   },
   {
     id: "105",
     current_station_id: "2",
     name: "VinFast VF 5 Plus - 30K-991.56",
-    type: "A_SUV",
+    type: "CITY",
     battery_percent: 98,
     status: "AVAILABLE",
-    daily_price: "800000.00",
-    deposit_amount: "5000000.00",
+    first_30_minutes_price: "10000.00",
+    extra_minute_price: "350.00",
+    deposit_amount: "100000.00",
     created_at: "2026-10-19T07:45:00Z"
+  },
+  {
+    id: "106",
+    current_station_id: "2",
+    name: "VinFast VF 3 - 30K-777.20",
+    type: "CITY",
+    battery_percent: 29,
+    status: "RETURN_PENDING",
+    first_30_minutes_price: "10000.00",
+    extra_minute_price: "350.00",
+    deposit_amount: "100000.00",
+    created_at: "2026-10-20T06:10:00Z"
+  },
+  {
+    id: "107",
+    current_station_id: null,
+    name: "VinFast VF 6 - 30K-640.88",
+    type: "LONG_RANGE",
+    battery_percent: 12,
+    status: "SUSPECTED_STOLEN",
+    first_30_minutes_price: "12000.00",
+    extra_minute_price: "400.00",
+    deposit_amount: "100000.00",
+    created_at: "2026-10-20T11:00:00Z"
   }
 ];
 
@@ -124,19 +158,29 @@ export const mockRecentTickets = [
   }
 ];
 
-const statusOrder = ["AVAILABLE", "RESERVED", "RENTED", "MAINTENANCE"];
+// Enum trạng thái xe theo api-contract.md mục 3.
+export const VEHICLE_STATUSES = [
+  "AVAILABLE",
+  "RESERVED",
+  "RENTED",
+  "RETURN_PENDING",
+  "MAINTENANCE",
+  "SUSPECTED_STOLEN",
+  "STOLEN"
+];
 
+// GET /analytics/overview
 export const mockAnalyticsOverviewResponse = {
   data: {
     trip_count: 14,
-    revenue: "12400000.00",
-    average_trip_minutes: 185,
+    revenue: "1250000.00",
+    average_trip_minutes: 48,
     customer_count: 11,
-    vehicles_by_status: statusOrder.map((st) => ({
+    vehicles_by_status: VEHICLE_STATUSES.map((st) => ({
       status: st,
       count: mockVehicles.filter((v) => v.status === st).length
     })),
-    recent_tickets: mockRecentTickets,
+    recent_tickets: mockRecentTickets.slice(0, 5),
     near_full_stations: mockStations
       .filter((s) => s.status === "ACTIVE" && s.available_spaces <= 1)
       .sort((a, b) => a.available_spaces - b.available_spaces || Number(a.id) - Number(b.id))
@@ -152,4 +196,9 @@ export const formatVndCurrency = (decimalString) => {
   if (decimalString === null || decimalString === undefined) return "—";
   const numericValue = Number(decimalString);
   return `${numericValue.toLocaleString("vi-VN")} ₫`;
+};
+
+export const formatDateTime = (isoString) => {
+  if (!isoString) return "—";
+  return new Date(isoString).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
 };
