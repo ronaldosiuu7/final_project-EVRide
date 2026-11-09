@@ -19,7 +19,8 @@ const MAX_PAGE_SIZE = 100;
 export const db = {
   stations: mockStations.map((s) => ({ ...s })),
   vehicles: mockVehicles.map((v) => ({ ...v })),
-  tickets: mockRecentTickets.map((t) => ({ ...t }))
+  tickets: mockRecentTickets.map((t) => ({ ...t })),
+  moveAudits: []
 };
 
 export class ApiError extends Error {
@@ -158,4 +159,97 @@ export const listVehicles = (params = {}) =>
       .sort(byCreatedDesc);
     return paginate(items, params);
   });
+
+// POST /vehicles/{id}/move (S/M, Idempotency-Key)
+// Body: { target_station_id, note? }
+// Chỉ điều chuyển xe AVAILABLE hoặc MAINTENANCE đang ở trạm sang trạm ACTIVE còn chỗ trống.
+export const moveVehicle = (vehicleId, body = {}) =>
+  respond(() => {
+    recomputeStationCounters();
+    const vehicle = db.vehicles.find((v) => v.id === String(vehicleId));
+    if (!vehicle) {
+      throw new ApiError(404, 'NOT_FOUND', `Không tìm thấy xe #${vehicleId}.`);
+    }
+    if (!['AVAILABLE', 'MAINTENANCE'].includes(vehicle.status)) {
+      throw new ApiError(
+        409,
+        'INVALID_STATE_TRANSITION',
+        `Không thể điều chuyển xe đang ở trạng thái ${vehicle.status}.`
+      );
+    }
+    const targetStationId = String(body.target_station_id || '').trim();
+    if (!targetStationId) {
+      throw new ApiError(422, 'VALIDATION_ERROR', 'Vui lòng chọn trạm đích.', {
+        fields: [{ field: 'target_station_id', message: 'Bắt buộc chọn trạm đích.' }]
+      });
+    }
+    if (vehicle.current_station_id === targetStationId) {
+      throw new ApiError(422, 'VALIDATION_ERROR', 'Trạm đích trùng với trạm hiện tại.', {
+        fields: [{ field: 'target_station_id', message: 'Phải khác trạm hiện tại.' }]
+      });
+    }
+    const targetStation = db.stations.find((s) => s.id === targetStationId);
+    if (!targetStation) {
+      throw new ApiError(404, 'NOT_FOUND', `Không tìm thấy trạm #${targetStationId}.`);
+    }
+    if (targetStation.status !== 'ACTIVE') {
+      throw new ApiError(409, 'STATION_UNAVAILABLE', 'Trạm đích đang ngừng hoạt động (INACTIVE).');
+    }
+    if (targetStation.available_spaces <= 0) {
+      throw new ApiError(409, 'STATION_FULL', 'Trạm đích đã đầy chỗ đỗ.');
+    }
+    const note = body.note ? String(body.note).trim() : null;
+    if (note && note.length > 2000) {
+      throw new ApiError(422, 'VALIDATION_ERROR', 'Ghi chú tối đa 2.000 ký tự.');
+    }
+    const fromStationId = vehicle.current_station_id;
+    vehicle.current_station_id = targetStationId;
+    recomputeStationCounters();
+    db.moveAudits.unshift({
+      id: String(db.moveAudits.length + 1),
+      vehicle_id: vehicle.id,
+      from_station_id: fromStationId,
+      to_station_id: targetStationId,
+      note,
+      created_at: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z')
+    });
+    return single({ ...vehicle });
+  });
+
+// POST /vehicles/{id}/status (S/M, Idempotency-Key)
+// Body: { status: "AVAILABLE" | "MAINTENANCE", note }
+// AVAILABLE <-> MAINTENANCE chỉ khi xe đang ở trạm và không có thuê/giữ chỗ đang hiệu lực.
+export const updateVehicleStatus = (vehicleId, body = {}) =>
+  respond(() => {
+    const vehicle = db.vehicles.find((v) => v.id === String(vehicleId));
+    if (!vehicle) {
+      throw new ApiError(404, 'NOT_FOUND', `Không tìm thấy xe #${vehicleId}.`);
+    }
+    if (vehicle.current_station_id === null || !['AVAILABLE', 'MAINTENANCE'].includes(vehicle.status)) {
+      throw new ApiError(
+        409,
+        'INVALID_STATE_TRANSITION',
+        'Chỉ đổi trạng thái AVAILABLE ↔ MAINTENANCE khi xe đang ở trạm và không có chuyến thuê/giữ chỗ.'
+      );
+    }
+    const nextStatus = String(body.status || '').trim();
+    if (!['AVAILABLE', 'MAINTENANCE'].includes(nextStatus) || nextStatus === vehicle.status) {
+      throw new ApiError(422, 'VALIDATION_ERROR', 'Trạng thái mới phải là AVAILABLE hoặc MAINTENANCE và khác trạng thái hiện tại.', {
+        fields: [{ field: 'status', message: 'Chỉ cho phép chuyển đổi giữa AVAILABLE và MAINTENANCE.' }]
+      });
+    }
+    const note = String(body.note || '').trim();
+    if (!note) {
+      throw new ApiError(422, 'VALIDATION_ERROR', 'Bắt buộc nhập lý do/ghi chú khi đổi trạng thái xe.', {
+        fields: [{ field: 'note', message: 'Trường note không được để trống.' }]
+      });
+    }
+    if (note.length > 2000) {
+      throw new ApiError(422, 'VALIDATION_ERROR', 'Ghi chú tối đa 2.000 ký tự.');
+    }
+    vehicle.status = nextStatus;
+    recomputeStationCounters();
+    return single({ ...vehicle });
+  });
+
 
