@@ -82,6 +82,23 @@ Giao diện khách hàng (#15) nên dùng chung file này để tên trường t
 
 Mọi đường dẫn không khớp sẽ được chuyển về `/admin`.
 
+### Cấu trúc khung giao diện
+
+| Thư mục / file | Vai trò |
+|---|---|
+| `src/services/mockApi.js` | Lớp API giả lập, trả về envelope `{data, meta}` và lỗi `{status, code, message}` đúng contract. Khi có backend chỉ cần thay thân hàm bằng `fetch('/api/v1/...')`. |
+| `src/hooks/useApiQuery.js` | Hook gọi API, quản lý `loading` / `error` / `data` và hàm `reload()`. |
+| `src/components/common/LoadingState.jsx` | Trạng thái **đang tải**. |
+| `src/components/common/EmptyState.jsx` | Trạng thái **rỗng**, kèm hướng dẫn việc tiếp theo. |
+| `src/components/common/ErrorState.jsx` | Trạng thái **lỗi**, hiển thị `error.code` và nút **Tải lại**. |
+| `src/components/common/DateRangeFilter.jsx` | Bộ lọc khoảng ngày dùng chung (`from_date`, `to_date` đi cùng nhau, `from_date <= to_date`). |
+
+Các trang không import trực tiếp `mockData.js` nữa mà gọi qua `mockApi.js`.
+
+**Thử trạng thái lỗi:** thêm `?mock_error=1` vào URL, ví dụ http://localhost:5173/admin?mock_error=1.
+
+**Giao diện điện thoại (390px):** sidebar ẩn sau nút ☰ trên header, bảng cuộn ngang.
+
 ## 5. Kiểm tra và xây dựng dự án
 
 Sau khi cài đặt thư viện, thực hiện kiểm tra khả năng build của ứng dụng.
