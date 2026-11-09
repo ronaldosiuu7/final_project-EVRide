@@ -131,8 +131,7 @@ Danh sách phương tiện và trạng thái thực tế.
 | `id` | `bigint` | **PK** |
 | `current_station_id` | `bigint` | **FK** -> `stations.id` (NULL khi đang được thuê) |
 | `name` | `varchar(100)` | NOT NULL |
-| `model` | `varchar(100)` | NOT NULL (Mẫu xe dùng để lọc phạm vi khuyến mãi) |
-| `type` | `varchar(50)` | NOT NULL |
+| `model` | `varchar(100)` | NOT NULL (Mẫu xe; dùng để lọc xe và phạm vi khuyến mãi) |
 | `battery_percent` | `int` | NOT NULL (0 - 100) |
 | `status` | `varchar(20)` | NOT NULL (`AVAILABLE`, `RESERVED`, `RENTED`, `RETURN_PENDING`, `MAINTENANCE`, `SUSPECTED_STOLEN`, `STOLEN`) |
 | `first_30_minutes_price` | `numeric(12,2)` | NOT NULL, CHECK >= 0 |
@@ -267,7 +266,7 @@ Chương trình khuyến mãi và ví voucher của người dùng.
 Lưu bền vững request và response để nhận diện retry, phát hiện cùng key khác body và replay kết quả sau timeout. Khóa phạm vi là `(actor_id, http_method, request_path, idempotency_key)`; `request_hash` là SHA-256 của body. `PROCESSING` chưa có response; `COMPLETED` giữ HTTP status và JSON response. `expires_at` không sớm hơn 24 giờ sau khi tạo; chỉ dọn record đã hết hạn.
 
 #### Bảng `rental_pricing_snapshots`
-Mỗi lượt thuê có tối đa một snapshot bất biến theo quy ước ứng dụng: lưu tên/loại/mẫu xe, giá 30 phút đầu, giá phút thêm, tiền cọc, phiên bản/JSON chính sách giá, đơn vị tính phí và promotion/code/loại/giá trị/mức giảm đã áp dụng. Khóa ngoại promotion có thể rỗng nếu promotion bị xóa; code và điều khoản/giá trị áp dụng vẫn được giữ lại.
+Mỗi lượt thuê có tối đa một snapshot bất biến theo quy ước ứng dụng: lưu tên và mẫu xe, giá 30 phút đầu, giá phút thêm, tiền cọc, phiên bản/JSON chính sách giá, đơn vị tính phí và promotion/code/loại/giá trị/mức giảm đã áp dụng. Khóa ngoại promotion có thể rỗng nếu promotion bị xóa; code và điều khoản/giá trị áp dụng vẫn được giữ lại.
 
 #### Bảng `audit_logs`
 Lưu actor, action, loại/ID tài nguyên, request ID, JSON trước/sau và thời điểm. Nhật ký được append-only theo quy ước ứng dụng; không ghi mật khẩu, token, dữ liệu giấy tờ nhạy cảm hoặc bí mật khác vào payload audit.
@@ -335,6 +334,8 @@ Alembic revision được quản lý tập trung tại `database/migrations/`; c
 Revision `888ad91e139e` bổ sung lịch sử giá, phiếu bảo trì, kho file/đính kèm, audit điều chuyển và báo giá trả xe; đồng thời thêm CHECK còn thiếu, mở rộng unique rental sang `RETURN_PENDING` và cấm UPDATE/DELETE lịch sử giá/audit điều chuyển. Migration cố ý dừng nếu database có xe hoặc snapshot giá cũ, URL ảnh giấy tờ chưa chuyển sang kho riêng tư, hay giấy tờ VERIFIED chưa có dữ liệu xác minh mới. Không suy diễn giá block đầu/phút từ `daily_price`; cần lập kế hoạch chuyển đổi dữ liệu trước khi chạy migration trên môi trường có dữ liệu.
 
 Revision `d3f914a27c6b` bổ sung mẫu xe riêng, hai kiểu giảm, phạm vi xe và hạn mức lượt dùng. Revision `f73c21e84a6b` bỏ bộ lọc `vehicle_type`, giữ phạm vi theo mẫu xe. Mẫu xe dữ liệu cũ được backfill từ `vehicles.name`; số lượt đã dùng được backfill từ các claim `is_used`. Mã cũ giữ `usage_limit = NULL` vì không thể suy ra hạn mức lịch sử; mã mới phải khai báo hạn mức dương. Migration dừng nếu gặp khuyến mãi/snapshot có phần trăm không hợp lệ thay vì tự sửa dữ liệu. Service `app/services/promotions.py` tính mức giảm và tiêu thụ claim/hạn mức trong transaction do caller quản lý; quote/thanh toán hiện chưa có để tích hợp service.
+
+Revision `b18f7e4c2a91` loại bỏ phân loại `vehicles.type` và `rental_pricing_snapshots.vehicle_type_snapshot`; `vehicles.model`/`vehicle_model_snapshot` là trường mẫu xe duy nhất. Cập nhật schema bằng `alembic upgrade head` trước khi chạy phiên bản backend mới.
 
 ### 4.1. Xử lý Thời gian & Hết hạn giữ xe
 * **Múi giờ:** Luôn lưu dưới dạng `timestamptz` (thống nhất chuẩn UTC trong CSDL).

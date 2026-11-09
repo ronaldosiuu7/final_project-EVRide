@@ -88,7 +88,7 @@ Màn hình Báo hỏng và Bảo trì thuộc luồng nghiệp vụ báo hỏng 
 
 1. Heatmap hiển thị tối đa 20 trạm đông nhất; có thể lọc riêng một trạm. Bộ lọc và thứ tự được định nghĩa trong API contract.
 2. Role quản trị là `STAFF`/`MANAGER`; `nhan_vien` chỉ là nhãn tiếng Việt, không phải role wire/DB.
-3. Bảng giá là theo từng xe, lịch sử append-only; doanh thu nhóm theo `vehicle_type_snapshot` đã lưu ở rental, không dùng loại xe hiện tại để viết lại lịch sử.
+3. Bảng giá là theo từng xe, lịch sử append-only; `model` là mẫu xe duy nhất, doanh thu nhóm theo `vehicle_model_snapshot` đã lưu ở rental, không dùng mẫu xe hiện tại để viết lại lịch sử.
 4. Thay đổi chính sách giá hiện tại: 10.000đ cho 30 phút đầu, 350đ/phút thêm; seed chỉ dành cho dữ liệu demo. Xe chỉ được đặt/pickup khi pin từ 30% trở lên.
 5. Thiếu số dư trả `409 INSUFFICIENT_BALANCE`, không dùng HTTP 402. Ngưỡng đặt xe phụ thuộc `deposit_amount_snapshot + first_30_minutes_price_snapshot`, không phải một con số cố định 20.000đ.
 6. API quản lý bảng giá, bảo trì, file upload/download và audit điều chuyển được mô tả ở mức đề xuất trong `api-contract.md`; chưa coi là chức năng đã triển khai.

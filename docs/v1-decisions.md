@@ -31,7 +31,7 @@ Mỗi dòng chỉ được chuyển sang **Đã duyệt** sau khi ghi rõ giá t
 | Hạng mục | Trạng thái hiện tại / giá trị đã chốt hoặc cần chốt | Người duyệt / Ngày duyệt |
 | --- | --- | --- |
 | 1. Cách tính giá thuê | **Đã duyệt (R2):** Tối thiểu 10.000đ cho 30 phút đầu (`1.800` giây); sau đó 350đ/phút, phần phút lẻ làm tròn lên. Tính từ `actual_start_time` đến `return_initiated_at`. Làm tròn tổng tiền sau giảm giá đến 1 đồng bằng `HALF_UP`. | Nguyễn Đức Anh — 02/11/2026 |
-| 2. Bảng giá & Snapshot | **Đã duyệt (R2):** Lưu bản chụp `first_30_minutes_price_snapshot`, `extra_minute_price_snapshot`, `deposit_amount_snapshot`, `vehicle_type_snapshot`, `pricing_policy_version` và đơn vị tính phí khi giữ xe thành công. Giữ nguyên cho chuyến đó; lưu lịch sử đổi giá. | Nguyễn Đức Anh — 02/11/2026 |
+| 2. Bảng giá & Snapshot | **Đã duyệt (R2):** Lưu bản chụp `first_30_minutes_price_snapshot`, `extra_minute_price_snapshot`, `deposit_amount_snapshot`, `vehicle_model_snapshot`, `pricing_policy_version` và đơn vị tính phí khi giữ xe thành công. Giữ nguyên cho chuyến đó; lưu lịch sử đổi giá. `model` là mẫu xe duy nhất, không dùng `type`. | Nguyễn Đức Anh — 02/11/2026 |
 | 3. Tiền cọc & Hủy | **Đã duyệt (R2):** Cọc demo 100.000đ/xe, kiểm tra số dư `>= cọc + giá 1 block` khi giữ xe, thu cọc từ ví khi pickup. Hủy/hết hạn trước pickup miễn phí. Khi trả, cấn trừ và hoàn phần thừa. | Nguyễn Đức Anh — 02/11/2026 |
 | 4. Điều kiện khách & Giấy tờ | **Đã duyệt (R2):** Chính sách demo: khách từ đủ 16 tuổi (theo giờ `Asia/Ho_Chi_Minh`), tài khoản `CUSTOMER` `ACTIVE`, chỉ cần `CCCD` còn hiệu lực và `VERIFIED`; không yêu cầu `DRIVER_LICENSE` hoặc `PASSPORT`. | Nguyễn Đức Anh — 02/11/2026 |
 | 5. Ngưỡng pin & Đếm xe/chỗ | **Đã duyệt (R2):** Pin tối thiểu 30% khi cho đặt và khi bàn giao. Pin dưới 30% sau trả không được cho thuê tiếp đến khi đủ pin. Truy vấn động `rentable_vehicles` và `free_slots`, không lưu cột đếm vật lý trong `stations`. | Nguyễn Đức Anh — 02/11/2026 |
@@ -78,7 +78,7 @@ Lý do: phù hợp chuyến ngắn giữa các trạm; dễ hiển thị và ki�
 
 ## 2. Chốt giá tại thời điểm giữ xe
 
-- Khi tạo rental thành công, lưu `first_30_minutes_price_snapshot`, `extra_minute_price_snapshot`, `deposit_amount_snapshot`, `vehicle_type_snapshot`, `pricing_policy_version` và đơn vị tính phí.
+- Khi tạo rental thành công, lưu `first_30_minutes_price_snapshot`, `extra_minute_price_snapshot`, `deposit_amount_snapshot`, `vehicle_model_snapshot`, `pricing_policy_version` và đơn vị tính phí.
 - Frontend hiển thị giá 30 phút đầu, giá mỗi phút thêm, cọc và cách làm tròn trước khi khách xác nhận giữ xe.
 - Giá/cọc mới do MANAGER cập nhật chỉ áp dụng cho rental tạo sau thay đổi. Rental đang giữ hoặc đang thuê vẫn dùng snapshot cũ.
 - Hết hạn/hủy rồi đặt lại là rental mới, dùng giá/cọc hiện hành.

@@ -162,7 +162,7 @@ Các schema bên dưới liệt kê trường response. ID/tiền/thời gian th
 | `user_documents` | Document: `id, user_id, document_type, document_number_masked, verified_status, expires_on?, verified_birth_date?, verified_by?, verified_at?, revoked_at?, created_at` | Chính mình/S/M; ảnh và số đầy đủ chỉ qua endpoint riêng |
 | `stations` | Station: `id, name, address, latitude, longitude, capacity, opens_at?, closes_at?, status, occupied_spaces, available_spaces, available_vehicle_count` | Public |
 | `vehicles` | Vehicle: `id, current_station_id?, name, model, type, battery_percent, status, first_30_minutes_price, extra_minute_price, deposit_amount, created_at` | Public chỉ xe có thể thuê; S/M xem tất cả |
-| `rentals` | Rental: `id, customer_id, vehicle_id, pickup_station_id, actual_return_station_id?, created_at, expires_at, actual_start_time?, actual_end_time?, return_initiated_at?, settled_at?, cancelled_at?, cancellation_reason?, cancellation_limit_exempt, first_30_minutes_price_snapshot, extra_minute_price_snapshot, deposit_amount_snapshot, vehicle_type_snapshot, pricing_policy_version, billing_unit, deposit_held, status, total_price?, remaining_hold_seconds, elapsed_seconds` | Owner/S/M |
+| `rentals` | Rental: `id, customer_id, vehicle_id, pickup_station_id, actual_return_station_id?, created_at, expires_at, actual_start_time?, actual_end_time?, return_initiated_at?, settled_at?, cancelled_at?, cancellation_reason?, cancellation_limit_exempt, first_30_minutes_price_snapshot, extra_minute_price_snapshot, deposit_amount_snapshot, vehicle_model_snapshot, pricing_policy_version, billing_unit, deposit_held, status, total_price?, remaining_hold_seconds, elapsed_seconds` | Owner/S/M |
 | `handovers` | Handover: `id, rental_id, staff_id, kind, time, battery_percent, vehicle_condition?, note?, created_at` | Owner/S/M |
 | `vehicle_pricing_history` | PriceVersion: `id, vehicle_id, version_number, old_first_30_minutes_price?, new_first_30_minutes_price, old_extra_minute_price?, new_extra_minute_price, old_deposit_amount?, new_deposit_amount, changed_by, created_at` | S/M |
 | `maintenance_orders` | MaintenanceOrder: `id, vehicle_id, created_by, assigned_to?, title, description, status, opened_at, started_at?, completed_at?, resolution_note?, created_at, updated_at` | S/M |
@@ -229,14 +229,14 @@ CCCD hợp lệ khi VERIFIED, chưa thu hồi và ngày hiện tại tại Asia/
 | --- | --- | --- | --- |
 | GET `/stations` | Public | `q?, has_available_vehicles?, has_return_space?`, phân trang | Station[] ACTIVE |
 | GET `/stations/{id}` | Public | — | Station ACTIVE |
-| GET `/stations/{id}/vehicles` | Public | `type?`, phân trang | Vehicle[] có thể đặt tại trạm |
-| GET `/vehicles` | Public hoặc S/M | `station_id?, type?, status?`, phân trang | Vehicle[]; Public chỉ AVAILABLE đủ điều kiện |
+| GET `/stations/{id}/vehicles` | Public | `model?`, phân trang | Vehicle[] có thể đặt tại trạm |
+| GET `/vehicles` | Public hoặc S/M | `station_id?, model?, status?`, phân trang | Vehicle[]; Public chỉ AVAILABLE đủ điều kiện |
 | GET `/vehicles/{id}` | Public hoặc S/M | — | Vehicle; Public chỉ xe đang cho phép đặt, còn lại 404 |
 | GET `/admin/stations` | S/M | `status?, q?`, phân trang | Station[] mọi trạng thái |
 | POST `/stations` | M | `{name, address, latitude, longitude, capacity, opens_at?, closes_at?}` | 201 Station ACTIVE |
 | PATCH `/stations/{id}` | M | Các trường tạo + `status`, tất cả optional | Station |
-| POST `/vehicles` | M | `{current_station_id, name, model, type, battery_percent, first_30_minutes_price, extra_minute_price, deposit_amount}` | 201 Vehicle AVAILABLE |
-| PATCH `/vehicles/{id}` | M | `{name?, model?, type?}` | Vehicle |
+| POST `/vehicles` | M | `{current_station_id, name, model, battery_percent, first_30_minutes_price, extra_minute_price, deposit_amount}` | 201 Vehicle AVAILABLE |
+| PATCH `/vehicles/{id}` | M | `{name?, model?}` | Vehicle |
 | PATCH `/vehicles/{id}/battery` | S/M | `{battery_percent, note}` | Vehicle; có audit, không dùng để vượt qua bàn giao hoặc xử lý mất xe |
 | POST `/vehicles/{id}/status` | S/M, I | `{status: "AVAILABLE" hoặc "MAINTENANCE", note}` | Vehicle |
 
@@ -253,6 +253,8 @@ Bảng giá và điều chuyển xe đã được triển khai; các API tệp �
 | POST `/prices` | M, I | `{vehicle_id, first_30_minutes_price, extra_minute_price, deposit_amount}`; tiền gửi dạng string | 201 PriceVersion mới |
 | POST `/vehicles/{id}/move` | S/M, I | `{target_station_id, note?}` | Vehicle tại trạm mới |
 | GET `/vehicles/{id}/move-history` | S/M | Phân trang | VehicleMoveAudit[] |
+
+Vehicle có trường `model` để chỉ mẫu xe; không có trường `type`. Hai endpoint liệt kê xe lọc theo `model?`.
 | POST `/files/upload-intents` | C/S/M, I | `{filename, content_type, size_bytes, sha256}` | 201 `{file_id, upload_url, method: "PUT", headers, expires_at}` |
 | PUT `upload_url` | URL ký, không dùng bearer token | Bytes của file | Thành công theo provider object storage, ngoài API envelope |
 | POST `/files/{id}/complete` | Người upload/S/M, I | `{}` | StoredFile READY hoặc lỗi kiểm tra |
@@ -341,7 +343,7 @@ Lý do: phù hợp chuyến ngắn giữa các trạm; dễ hiển thị và ki�
 
 ### 6.3. Snapshot tại giữ xe
 
-- Khi tạo rental thành công, lưu `first_30_minutes_price_snapshot`, `extra_minute_price_snapshot`, `deposit_amount_snapshot`, `vehicle_type_snapshot`, `pricing_policy_version` và đơn vị tính phí.
+- Khi tạo rental thành công, lưu `first_30_minutes_price_snapshot`, `extra_minute_price_snapshot`, `deposit_amount_snapshot`, `vehicle_model_snapshot`, `pricing_policy_version` và đơn vị tính phí.
 - Frontend hiển thị giá 30 phút đầu, giá mỗi phút thêm, cọc và cách làm tròn trước khi khách xác nhận giữ xe.
 - Giá/cọc mới do MANAGER cập nhật chỉ áp dụng cho rental tạo sau thay đổi. Rental đang giữ hoặc đang thuê vẫn dùng snapshot cũ.
 - Hết hạn/hủy rồi đặt lại là rental mới, dùng giá/cọc hiện hành.
@@ -591,7 +593,7 @@ S/M được truy cập. Các endpoint dưới trả 200 theo envelope chung. Th
 | --- | --- | --- |
 | `/analytics/overview` | — | `{trip_count, revenue, average_trip_minutes, customer_count, vehicles_by_status: [{status, count}], recent_tickets: Ticket[], near_full_stations: Station[]}` |
 | `/analytics/peak-hours` | `station_id?` | `{items: [{station_id, station_name, hour, rental_count}], filtered_trip_count, included_trip_count}`; tối đa 20 trạm |
-| `/analytics/revenue` | — | `{items: [{month, vehicle_type, rental_count, revenue, cumulative_revenue, share_percent}], total_revenue}` |
+| `/analytics/revenue` | — | `{items: [{month, vehicle_model, rental_count, revenue, cumulative_revenue, share_percent}], total_revenue}` |
 | `/analytics/top-routes` | — | `{items: [{month, rank, pickup_station_id, return_station_id, rental_count}]}` |
 | `/analytics/idle-time` | `limit` mặc định 15, 1–100 | `{items: [{station_id, station_name, average_idle_minutes}], coverage: "OBSERVED_RETURN_PICKUP_PAIRS"}` |
 | `/analytics/inactive-customers` | `days` trong 14/30/60/90, mặc định 30; `as_of_date?`; phân trang; không dùng from_date/to_date | `{items: [{user_id, name, email, balance}], as_of_date, days}`; meta có phân trang |
@@ -607,7 +609,7 @@ S/M được truy cập. Các endpoint dưới trả 200 theo envelope chung. Th
 - Overview: average_trip_minutes tính trên chuyến COMPLETED kết thúc trong khoảng; không có thì 0. Customer_count là số khách khác nhau có chuyến bắt đầu trong khoảng. Xe theo trạng thái/trạm sắp đầy là snapshot hiện tại; near_full_stations có available_spaces <= 1, ACTIVE, tối đa 10 theo available_spaces ASC, id ASC. recent_tickets là 5 ticket mới nhất hiện tại.
 - Không có dữ liệu trả mảng rỗng/tổng 0, không trả 404. Truy vấn số liệu phải được đối chiếu độc lập khi kiểm thử.
 
-`/prices` là endpoint quản lý đã triển khai ở mục 5.1; bảng giá theo từng xe, có lịch sử append-only và snapshot bất biến tại thời điểm giữ xe. Doanh thu nhóm theo `vehicle_type_snapshot` từ rental snapshot, không suy ra loại xe/giá lịch sử từ giá trị hiện tại của `vehicles`.
+`/prices` là endpoint quản lý đã triển khai ở mục 5.1; bảng giá theo từng xe, có lịch sử append-only và snapshot bất biến tại thời điểm giữ xe. `model` là mẫu xe và là tiêu chí phân loại/lọc duy nhất; báo cáo nhóm theo `vehicle_model_snapshot` đã lưu ở rental snapshot, không suy ra mẫu xe/giá lịch sử từ giá trị hiện tại của `vehicles`.
 
 ## 12. Kiểm tra hệ thống và tiêu chí nghiệm thu
 
@@ -677,7 +679,7 @@ Contract này phân biệt rõ: **15 bảng nghiệp vụ gốc** trong DBML ban
 | Phiên & Refresh token | Bổ sung bảng `user_sessions` (UUID PK, FK `users.id` RESTRICT, `created_at`, `last_used_at`, `expires_at`, `revoked_at`, `revoke_reason`, metadata) và `refresh_tokens` (UUID PK, FK `user_sessions.id` CASCADE, `generation`, `token_hash` SHA-256 64 ký tự unique, `used_at`, `replay_until`, `replay_ciphertext`, partial unique `used_at IS NULL`). Grace replay lưu mã hóa Fernet có TTL ngắn ngay trong `refresh_tokens`; **tuyệt đối không** lưu raw token vào `idempotency_records`, `audit_logs` hay response log |
 | Giá xe | Thay daily_price/price_per_30_minutes bằng first_30_minutes_price, extra_minute_price; giữ deposit_amount. Không tự chia giá ngày cũ để suy ra giá mới |
 | Seed | 10.000đ/30 phút đầu, 350đ/phút thêm, cọc 100.000đ; chỉ áp dụng dữ liệu demo mới |
-| Snapshot | Lưu first_30_minutes_price_snapshot, extra_minute_price_snapshot, deposit_amount_snapshot, vehicle_type_snapshot, pricing_policy_version, billing_unit ngay khi reserve thành công; lịch sử đổi giá/cọc |
+| Snapshot | Lưu first_30_minutes_price_snapshot, extra_minute_price_snapshot, deposit_amount_snapshot, vehicle_model_snapshot, pricing_policy_version, billing_unit ngay khi reserve thành công; lịch sử đổi giá/cọc |
 | Trạng thái và thời gian | RETURN_PENDING cho rental/vehicle; return_initiated_at, actual_end_time, settled_at; expires_at=created_at+30 phút. settled_at khác mốc nhận xe |
 | Phiên trả và quote | Lưu trạm, pin, tình trạng, RETURN bất biến; quote_created_at, quote_expires_at, nguồn/version và token. Hết hạn quote không đổi return_initiated_at |
 | Unique lượt đang hoạt động | Hai partial unique index riêng trên customer_id và vehicle_id cho RESERVED/IN_RENT/RETURN_PENDING/STOLEN; không dùng NOW() trong predicate |
