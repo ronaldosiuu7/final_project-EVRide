@@ -15,6 +15,7 @@ function App() {
           <Route path="vehicles" element={<AdminVehicleList />} />
           <Route path="stations" element={<AdminStationList />} />
         </Route>
+        <Route path="*" element={<Navigate to="/admin" replace />} />
       </Routes>
     </BrowserRouter>
   );

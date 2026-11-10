@@ -3,7 +3,8 @@ import {
   mockAnalyticsOverviewResponse,
   mockVehicles,
   mockStations,
-  formatVndCurrency
+  formatVndCurrency,
+  formatDateTime
 } from '../../utils/mockData';
 
 const AdminDashboard = () => {
@@ -100,7 +101,7 @@ const AdminDashboard = () => {
                 <td>
                   <span className="badge badge-warning">{ticket.status}</span>
                 </td>
-                <td>{ticket.created_at}</td>
+                <td>{formatDateTime(ticket.created_at)}</td>
               </tr>
             ))}
           </tbody>
