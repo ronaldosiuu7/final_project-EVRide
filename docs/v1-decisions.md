@@ -3,8 +3,8 @@
 Tài liệu này tổng hợp các quy tắc và đề xuất trong [hợp đồng API](./api-contract.md) để backend, frontend, database và kiểm thử cùng tham chiếu. Đây là bản ghi trạng thái, không tự phê duyệt thay cho nhóm.
 
 - **Nguồn:** `docs/api-contract.md`, soạn ngày 21/10/2026; cập nhật chính sách KH01 (mục 1–7) theo phiên bản `EVRIDE_DEMO_V1_20261102_R2` ngày 02/11/2026.
-- **Người duyệt:** `Nguyễn Đức Anh`, duyệt lần đầu ngày 01/11/2026; chốt cập nhật mục 1–7 (R2) theo yêu cầu của trưởng nhóm ngày 02/11/2026.Chốt phạm vi demo tại mục 9, quyền nhân viên tại mục 11 và xử lý sự cố/mất xe tại mục 12. Mục 8 và 10 tiếp tục chờ ý kiến các thành viên.
-- **Phạm vi cập nhật R2:** Cho thuê **xe máy điện theo trạm**, giữ xe 30 phút, nhân viên bàn giao/nhận lại, trả tại trạm bất kỳ còn chỗ. Tiền trong các ví dụ là tiền demo. Các mục 8 trở đi chỉ được điều chỉnh ở phần liên quan trực tiếp (báo giá có hiệu lực 10 phút và khóa cước khi kiểm tra trả xe); các chính sách còn lại chưa được coi là đã chốt.
+- **Người duyệt:** `Nguyễn Đức Anh`, duyệt lần đầu ngày 01/11/2026; chốt cập nhật mục 1–7 (R2) theo yêu cầu của trưởng nhóm ngày 02/11/2026.Chốt phạm vi demo tại mục 9, quyền nhân viên tại mục 11 và xử lý sự cố/mất xe tại mục 12. Yêu cầu loại/đối tượng/hạn mức khuyến mãi được bổ sung ngày 08/11/2026; chính sách khuyến mãi còn lại và mục 10 tiếp tục chờ xác nhận.
+- **Phạm vi cập nhật R2:** Cho thuê **xe máy điện theo trạm**, giữ xe 30 phút, nhân viên bàn giao/nhận lại, trả tại trạm bất kỳ còn chỗ. Tiền trong các ví dụ là tiền demo. Các mục 8 trở đi chỉ được cập nhật theo quyết định/yêu cầu ghi rõ (báo giá có hiệu lực 10 phút, khóa cước khi kiểm tra trả xe và các thuộc tính khuyến mãi ngày 08/11); các chính sách khác chưa được coi là đã chốt.
 - **Nguyên tắc:** Không suy đoán giá thuê, cọc, ngưỡng điều kiện hoặc chính sách chưa có. API phụ thuộc chính sách chưa cấu hình phải trả `503 POLICY_NOT_CONFIGURED`, không âm thầm dùng số 0 hay giá mặc định.
 
 ## 1. Giá trị trong hợp đồng và cấu hình chung
@@ -17,8 +17,8 @@ Các giá trị dưới đây bao gồm quy ước từ hợp đồng API và ph
 | Thời hạn access token & phiên | Access JWT: 1.800 giây (30 phút); Refresh token & Session: 30 ngày (rolling) | Bắt buộc `sub`/`sid` trong JWT; mỗi login tạo phiên riêng, có refresh token rotation (cookie HttpOnly có version), grace 15 giây và thu hồi phiên phía server khi logout/đổi mật khẩu/khóa tài khoản. |
 | Hiệu lực báo giá | 10 phút (`quote_expires_at = quote_created_at + 10 phút`) | **Đã chốt (R2):** Thay đề xuất 120 giây trước đây trong luồng trả xe; quote gắn với chuyến, trạm thực tế, khuyến mãi, phiên bản chính sách và trạng thái các nguồn liên quan. |
 | Phân trang | `page = 1`, `page_size = 20`, tối đa 100 | Giá trị mặc định/giới hạn theo hợp đồng. |
-| Đơn vị tiền | VND; Decimal/NUMERIC, chuỗi số thập phân không âm, tối đa 2 chữ số lẻ (ví dụ `"10000.00"`) | Không dùng float để tính tiền. Tổng tiền thuê sau giảm giá làm tròn đến 1 đồng bằng `HALF_UP` (đã chốt ở mục 1 R2); quy tắc riêng của khuyến mãi vẫn chờ duyệt. |
-| Khuyến mãi phần trăm | Số nguyên 1–100; mỗi lượt tối đa một mã | Là đề xuất. Giảm trên tiền thuê, không giảm cọc/phí sự cố; giới hạn mức giảm tối đa nếu có và không vượt tiền thuê. |
+| Đơn vị tiền | VND; Decimal/NUMERIC, chuỗi số thập phân không âm, tối đa 2 chữ số lẻ (ví dụ `"10000.00"`) | Không dùng float để tính tiền. Tổng tiền thuê sau giảm giá làm tròn đến 1 đồng bằng `HALF_UP` (đã chốt ở mục 1 R2), áp dụng cho cả giảm phần trăm và số tiền cố định. |
+| Khuyến mãi | `PERCENTAGE` dùng số nguyên 1–100; `FIXED_AMOUNT` dùng số tiền dương; mỗi lượt tối đa một mã | Yêu cầu 08/11: scope tùy chọn theo `vehicle_model`, hạn mức lượt dùng toàn mã và bộ đếm sử dụng. Không cần scope `vehicle_type` vì EVRide chỉ dùng xe điện. Chỉ giảm tiền thuê, không giảm cọc/phí sự cố; giảm không vượt tiền thuê. |
 | Mã khuyến mãi | Viết hoa, tối đa 50 ký tự, duy nhất | Đề xuất; thời gian hiệu lực `start_date <= thời điểm thanh toán < end_date`. |
 | Ghi GPS demo | Dữ liệu không được trước lúc nhận xe hoặc quá giờ server hơn 30 giây | Chỉ demo; endpoint phải tắt khi chạy thật nếu chưa có tích hợp thiết bị được duyệt. |
 | Dữ liệu GPS cũ | Cảnh báo stale sau 60 giây | Đề xuất; giao diện cần hiển thị thời điểm cập nhật. |
@@ -26,18 +26,18 @@ Các giá trị dưới đây bao gồm quy ước từ hợp đồng API và ph
 
 ## 2. Bảng trạng thái quyết định V1
 
-Mỗi dòng chỉ được chuyển sang **Đã duyệt** sau khi ghi rõ giá trị cuối cùng, người duyệt và ngày duyệt. Hiện tại các mục 1–7 đã được chốt theo phiên bản `EVRIDE_DEMO_V1_20261102_R2`; các mục từ 8 trở đi vẫn chờ nhóm xác nhận.
+Mỗi dòng chỉ được chuyển sang **Đã duyệt** sau khi ghi rõ giá trị cuối cùng, người duyệt và ngày duyệt. Các mục 1–7 đã được chốt theo phiên bản `EVRIDE_DEMO_V1_20261102_R2`; mục 8 có phần yêu cầu được xác định ngày 08/11/2026, còn các quyết định chưa nêu rõ và các mục 10 trở đi tiếp tục chờ xác nhận.
 
 | Hạng mục | Trạng thái hiện tại / giá trị đã chốt hoặc cần chốt | Người duyệt / Ngày duyệt |
 | --- | --- | --- |
 | 1. Cách tính giá thuê | **Đã duyệt (R2):** Tối thiểu 10.000đ cho 30 phút đầu (`1.800` giây); sau đó 350đ/phút, phần phút lẻ làm tròn lên. Tính từ `actual_start_time` đến `return_initiated_at`. Làm tròn tổng tiền sau giảm giá đến 1 đồng bằng `HALF_UP`. | Nguyễn Đức Anh — 02/11/2026 |
-| 2. Bảng giá & Snapshot | **Đã duyệt (R2):** Lưu bản chụp `first_30_minutes_price_snapshot`, `extra_minute_price_snapshot`, `deposit_amount_snapshot`, `vehicle_type_snapshot`, `pricing_policy_version` và đơn vị tính phí khi giữ xe thành công. Giữ nguyên cho chuyến đó; lưu lịch sử đổi giá. | Nguyễn Đức Anh — 02/11/2026 |
+| 2. Bảng giá & Snapshot | **Đã duyệt (R2):** Lưu bản chụp `first_30_minutes_price_snapshot`, `extra_minute_price_snapshot`, `deposit_amount_snapshot`, `vehicle_model_snapshot`, `pricing_policy_version` và đơn vị tính phí khi giữ xe thành công. Giữ nguyên cho chuyến đó; lưu lịch sử đổi giá. `model` là mẫu xe duy nhất, không dùng `type`. | Nguyễn Đức Anh — 02/11/2026 |
 | 3. Tiền cọc & Hủy | **Đã duyệt (R2):** Cọc demo 100.000đ/xe, kiểm tra số dư `>= cọc + giá 1 block` khi giữ xe, thu cọc từ ví khi pickup. Hủy/hết hạn trước pickup miễn phí. Khi trả, cấn trừ và hoàn phần thừa. | Nguyễn Đức Anh — 02/11/2026 |
 | 4. Điều kiện khách & Giấy tờ | **Đã duyệt (R2):** Chính sách demo: khách từ đủ 16 tuổi (theo giờ `Asia/Ho_Chi_Minh`), tài khoản `CUSTOMER` `ACTIVE`, chỉ cần `CCCD` còn hiệu lực và `VERIFIED`; không yêu cầu `DRIVER_LICENSE` hoặc `PASSPORT`. | Nguyễn Đức Anh — 02/11/2026 |
 | 5. Ngưỡng pin & Đếm xe/chỗ | **Đã duyệt (R2):** Pin tối thiểu 30% khi cho đặt và khi bàn giao. Pin dưới 30% sau trả không được cho thuê tiếp đến khi đủ pin. Truy vấn động `rentable_vehicles` và `free_slots`, không lưu cột đếm vật lý trong `stations`. | Nguyễn Đức Anh — 02/11/2026 |
 | 6. Số chuyến & Giới hạn hủy | **Đã duyệt (R2):** Tối đa 1 lượt giữ/chuyến chưa giải quyết (`RESERVED`/`IN_RENT`/`RETURN_PENDING`/`STOLEN`); tối đa 3 lượt hủy/hết hạn/ngày (`CANCELLED` + `EXPIRED`). Lazy Expiration trước khi kiểm tra đặt xe; Global Lock Order `station → customer → wallet → vehicle → rental`. | Nguyễn Đức Anh  — 02/11/2026 |
 | 7. Trả xe khi thiếu tiền / ví khóa | **Đã duyệt (R2):** Đóng băng cước tại `return_initiated_at` khi nhân viên kiểm tra nhận xe thực tế (`POST /rentals/{id}/initiate-return`); trạng thái `RETURN_PENDING`, quote hiệu lực 10 phút. Chờ thanh toán không tính thêm cước và không cho thuê lại xe đang chờ. | Nguyễn Đức Anh  — 02/11/2026 |
-| 8. Khuyến mãi | Chờ duyệt: Cần chốt quy tắc làm tròn riêng của khuyến mãi, điều kiện claim/thanh toán, min_rental_amount và max_discount_amount có bắt buộc hay không. | Chưa xác định |
+| 8. Khuyến mãi | **Yêu cầu đã xác định (08/11/2026):** `PERCENTAGE`/`FIXED_AMOUNT`; scope tùy chọn theo mẫu xe (không lọc `vehicle_type` vì chỉ dùng xe điện); mã mới có `usage_limit` dương; chỉ tăng `used_count` và đánh dấu claim đã dùng cùng transaction thanh toán thành công. Tiền giảm không vượt rental_fee; tổng sau giảm làm tròn 1 VND `HALF_UP` theo R2. `min_rental_amount` và `max_discount_amount` tiếp tục tùy chọn; API thanh toán chưa có để tích hợp service. | Yêu cầu người dùng — 08/11/2026 |
 | 9. Thanh toán thật | Đã duyệt về phạm vi V1: Chỉ sử dụng tiền mô phỏng qua DEMO_PAYMENTS_ENABLED; không triển khai hoặc bật thanh toán thật. Provider, webhook xác nhận từ server và đối soát nằm ngoài phạm vi V1; chưa chốt phương án tích hợp production. | Nguyễn Đức Anh — 02/11/2026 |
 | 10. GPS và upload giấy tờ | Chờ duyệt: GPS hiện chỉ có đề xuất demo do nhân viên nhập; kho ảnh, thiết bị và dữ liệu thật cần hợp đồng tích hợp riêng. | Chưa xác định |
 | 11. Phạm vi quyền nhân viên | Đã duyệt: STAFF được thực hiện pickup/return/move tại bất kỳ trạm nào, tuân thủ điều kiện nghiệp vụ của từng thao tác. MANAGER quản trị toàn hệ thống. Phân công và giới hạn quyền theo trạm nằm ngoài phạm vi V1. | Nguyễn Đức Anh — 02/11/2026 |
@@ -78,7 +78,7 @@ Lý do: phù hợp chuyến ngắn giữa các trạm; dễ hiển thị và ki�
 
 ## 2. Chốt giá tại thời điểm giữ xe
 
-- Khi tạo rental thành công, lưu `first_30_minutes_price_snapshot`, `extra_minute_price_snapshot`, `deposit_amount_snapshot`, `vehicle_type_snapshot`, `pricing_policy_version` và đơn vị tính phí.
+- Khi tạo rental thành công, lưu `first_30_minutes_price_snapshot`, `extra_minute_price_snapshot`, `deposit_amount_snapshot`, `vehicle_model_snapshot`, `pricing_policy_version` và đơn vị tính phí.
 - Frontend hiển thị giá 30 phút đầu, giá mỗi phút thêm, cọc và cách làm tròn trước khi khách xác nhận giữ xe.
 - Giá/cọc mới do MANAGER cập nhật chỉ áp dụng cho rental tạo sau thay đổi. Rental đang giữ hoặc đang thuê vẫn dùng snapshot cũ.
 - Hết hạn/hủy rồi đặt lại là rental mới, dùng giá/cọc hiện hành.

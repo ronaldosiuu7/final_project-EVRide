@@ -64,3 +64,7 @@ async def prevent_auth_cache(request: Request, call_next):
         response.headers["Pragma"] = "no-cache"
     return response
 app.include_router(api_router)
+
+@app.get("/")
+def read_root():
+    return {"message": "EVRide API is running"}

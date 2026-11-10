@@ -82,6 +82,7 @@ CREATE TABLE vehicles (
     id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
     current_station_id BIGINT REFERENCES stations(id) ON DELETE SET NULL,
     name VARCHAR(100) NOT NULL,
+    model VARCHAR(100) NOT NULL,
     type VARCHAR(50) NOT NULL,
     battery_percent INT NOT NULL CHECK (battery_percent BETWEEN 0 AND 100),
     status VARCHAR(20) NOT NULL CHECK (status IN ('AVAILABLE', 'RESERVED', 'RENTED', 'MAINTENANCE', 'SUSPECTED_STOLEN', 'STOLEN')),
@@ -224,13 +225,35 @@ CREATE TABLE promotions (
     id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
     code VARCHAR(50) UNIQUE NOT NULL,
     description TEXT,
-    discount_percent INT CHECK (discount_percent BETWEEN 0 AND 100),
-    max_discount_amount NUMERIC(12, 2) CHECK (max_discount_amount >= 0),
+    discount_type VARCHAR(20) NOT NULL,
+    discount_value NUMERIC(12, 2) NOT NULL,
+    max_discount_amount NUMERIC(12, 2),
     min_rental_amount NUMERIC(12, 2) CHECK (min_rental_amount >= 0),
+    vehicle_model VARCHAR(100),
+    usage_limit INT,
+    used_count INT NOT NULL DEFAULT 0,
     start_date TIMESTAMPTZ NOT NULL,
     end_date TIMESTAMPTZ NOT NULL,
     status VARCHAR(20) NOT NULL CHECK (status IN ('ACTIVE', 'EXPIRED', 'DISABLED')),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_promotions_discount_value CHECK (
+        (discount_type = 'PERCENTAGE' AND discount_value BETWEEN 1 AND 100
+            AND discount_value = trunc(discount_value))
+        OR (discount_type = 'FIXED_AMOUNT' AND discount_value > 0)
+    ),
+    CONSTRAINT ck_promotions_max_discount_amount_nonnegative CHECK (
+        max_discount_amount IS NULL
+        OR (discount_type = 'PERCENTAGE' AND max_discount_amount >= 0)
+    ),
+    CONSTRAINT ck_promotions_usage_limit_positive
+        CHECK (usage_limit IS NULL OR usage_limit > 0),
+    CONSTRAINT ck_promotions_used_count_range CHECK (
+        used_count >= 0 AND (usage_limit IS NULL OR used_count <= usage_limit)
+    ),
+    CONSTRAINT ck_promotions_date_order CHECK (end_date > start_date),
+    CONSTRAINT ck_promotions_vehicle_model_nonempty CHECK (
+        vehicle_model IS NULL OR char_length(trim(vehicle_model)) > 0
+    )
 );
 
 -- Bảng user_promotions: Khuyến mãi cá nhân của người dùng
@@ -248,22 +271,28 @@ CREATE TABLE rental_pricing_snapshots (
     id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
     rental_id BIGINT NOT NULL REFERENCES rentals(id) ON DELETE RESTRICT,
     vehicle_name VARCHAR(100) NOT NULL,
-    vehicle_type VARCHAR(50) NOT NULL,
+    vehicle_model_snapshot VARCHAR(100) NOT NULL,
+    vehicle_type_snapshot VARCHAR(50) NOT NULL,
     daily_price NUMERIC(12, 2) NOT NULL,
     pricing_policy_version VARCHAR(64) NOT NULL,
     pricing_policy_snapshot JSONB NOT NULL,
     deposit_amount NUMERIC(12, 2) NOT NULL,
     promotion_id BIGINT REFERENCES promotions(id) ON DELETE SET NULL,
     promotion_code VARCHAR(50),
-    discount_percent INT,
+    discount_type VARCHAR(20),
+    discount_value NUMERIC(12, 2),
     max_discount_amount NUMERIC(12, 2),
     discount_amount NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uq_rental_pricing_snapshots_rental UNIQUE (rental_id),
     CONSTRAINT ck_rental_price_daily_nonnegative CHECK (daily_price >= 0),
     CONSTRAINT ck_rental_price_deposit_nonnegative CHECK (deposit_amount >= 0),
-    CONSTRAINT ck_rental_price_discount_percent
-        CHECK (discount_percent IS NULL OR discount_percent BETWEEN 0 AND 100),
+    CONSTRAINT ck_rental_price_discount_snapshot CHECK (
+        (discount_type IS NULL AND discount_value IS NULL)
+        OR (discount_type = 'PERCENTAGE' AND discount_value BETWEEN 1 AND 100
+            AND discount_value = trunc(discount_value))
+        OR (discount_type = 'FIXED_AMOUNT' AND discount_value > 0)
+    ),
     CONSTRAINT ck_rental_price_max_discount_nonnegative
         CHECK (max_discount_amount IS NULL OR max_discount_amount >= 0),
     CONSTRAINT ck_rental_price_discount_nonnegative CHECK (discount_amount >= 0),

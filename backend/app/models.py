@@ -218,7 +218,7 @@ class Vehicle(Base):
         BigInteger, ForeignKey("stations.id", ondelete="SET NULL")
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
-    type: Mapped[str] = mapped_column(String(50), nullable=False)
+    model: Mapped[str] = mapped_column(String(100), nullable=False)
     battery_percent: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     first_30_minutes_price: Mapped[Decimal] = mapped_column(
@@ -503,16 +503,31 @@ class Promotion(Base):
     __tablename__ = "promotions"
     __table_args__ = (
         CheckConstraint(
-            "discount_percent BETWEEN 0 AND 100",
-            name="ck_promotions_discount_percent_range",
+            "(discount_type = 'PERCENTAGE' AND discount_value BETWEEN 1 AND 100 "
+            "AND discount_value = trunc(discount_value)) OR "
+            "(discount_type = 'FIXED_AMOUNT' AND discount_value > 0)",
+            name="ck_promotions_discount_value",
         ),
         CheckConstraint(
-            "max_discount_amount >= 0",
+            "max_discount_amount IS NULL OR "
+            "(discount_type = 'PERCENTAGE' AND max_discount_amount >= 0)",
             name="ck_promotions_max_discount_amount_nonnegative",
         ),
         CheckConstraint(
-            "min_rental_amount >= 0",
+            "min_rental_amount IS NULL OR min_rental_amount >= 0",
             name="ck_promotions_min_rental_amount_nonnegative",
+        ),
+        CheckConstraint(
+            "usage_limit IS NULL OR usage_limit > 0",
+            name="ck_promotions_usage_limit_positive",
+        ),
+        CheckConstraint(
+            "used_count >= 0 AND (usage_limit IS NULL OR used_count <= usage_limit)",
+            name="ck_promotions_used_count_range",
+        ),
+        CheckConstraint(
+            "vehicle_model IS NULL OR char_length(trim(vehicle_model)) > 0",
+            name="ck_promotions_vehicle_model_nonempty",
         ),
         CheckConstraint(
             "status IN ('ACTIVE', 'EXPIRED', 'DISABLED')",
@@ -524,9 +539,15 @@ class Promotion(Base):
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     code: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
-    discount_percent: Mapped[int | None] = mapped_column(Integer)
+    discount_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    discount_value: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     max_discount_amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     min_rental_amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    vehicle_model: Mapped[str | None] = mapped_column(String(100))
+    usage_limit: Mapped[int | None] = mapped_column(Integer)
+    used_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
     start_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     end_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
@@ -822,8 +843,11 @@ class RentalPricingSnapshot(Base):
             name="ck_rental_price_deposit_nonnegative",
         ),
         CheckConstraint(
-            "discount_percent IS NULL OR discount_percent BETWEEN 0 AND 100",
-            name="ck_rental_price_discount_percent",
+            "(discount_type IS NULL AND discount_value IS NULL) OR "
+            "(discount_type = 'PERCENTAGE' AND discount_value BETWEEN 1 AND 100 "
+            "AND discount_value = trunc(discount_value)) OR "
+            "(discount_type = 'FIXED_AMOUNT' AND discount_value > 0)",
+            name="ck_rental_price_discount_snapshot",
         ),
         CheckConstraint(
             "max_discount_amount IS NULL OR max_discount_amount >= 0",
@@ -849,7 +873,7 @@ class RentalPricingSnapshot(Base):
         nullable=False,
     )
     vehicle_name: Mapped[str] = mapped_column(String(100), nullable=False)
-    vehicle_type_snapshot: Mapped[str] = mapped_column(String(50), nullable=False)
+    vehicle_model_snapshot: Mapped[str] = mapped_column(String(100), nullable=False)
     first_30_minutes_price_snapshot: Mapped[Decimal] = mapped_column(
         Numeric(12, 2), nullable=False
     )
@@ -868,7 +892,8 @@ class RentalPricingSnapshot(Base):
         BigInteger, ForeignKey("promotions.id", ondelete="SET NULL")
     )
     promotion_code: Mapped[str | None] = mapped_column(String(50))
-    discount_percent: Mapped[int | None] = mapped_column(Integer)
+    discount_type: Mapped[str | None] = mapped_column(String(20))
+    discount_value: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     max_discount_amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     discount_amount: Mapped[Decimal] = mapped_column(
         Numeric(12, 2), nullable=False, server_default=text("0.00")
