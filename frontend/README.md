@@ -67,6 +67,38 @@ Sau khi ứng dụng khởi chạy, có thể truy cập các trang quản trị
 
 Lưu ý: Các đường dẫn trên cần tương ứng với cấu hình routing thực tế của dự án.
 
+### Dữ liệu mẫu (mock data)
+
+Toàn bộ dữ liệu mẫu nằm tại `src/utils/mockData.js`, tên trường và kiểu dữ liệu bám theo `docs/api-contract.md`:
+
+- ID và tiền là chuỗi (ví dụ `"101"`, `"10000.00"`), enum viết hoa, timestamp RFC 3339 UTC, trường chưa có trả `null`.
+- Station: `id, name, address, latitude, longitude, capacity, opens_at, closes_at, status, occupied_spaces, available_spaces, available_vehicle_count`.
+- Vehicle: `id, current_station_id, name, type, battery_percent, status, first_30_minutes_price, extra_minute_price, deposit_amount, created_at` (không còn `daily_price`).
+- Dashboard dùng dạng response `GET /analytics/overview`.
+
+Giao diện khách hàng (#15) nên dùng chung file này để tên trường thống nhất. Chưa kết nối API thật.
+
+### Router
+
+Mọi đường dẫn không khớp sẽ được chuyển về `/admin`.
+
+### Cấu trúc khung giao diện
+
+| Thư mục / file | Vai trò |
+|---|---|
+| `src/services/mockApi.js` | Lớp API giả lập, trả về envelope `{data, meta}` và lỗi `{status, code, message}` đúng contract. Khi có backend chỉ cần thay thân hàm bằng `fetch('/api/v1/...')`. |
+| `src/hooks/useApiQuery.js` | Hook gọi API, quản lý `loading` / `error` / `data` và hàm `reload()`. |
+| `src/components/common/LoadingState.jsx` | Trạng thái **đang tải**. |
+| `src/components/common/EmptyState.jsx` | Trạng thái **rỗng**, kèm hướng dẫn việc tiếp theo. |
+| `src/components/common/ErrorState.jsx` | Trạng thái **lỗi**, hiển thị `error.code` và nút **Tải lại**. |
+| `src/components/common/DateRangeFilter.jsx` | Bộ lọc khoảng ngày dùng chung (`from_date`, `to_date` đi cùng nhau, `from_date <= to_date`). |
+
+Các trang không import trực tiếp `mockData.js` nữa mà gọi qua `mockApi.js`.
+
+**Thử trạng thái lỗi:** thêm `?mock_error=1` vào URL, ví dụ http://localhost:5173/admin?mock_error=1.
+
+**Giao diện điện thoại (390px):** sidebar ẩn sau nút ☰ trên header, bảng cuộn ngang.
+
 ## 5. Kiểm tra và xây dựng dự án
 
 Sau khi cài đặt thư viện, thực hiện kiểm tra khả năng build của ứng dụng.
@@ -135,6 +167,14 @@ Chỉ xóa thư mục `dist` khi đã xác nhận không cần giữ lại bản
 Cài đặt Node.js từ trang chính thức: https://nodejs.org/
 
 Sau khi cài đặt, mở lại Terminal và kiểm tra phiên bản Node.js, npm.
+
+### Lỗi PowerShell `npm.ps1 cannot be loaded because running scripts is disabled`
+
+Dùng `npm.cmd` thay cho `npm` (ví dụ `npm.cmd install`, `npm.cmd run dev`), hoặc cho phép script cho người dùng hiện tại:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
 
 ### Lỗi thiếu thư viện
 

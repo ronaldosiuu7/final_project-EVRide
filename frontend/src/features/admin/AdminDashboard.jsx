@@ -1,111 +1,134 @@
-import React from 'react';
-import {
-  mockAnalyticsOverviewResponse,
-  mockVehicles,
-  mockStations,
-  formatVndCurrency
-} from '../../utils/mockData';
+import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { getAnalyticsOverview } from '../../services/mockApi';
+import useApiQuery from '../../hooks/useApiQuery';
+import { formatVndCurrency, formatDateTime } from '../../utils/mockData';
+import DateRangeFilter from '../../components/common/DateRangeFilter';
+import LoadingState from '../../components/common/LoadingState';
+import EmptyState from '../../components/common/EmptyState';
+import ErrorState from '../../components/common/ErrorState';
 
 const AdminDashboard = () => {
-  const overview = mockAnalyticsOverviewResponse.data;
-  const activeStationCount = mockStations.filter((s) => s.status === 'ACTIVE').length;
+  const [range, setRange] = useState({});
+  const { data: overview, loading, error, reload } = useApiQuery(
+    () => getAnalyticsOverview(range),
+    [range.from_date, range.to_date]
+  );
 
   return (
     <div>
       <h2>Tổng quan hệ thống</h2>
+      <DateRangeFilter value={range} onChange={setRange} />
 
-      <div className="stats-grid">
-        <div className="stat-card">
-          <h4>Tổng số xe</h4>
-          <p>{mockVehicles.length}</p>
-        </div>
-        <div className="stat-card">
-          <h4>Tổng số trạm (Đang hoạt động)</h4>
-          <p>{mockStations.length} ({activeStationCount})</p>
-        </div>
-        <div className="stat-card">
-          <h4>Số chuyến đã bắt đầu</h4>
-          <p>{overview.trip_count}</p>
-        </div>
-        <div className="stat-card">
-          <h4>Doanh thu</h4>
-          <p>{formatVndCurrency(overview.revenue)}</p>
-        </div>
-        <div className="stat-card">
-          <h4>Thời lượng chuyến trung bình</h4>
-          <p>{overview.average_trip_minutes} phút</p>
-        </div>
-        <div className="stat-card">
-          <h4>Số khách thuê</h4>
-          <p>{overview.customer_count}</p>
-        </div>
-      </div>
-
-      <h3 style={{ marginTop: '28px' }}>Thống kê xe theo trạng thái</h3>
-      <div className="stats-grid">
-        {overview.vehicles_by_status.map((item) => (
-          <div className="stat-card" key={item.status}>
-            <h4>{item.status}</h4>
-            <p>{item.count} xe</p>
+      {loading && <LoadingState />}
+      {!loading && error && <ErrorState error={error} onRetry={reload} />}
+      {!loading && !error && overview && (
+        <>
+          <div className="stats-grid">
+            <div className="stat-card">
+              <h4>Tổng số xe</h4>
+              <p>{overview.vehicles_by_status.reduce((sum, item) => sum + item.count, 0)}</p>
+            </div>
+            <div className="stat-card">
+              <h4>Số chuyến đã bắt đầu</h4>
+              <p>{overview.trip_count}</p>
+            </div>
+            <div className="stat-card">
+              <h4>Doanh thu</h4>
+              <p>{formatVndCurrency(overview.revenue)}</p>
+            </div>
+            <div className="stat-card">
+              <h4>Thời lượng chuyến trung bình</h4>
+              <p>{overview.average_trip_minutes} phút</p>
+            </div>
+            <div className="stat-card">
+              <h4>Số khách thuê</h4>
+              <p>{overview.customer_count}</p>
+            </div>
           </div>
-        ))}
-      </div>
 
-      <h3 style={{ marginTop: '28px' }}>Trạm sắp đầy chỗ đỗ</h3>
-      <div className="data-table-wrapper">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>ID Trạm</th>
-              <th>Tên trạm</th>
-              <th>Sức chứa</th>
-              <th>Đang đỗ</th>
-              <th>Chỗ trống</th>
-            </tr>
-          </thead>
-          <tbody>
-            {overview.near_full_stations.map((station) => (
-              <tr key={station.id}>
-                <td>#{station.id}</td>
-                <td>{station.name}</td>
-                <td>{station.capacity}</td>
-                <td>{station.occupied_spaces}</td>
-                <td>
-                  <span className="badge badge-warning">{station.available_spaces} chỗ</span>
-                </td>
-              </tr>
+          <h3 className="section-title">Thống kê xe theo trạng thái</h3>
+          <div className="stats-grid">
+            {overview.vehicles_by_status.map((item) => (
+              <div className="stat-card" key={item.status}>
+                <h4>{item.status}</h4>
+                <p>{item.count} xe</p>
+              </div>
             ))}
-          </tbody>
-        </table>
-      </div>
+          </div>
 
-      <h3 style={{ marginTop: '28px' }}>Sự cố gần đây</h3>
-      <div className="data-table-wrapper">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Mã phiếu</th>
-              <th>Mã chuyến thuê</th>
-              <th>Tiêu đề</th>
-              <th>Trạng thái</th>
-              <th>Thời gian tạo</th>
-            </tr>
-          </thead>
-          <tbody>
-            {overview.recent_tickets.map((ticket) => (
-              <tr key={ticket.id}>
-                <td>#{ticket.id}</td>
-                <td>#{ticket.rental_id}</td>
-                <td>{ticket.title}</td>
-                <td>
-                  <span className="badge badge-warning">{ticket.status}</span>
-                </td>
-                <td>{ticket.created_at}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+          <h3 className="section-title">Trạm sắp đầy chỗ đỗ</h3>
+          {overview.near_full_stations.length === 0 ? (
+            <EmptyState
+              title="Không có trạm nào sắp đầy"
+              hint="Các trạm đang hoạt động đều còn từ 2 chỗ trống trở lên."
+            />
+          ) : (
+            <div className="data-table-wrapper">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>ID Trạm</th>
+                    <th>Tên trạm</th>
+                    <th>Sức chứa</th>
+                    <th>Đang đỗ</th>
+                    <th>Chỗ trống</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {overview.near_full_stations.map((station) => (
+                    <tr key={station.id}>
+                      <td>#{station.id}</td>
+                      <td>{station.name}</td>
+                      <td>{station.capacity}</td>
+                      <td>{station.occupied_spaces}</td>
+                      <td>
+                        <span className="badge badge-warning">{station.available_spaces} chỗ</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <h3 className="section-title">Sự cố gần đây</h3>
+          {overview.recent_tickets.length === 0 ? (
+            <EmptyState
+              title="Chưa có báo hỏng nào"
+              hint="Báo hỏng mới từ khách hoặc nhân viên sẽ hiển thị tại đây."
+              action={<Link to="/admin/vehicles" className="btn">Xem danh sách xe</Link>}
+            />
+          ) : (
+            <div className="data-table-wrapper">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Mã phiếu</th>
+                    <th>Mã chuyến thuê</th>
+                    <th>Tiêu đề</th>
+                    <th>Trạng thái</th>
+                    <th>Thời gian tạo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {overview.recent_tickets.map((ticket) => (
+                    <tr key={ticket.id}>
+                      <td>#{ticket.id}</td>
+                      <td>#{ticket.rental_id}</td>
+                      <td>{ticket.title}</td>
+                      <td>
+                        <span className="badge badge-warning">{ticket.status}</span>
+                      </td>
+                      <td>{formatDateTime(ticket.created_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 };
