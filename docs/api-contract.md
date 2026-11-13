@@ -1,10 +1,21 @@
 # EVRide V1 — Hợp đồng API
 
-Ngày soạn: **21/10/2026**. Cập nhật: **08/11/2026** theo `v1-decisions.md`, schema/API quản lý giá, bảo trì, tệp đính kèm/điều chuyển và các yêu cầu khuyến mãi mới. Base URL: `/api/v1`. Định dạng: JSON, UTF-8.
+Ngày soạn: **21/10/2026**. Cập nhật đồng bộ backend: **13/11/2026** theo [v1-decisions.md](v1-decisions.md).
+Base URL: `/api/v1` (`backend/app/api/v1/`). Định dạng: JSON, UTF-8.
 
-Đây là hợp đồng đề xuất để nhóm triển khai và review, **không phải danh sách API đã chạy được**. Căn cứ: [15 bảng nghiệp vụ trong DBML và các bảng hạ tầng bổ sung](database.md), [phạm vi nghiệp vụ](requirements.md) và [đặc tả báo cáo](dac_ta_quan_tri_bao_cao.md).
+Tài liệu này là nguồn hợp đồng API chính của EVRide V1, đối chiếu cùng [Thiết kế database](database.md), [Phạm vi nghiệp vụ](requirements.md), [Kiến trúc hệ thống](architecture.md) và [Đặc tả báo cáo](dac_ta_quan_tri_bao_cao.md).
 
-Nguồn chính sách: [Sổ quyết định V1](v1-decisions.md). **Đã chốt:** mục 1–7, 9 và 11; yêu cầu loại giảm, phạm vi xe và hạn mức lượt dùng của mục 8. **Chờ duyệt:** các chính sách khuyến mãi còn lại, 10 (GPS/upload) và 12 (sự cố/mất xe). Số mục chính sách là số trong sổ quyết định, không phải số mục của contract này. API thanh toán/khuyến mãi vẫn là contract đề xuất; migration và service khuyến mãi đã được bổ sung nhưng chưa có luồng quote/thanh toán gọi service.
+| Nhóm chức năng | Trạng thái trong mã nguồn (`backend/app/api/v1/`) |
+| --- | --- |
+| Auth (Rolling Session & Refresh Rotation), người dùng, giấy tờ eKYC | Đã triển khai (`auth.py`, `users.py`, `documents.py`) |
+| Trạm, xe, bảng giá theo xe, điều chuyển | Đã triển khai (`fleet.py`) |
+| Ví mô phỏng, khuyến mãi, giữ xe / nhận / trả / quyết toán thường | Đã triển khai (`wallets.py`, `promotions.py`, `rentals.py`) |
+| Ticket hỗ trợ, bảo trì (`incident_id` tùy chọn), GPS demo, đánh giá, 12 FAQ | Đã triển khai (`operations.py`) |
+| Tải lên/tải xuống file cục bộ & đính kèm bằng chứng ticket | Đã triển khai (`files.py`, `operations.py`); luồng presigned URL (`upload-intents`/`complete`) là mở rộng dự kiến |
+| Kiểm tra chuyến 24 giờ & phân hệ sự cố thu gọn (bồi thường ngoài hệ thống) | Đã triển khai (`rental_check_ins.py`, `incidents.py`, `incident_recovery.py`, `incident_finance.py`, `incident_completion.py`) |
+| Báo cáo thống kê (`/analytics/*`) | Đã triển khai 3 API doanh thu/tài chính (`revenue`, `financial-summary`, `revenue-details` trong `analytics.py`); 5 API thống kê vận hành còn lại là đặc tả dự kiến |
+
+Số mục chính sách (1–12) được trích dẫn trong tài liệu này thuộc [Sổ quyết định V1](v1-decisions.md); mục 12 của tài liệu này là phần kiểm tra hệ thống và tiêu chí nghiệm thu.
 
 ## 1. Phạm vi và mức độ thống nhất
 
@@ -14,15 +25,48 @@ Nguồn chính sách: [Sổ quyết định V1](v1-decisions.md). **Đã chốt:
 - Giữ xe 30 phút kể từ khi đặt thành công. Hết hạn phải tạo lượt đặt mới và kiểm tra lại xe còn sẵn; không gia hạn hay ghi đè lượt cũ.
 - Nhân viên xác nhận bàn giao mới bắt đầu thời gian thuê thực tế.
 - Trả tại trạm nhận hoặc bất kỳ trạm khác còn chỗ; nhân viên nhận xe và hoàn tất thanh toán.
-- Một khách và một xe chỉ có tối đa một rental chưa giải quyết: RESERVED/IN_RENT/RETURN_PENDING/STOLEN.
-- Nhân viên tiếp nhận xe thực tế bằng initiate-return để dừng cước; quyết toán là bước riêng. Thiếu tiền hoặc ví khóa không ngăn tiếp nhận hợp lệ.
+- Mỗi khách chỉ có tối đa một lượt giữ/chuyến chưa giải quyết.
+  Mỗi xe chỉ có tối đa một rental đang giữ quyền sử dụng xe.
+  Hai điều kiện này phải được kiểm tra riêng.
+- Xe sự cố đã thu hồi, kiểm tra/sửa chữa đạt và được giải phóng
+  hợp lệ có thể cho khách khác thuê dù khách cũ chưa quyết toán.
+  Khách cũ vẫn bị chặn thuê mới cho đến khi chuyến được giải quyết.
+- Luồng trả xe thông thường: nhân viên tiếp nhận thực tế bằng
+  initiate-return để dừng cước; quyết toán là bước riêng.
+  Thiếu tiền hoặc ví khóa không ngăn tiếp nhận hợp lệ.
+- Luồng sự cố: mốc dừng cước và tiếp nhận xe theo mục 12.3
+  của sổ quyết định; không ghi giả return_initiated_at.
+- Quyết toán sự cố tách tiền thuê và bồi thường, không áp dụng
+  hoặc tiêu thụ khuyến mãi. Doanh thu thuê ghi nhận khi khoản
+  tiền thuê quyết toán thành công, không chờ CLOSED_INCIDENT.
+- Quyết toán hoặc hoàn tiền hồ sơ cũ không được thay đổi
+  trạng thái xe hoặc tác động chuyến mới.
 - Khách theo dõi thời gian thuê, GPS, ví, hóa đơn và lịch sử; hệ thống có khuyến mãi, sự cố và quản trị.
 
 ### 1.2. Đề xuất kỹ thuật của hợp đồng này
 
-Tên endpoint, schema JSON, HTTP status, JWT, idempotency, phân quyền chi tiết và trạng thái bổ sung dưới đây là contract V1. Backend hiện triển khai các luồng trạm/xe/bảng giá/điều chuyển, ví demo, khuyến mãi và vòng đời thuê/nhận/trả/quyết toán được nêu tại mục 5–8. Upload tệp và API bảo trì tại mục 5.1/9 vẫn là contract đề xuất, chưa tích hợp.
+Tên endpoint, schema JSON, HTTP status, JWT, idempotency và phân
+quyền được mô tả trong contract V1. Trạng thái triển khai phải
+được đối chiếu với mã nguồn và kết quả kiểm thử.
 
-Hợp đồng này chọn thiết kế từ nhánh `docs/update-database-design`, hiện đã được đồng bộ trong `docs/database.md`: có `expires_at`, trạng thái `RESERVED`/`EXPIRED`, bỏ `planned_start_time`/`planned_end_time` và cho phép `total_price` là null trước khi chốt phí. Alembic quản lý schema tại `database/migrations/`; các quy tắc nghiệp vụ và thao tác ghi/replay vẫn cần được thực thi trong backend.
+Backend hiện có mã cho trạm, xe, bảng giá, điều chuyển, ví demo,
+khuyến mãi và vòng đời thuê/nhận/trả/quyết toán thông thường.
+Module operations đã được đăng ký router, có ticket, gắn ảnh
+bằng chứng ticket, bảo trì, GPS mô phỏng, đánh giá và FAQ.
+Upload/download ảnh đã có trong module files.
+
+Các phần trên chưa đồng nghĩa đã đáp ứng toàn bộ contract.
+Ví dụ, không coi API ảnh hiện tại đã hỗ trợ đầy đủ mọi loại
+tài nguyên hoặc toàn bộ yêu cầu lưu trữ trong thiết kế.
+
+Hồ sơ `rental_incidents`, danh sách cần kiểm tra chuyến 24 giờ
+(`/rental-check-ins`), xác minh mất/trộm/bỏ xe, bảo trì dùng chung với
+`incident_id`, giải phóng xe độc lập với nghĩa vụ khách, quyết toán thuê/hoàn
+cọc dư và ghi nhận kết quả bồi thường ngoài hệ thống đã được triển khai theo
+phạm vi thu gọn ngày 13/11/2026 (thay cho workflow cảnh báo worker, định giá/
+tranh chấp nhiều vòng và cấn/hoàn bồi thường qua ví cũ).
+
+Hợp đồng này chọn thiết kế từ nhánh `docs/update-database-design`, hiện đã được đồng bộ trong `docs/database.md`: có `expires_at`, trạng thái `RESERVED`/`EXPIRED`, bỏ `planned_start_time`/`planned_end_time` và cho phép `total_price` là null trước khi chốt phí. Alembic quản lý schema tại `backend/database/migrations/`; các quy tắc nghiệp vụ và thao tác ghi/replay vẫn cần được thực thi trong backend.
 
 Giá, cọc, điều kiện CCCD/tuổi, ngưỡng pin và quy trình trả xe áp dụng quyết định R2 tại mục 6 dưới đây. Chỉ thanh toán mô phỏng; không tích hợp thanh toán thật trong V1. Các chính sách còn chờ duyệt được liệt kê tại mục 14. API phụ thuộc chính sách chưa cấu hình trả `503 POLICY_NOT_CONFIGURED`, không tự áp dụng giá 0 hoặc giá mặc định.
 
@@ -31,7 +75,7 @@ Giá, cọc, điều kiện CCCD/tuổi, ngưỡng pin và quy trình trả xe �
 ### 2.1. Kiểu dữ liệu và validation
 
 | Kiểu | Quy ước |
-| --- | --- | 
+| --- | --- |
 | ID | Chuỗi số nguyên dương, ví dụ `"101"`; DB dùng bigint, JSON dùng string tránh mất chính xác trong JavaScript. **Ngoại lệ rõ ràng:** `session_id` của phiên đăng nhập là chuỗi UUID (ví dụ `"a1348af3-05a0-4a12-8bc8-657bc97703c0"`), và `generation` của refresh token là số nguyên không âm (`integer`) |
 | Tiền | Chuỗi số thập phân không âm, tối đa 2 chữ số lẻ, ví dụ `"150000.00"`; đơn vị VND; không dùng float để tính tiền |
 | Thời gian | RFC 3339 có múi giờ; response UTC dạng `2026-10-21T03:00:00Z` |
@@ -96,14 +140,14 @@ Frontend xử lý theo `error.code`, không so sánh `message`. Không trả sta
 
 | HTTP | Code tiêu biểu | Ý nghĩa |
 | --- | --- | --- |
-| 400 | `INVALID_DATE_RANGE`, `INVALID_REQUEST`, `SESSION_SELECTION_REQUIRED`, `TOO_MANY_AUTH_COOKIES` | Khoảng ngày đảo ngược, request sai cấu trúc, thiếu `X-Session-ID` hợp lệ hoặc quá giới hạn cookie phiên |
+| 400 | `INVALID_DATE_RANGE`, `INVALID_REQUEST`, `IDEMPOTENCY_KEY_REQUIRED`, `SESSION_SELECTION_REQUIRED`, `TOO_MANY_AUTH_COOKIES` | Khoảng ngày đảo ngược, request sai cấu trúc, thiếu/sai độ dài `Idempotency-Key`, thiếu `X-Session-ID` hợp lệ hoặc quá giới hạn cookie phiên |
 | 401 | `UNAUTHENTICATED`, `INVALID_CREDENTIALS`, `TOKEN_EXPIRED`, `SESSION_INVALID`, `SESSION_EXPIRED`, `SESSION_REVOKED`, `REFRESH_INVALID`, `REFRESH_EXPIRED`, `REFRESH_REUSED` | Thiếu/sai thông tin xác thực, access token hết hạn, phiên không hợp lệ/hết hạn/đã thu hồi hoặc refresh token bị reuse |
 | 403 | `FORBIDDEN`, `ACCOUNT_DISABLED`, `CUSTOMER_NOT_ELIGIBLE`, `CSRF_REJECTED` | Sai quyền, tài khoản bị khóa, chưa đủ điều kiện hoặc vi phạm kiểm tra Origin/CSRF header |
 | 404 | `NOT_FOUND` | Không tồn tại hoặc không thuộc phạm vi được xem |
 | 409 | `EMAIL_EXISTS`, `VEHICLE_UNAVAILABLE`, `STATION_FULL`, `STATION_UNAVAILABLE`, `REFRESH_RETRY_UNAVAILABLE` | Xung đột tài nguyên hoặc không thể replay kết quả refresh cũ trong grace |
 | 409 | `RESERVATION_EXPIRED`, `INVALID_RENTAL_STATE`, `PICKUP_STATION_MISMATCH` | Sai trạng thái hoặc hết hạn |
 | 409 | `WALLET_UNAVAILABLE`, `INSUFFICIENT_BALANCE`, `PROMOTION_INVALID`, `PROMOTION_EXHAUSTED`, `ALREADY_REVIEWED` | Điều kiện nghiệp vụ không đáp ứng hoặc đã hết lượt dùng |
-| 409 | `IDEMPOTENCY_CONFLICT`, `REQUEST_IN_PROGRESS`, `STALE_QUOTE`, `INVALID_STATE_TRANSITION` | Request lặp khác nội dung hoặc dữ liệu đã thay đổi |
+| 409 | `IDEMPOTENCY_CONFLICT`, `IDEMPOTENCY_IN_PROGRESS`, `STALE_QUOTE`, `INVALID_STATE_TRANSITION` | Request lặp khác nội dung, đang xử lý hoặc dữ liệu đã thay đổi |
 | 409 | `ACTIVE_RENTAL_EXISTS`, `DAILY_CANCELLATION_LIMIT_REACHED` | Đã có chuyến chưa giải quyết hoặc đã đủ 3 lượt hủy/hết hạn trong ngày |
 | 413 | `FILE_TOO_LARGE` | File upload vượt 10 MiB |
 | 415 | `UNSUPPORTED_MEDIA_TYPE` | File không phải JPEG/PNG/WebP |
@@ -139,11 +183,11 @@ Chỉ dùng enum role `CUSTOMER`, `STAFF`, `MANAGER`; các tài liệu cũ ghi `
 
 ### 2.5. Idempotency và giao dịch
 
-Các POST được đánh dấu `I` bắt buộc header `Idempotency-Key`, chuỗi ngẫu nhiên 16–128 ký tự; thiếu/sai định dạng trả 422.
+Các POST được đánh dấu `I` bắt buộc header `Idempotency-Key`, chuỗi ngẫu nhiên 16–128 ký tự; thiếu/sai độ dài trả 400 `IDEMPOTENCY_KEY_REQUIRED`.
 
 - Khóa theo `(actor_id, method, path, key)`; lưu hash body và kết quả trong kho bền vững tối thiểu 24 giờ.
 - Cùng key/cùng body: trả nguyên mã HTTP và payload nghiệp vụ lần đầu, không tạo tác động mới. Cùng key/khác body: 409 `IDEMPOTENCY_CONFLICT`.
-- Request đầu đang xử lý: 409 `REQUEST_IN_PROGRESS`, client retry cùng key.
+- Request đầu đang xử lý: 409 `IDEMPOTENCY_IN_PROGRESS`, client retry cùng key.
 - Lỗi validation/quyền trước khi bắt đầu giao dịch không lưu kết quả. Kết quả đã commit phải replay được sau timeout.
 - Key đã hết thời gian lưu không thay thế các ràng buộc lâu dài: một hóa đơn/lượt thuê, một PICKUP/RETURN, một đánh giá, một lần ghi sổ cho mỗi giao dịch thanh toán.
 - Mọi thay đổi liên quan trong **mỗi hành động** phải commit/rollback cùng nhau. Tiếp nhận xe và quyết toán là hai transaction riêng; lỗi quyết toán không rollback việc tiếp nhận đã commit. Không gọi dịch vụ thanh toán bên ngoài trong lúc giữ khóa DB dài hạn.
@@ -161,11 +205,11 @@ Các schema bên dưới liệt kê trường response. ID/tiền/thời gian th
 | `users` | User: `id, name, email, role, status, created_at` | Chính mình/S/M qua API được phép; tuyệt đối không trả password/hash |
 | `user_documents` | Document: `id, user_id, document_type, document_number_masked, verified_status, expires_on?, verified_birth_date?, verified_by?, verified_at?, revoked_at?, created_at` | Chính mình/S/M; ảnh và số đầy đủ chỉ qua endpoint riêng |
 | `stations` | Station: `id, name, address, latitude, longitude, capacity, opens_at?, closes_at?, status, occupied_spaces, available_spaces, available_vehicle_count` | Public |
-| `vehicles` | Vehicle: `id, current_station_id?, name, model, type, battery_percent, status, first_30_minutes_price, extra_minute_price, deposit_amount, created_at` | Public chỉ xe có thể thuê; S/M xem tất cả |
-| `rentals` | Rental: `id, customer_id, vehicle_id, pickup_station_id, actual_return_station_id?, created_at, expires_at, actual_start_time?, actual_end_time?, return_initiated_at?, settled_at?, cancelled_at?, cancellation_reason?, cancellation_limit_exempt, first_30_minutes_price_snapshot, extra_minute_price_snapshot, deposit_amount_snapshot, vehicle_model_snapshot, pricing_policy_version, billing_unit, deposit_held, status, total_price?, remaining_hold_seconds, elapsed_seconds` | Owner/S/M |
+| `vehicles` | Vehicle: `id, current_station_id?, name, model, battery_percent, status, first_30_minutes_price, extra_minute_price, deposit_amount, created_at` | Public chỉ xe có thể thuê; S/M xem tất cả |
+| `rentals` | Rental: `id, customer_id, vehicle_id, pickup_station_id, actual_return_station_id?, created_at, expires_at, actual_start_time?, actual_end_time?, return_initiated_at?, settled_at?, next_check_at?, cancelled_at?, cancellation_reason?, cancellation_limit_exempt, first_30_minutes_price_snapshot, extra_minute_price_snapshot, deposit_amount_snapshot, vehicle_model_snapshot, pricing_policy_version, billing_unit, deposit_held, status, total_price?, remaining_hold_seconds, elapsed_seconds` | Owner/S/M |
 | `handovers` | Handover: `id, rental_id, staff_id, kind, time, battery_percent, vehicle_condition?, note?, created_at` | Owner/S/M |
 | `vehicle_pricing_history` | PriceVersion: `id, vehicle_id, version_number, old_first_30_minutes_price?, new_first_30_minutes_price, old_extra_minute_price?, new_extra_minute_price, old_deposit_amount?, new_deposit_amount, changed_by, created_at` | S/M |
-| `maintenance_orders` | MaintenanceOrder: `id, vehicle_id, created_by, assigned_to?, title, description, status, opened_at, started_at?, completed_at?, resolution_note?, created_at, updated_at` | S/M |
+| `maintenance_orders` | MaintenanceOrder: `id, vehicle_id, incident_id?, created_by, assigned_to?, title, description, status, opened_at, started_at?, completed_at?, resolution_note?, created_at, updated_at` | S/M |
 | `stored_files` | StoredFile: `id, original_filename, content_type, size_bytes, sha256, status, uploaded_by, created_at, verified_at?` | Người tải lên/S/M theo quyền |
 | `file_attachments` | FileAttachment: `id, file_id, owner_type, owner_id, purpose, attached_by, created_at` | Theo quyền xem tài nguyên cha |
 | `vehicle_move_audits` | VehicleMoveAudit: `id, vehicle_id, from_station_id, to_station_id, actor_id, idempotency_record_id?, note?, moved_at` | S/M |
@@ -175,7 +219,7 @@ Các schema bên dưới liệt kê trường response. ID/tiền/thời gian th
 | `wallet_transactions` | WalletTransaction: `id, wallet_id, rental_id?, amount, type, balance_before, balance_after, status, created_at` | Chủ ví/M |
 | `promotions` | Promotion: `id, code, description?, discount_type, discount_value, max_discount_amount?, min_rental_amount?, vehicle_model?, usage_limit?, used_count, start_date, end_date, status, created_at` | C xem mã đủ điều kiện; M xem tất cả |
 | `user_promotions` | UserPromotion: `id, user_id, promotion_id, is_used, used_at?, promotion` | Chủ sở hữu/M |
-| `support_tickets` | Ticket: `id, rental_id, created_by, assigned_to?, title, description, status, created_at` | Owner/S/M |
+| `support_tickets` | Ticket: `id, rental_id, created_by, assigned_to?, title, description, status, resolution_note?, resolved_at?, created_at, updated_at` | Owner/S/M |
 | `gps_points` | GpsPoint: `id, rental_id, latitude, longitude, recorded_at` | Owner/S/M |
 | `rental_reviews` | Review: `id, rental_id, rating, comment?, created_at` | Owner/S/M; V1 không công khai đánh giá cá nhân |
 
@@ -183,9 +227,12 @@ Không lưu các bộ đếm `occupied_spaces`, `available_spaces`, `available_v
 
 Field dẫn xuất không tạo thêm bảng: `occupied_spaces` đếm tất cả xe đang ở trạm; `available_spaces = capacity - occupied_spaces`; số xe thuê được loại trừ giữ chỗ, xe lỗi và không đủ điều kiện. Không dùng max(0, ...) để che số chỗ âm: ghi nhận lỗi nhất quán và chặn nhận thêm xe.
 
-`remaining_hold_seconds = max(0, floor(expires_at - server_time))` khi RESERVED, trạng thái khác bằng 0. `elapsed_seconds` bằng 0 trước nhận xe, sau đó tính từ actual_start_time đến actual_end_time hoặc server_time. Đây không phải số đơn vị tính phí.
+`remaining_hold_seconds = max(0, floor(expires_at - server_time))` khi RESERVED, trạng thái khác bằng 0. `elapsed_seconds` bằng 0 trước nhận xe, sau đó tính từ actual_start_time đến actual_end_time hoặc server_time. Đây không phải số đơn vị tính phí. Với sự cố cần hiển thị riêng mốc cutoff và tiền tạm tính/đã chốt; không dùng elapsed_seconds còn tăng để tính lại tiền sau cutoff.
 
-Enum bổ sung đề xuất: Station `ACTIVE/INACTIVE`; Transaction `PENDING/SUCCESS/FAILED`. Theo DBML ở nhánh `docs/update-database-design`, Vehicle đã có `RESERVED`; Rental cần dùng `RESERVED/IN_RENT/RETURN_PENDING/COMPLETED/CANCELLED/EXPIRED/STOLEN`; Vehicle cần bổ sung `RETURN_PENDING` bên cạnh `AVAILABLE/RESERVED/RENTED/MAINTENANCE/SUSPECTED_STOLEN/STOLEN`. Đây là yêu cầu migration, không phải xác nhận enum đã có. Giữ các enum khác trong DBML. `OVERDUE` chưa dùng vì chưa chốt hạn trả xe.
+Enum hiện có trong ORM (`backend/app/models.py`):
+- `Rental.status`: `RESERVED`, `IN_RENT`, `RETURN_PENDING`, `STOLEN`, `INCIDENT_PENDING`, `CLOSED_INCIDENT`, `COMPLETED`, `CANCELLED`, `EXPIRED` (kèm `vehicle_released_at` để tách quyền sử dụng xe khỏi công nợ khách cũ).
+- `Vehicle.status`: `AVAILABLE`, `RESERVED`, `RENTED`, `RETURN_PENDING`, `MAINTENANCE`, `SUSPECTED_STOLEN`, `STOLEN`.
+Ngưỡng kiểm tra 24 giờ không tạo trạng thái `OVERDUE` hoặc hạn bắt buộc trả xe.
 
 Với `file_attachments`, `owner_id` là trường response suy ra từ đúng một FK owner đã lưu (vehicle, maintenance order, handover, user document hoặc support ticket); `owner_type` được suy ra từ loại FK. Không lưu hai trường đa hình này làm FK giả trong DB.
 
@@ -221,7 +268,7 @@ Các trường ngày sinh/hạn giấy tờ đầu vào là thông tin khai báo
 
 CCCD hợp lệ khi VERIFIED, chưa thu hồi và ngày hiện tại tại Asia/Ho_Chi_Minh không sau expires_on. Khách đủ 16 tuổi ở cả ngày giữ và ngày nhận. Không bắt buộc GPLX/PASSPORT; bản CCCD VERIFIED cũ còn hạn vẫn có hiệu lực khi nộp bản mới PENDING. Đây là chính sách demo, không phải kết luận pháp lý về mọi loại xe máy điện.
 
-**Upload/kho ảnh chờ duyệt theo quyết định 10:** schema và API dự kiến được mô tả tại mục 5.1; chưa có tích hợp được duyệt thì trả `503 FEATURE_NOT_ENABLED`, không giả định có kho ảnh thật. Seed chỉ dùng dữ liệu giả.
+Upload/download cục bộ đã có code; upload intent, URL ký và storage production cần thiết kế/tích hợp riêng tại mục 5.1. Seed chỉ dùng dữ liệu giả; không coi việc có API ảnh demo là đã có kho ảnh production.
 
 ## 5. Trạm và xe
 
@@ -244,7 +291,7 @@ CCCD hợp lệ khi VERIFIED, chưa thu hồi và ngày hiện tại tại Asia/
 
 ### 5.1. Bảng giá, tệp đính kèm và điều chuyển
 
-Bảng giá và điều chuyển xe đã được triển khai; các API tệp đính kèm dưới đây vẫn là **đề xuất contract, chưa triển khai**. API bảo trì được mô tả tại mục 9 và cũng chưa triển khai. ID/tiền vẫn là chuỗi theo quy ước chung.
+Bảng giá, điều chuyển, upload/download file cục bộ và đính kèm bằng chứng ticket đã có mã nguồn. Trong `files.py`, hệ thống hiện dùng `POST /files/upload` (multipart trực tiếp) và `GET /files/{id}/download` (trả file trực tiếp sau khi kiểm tra quyền); luồng `POST /files/upload-intents` và `POST /files/{id}/complete` (presigned URL với object storage bên ngoài) là thiết kế mở rộng dự kiến.
 
 | Method / path | Quyền | Request | Thành công |
 | --- | --- | --- | --- |
@@ -255,25 +302,26 @@ Bảng giá và điều chuyển xe đã được triển khai; các API tệp �
 | GET `/vehicles/{id}/move-history` | S/M | Phân trang | VehicleMoveAudit[] |
 
 Vehicle có trường `model` để chỉ mẫu xe; không có trường `type`. Hai endpoint liệt kê xe lọc theo `model?`.
-| POST `/files/upload-intents` | C/S/M, I | `{filename, content_type, size_bytes, sha256}` | 201 `{file_id, upload_url, method: "PUT", headers, expires_at}` |
-| PUT `upload_url` | URL ký, không dùng bearer token | Bytes của file | Thành công theo provider object storage, ngoài API envelope |
-| POST `/files/{id}/complete` | Người upload/S/M, I | `{}` | StoredFile READY hoặc lỗi kiểm tra |
-| POST `/files/{id}/attachments` | Owner/S/M, I | `{purpose, vehicle_id?, maintenance_order_id?, handover_id?, user_document_id?, support_ticket_id?}`; đúng một owner | 201 FileAttachment |
-| GET `/files/attachments` | Owner/S/M | `owner_type` (`VEHICLE`, `MAINTENANCE_ORDER`, `HANDOVER`, `USER_DOCUMENT`, `SUPPORT_TICKET`), `owner_id`, phân trang | FileAttachment[] |
-| GET `/files/{id}/download` | Public với ảnh xe công khai; nếu không Owner/S/M | — | `{download_url, expires_at}` |
+
+| Method / path | Quyền | Request | Thành công |
+| --- | --- | --- | --- |
+| POST `/files/upload` *(đã triển khai)* | C/S/M | `multipart/form-data` (`file`: JPEG/PNG/WebP, 1B–10MiB) | 201 `{file_id, original_filename, content_type, size_bytes, sha256, status: "READY", created_at}` |
+| GET `/files/{id}/download` *(đã triển khai)* | Owner/S/M | — | Luồng tải nhị phân (`FileResponse`) sau khi kiểm tra quyền trên tài nguyên gắn kết |
+| POST `/files/{id}/attachments` *(đã triển khai)* | Owner/S/M, I | `{purpose, support_ticket_id, ...}` (code hiện hỗ trợ `TICKET_EVIDENCE`, schema DB hỗ trợ 5 loại owner) | 201 FileAttachment |
+| GET `/files/attachments` *(đã triển khai)* | Owner/S/M | `owner_type`, `owner_id`, phân trang | FileAttachment[] |
+| POST `/files/upload-intents` *(mở rộng dự kiến)* | C/S/M, I | `{filename, content_type, size_bytes, sha256}` | 201 `{file_id, upload_url, method: "PUT", headers, expires_at}` |
+| POST `/files/{id}/complete` *(mở rộng dự kiến)* | Người upload/S/M, I | `{}` | StoredFile READY hoặc lỗi kiểm tra |
 
 - Bảng giá được quản lý **theo từng xe**. `POST /vehicles` tạo phiên bản giá đầu tiên; `POST /prices` thêm phiên bản tiếp theo, không sửa/xóa phiên bản cũ. Trong một transaction, khóa xe, ghi `vehicle_pricing_history` với version tăng đơn điệu và giá/cọc cũ-mới, cập nhật giá hiện tại trên `vehicles`, rồi trả version mới. Snapshot của rental hiện có không thay đổi.
 - `GET /prices` mặc định trả phiên bản mới nhất của mỗi xe; khi có `vehicle_id`, trả lịch sử xe đó theo `version_number DESC`. Trang lịch sử là append-only, thứ tự phụ khi cần là `id DESC`. Giá/cọc là chuỗi tiền; ID là chuỗi.
 - Quyền mọi trạm của STAFF không bỏ qua việc điều chuyển: khóa trạm nguồn/đích theo ID tăng dần, sau đó khóa xe; kiểm tra status, capacity và quan hệ rental trước ghi. Cập nhật `vehicles.current_station_id` và append `vehicle_move_audits` cùng transaction. Ghi station nguồn/đích, actor, thời điểm server, note và idempotency record. Replay cùng key không tạo audit thứ hai.
-- Upload chỉ nhận JPEG/PNG/WebP tối đa 10 MiB/file. `POST /files/upload-intents` (C/S/M, I) nhận `{filename, content_type, size_bytes, sha256}` và trả `{file_id, upload_url, method: "PUT", headers, expires_at}`. URL upload ký có hiệu lực 5 phút; client PUT trực tiếp lên object storage riêng tư. `POST /files/{id}/complete` (C/S/M, I) xác minh object có thật, MIME và magic bytes, kích thước và SHA-256 rồi đánh dấu READY; file không khớp bị REJECTED, không được attach/download.
-- `POST /files/{id}/attachments` (C/S/M, I) nhận đúng một owner trong `{vehicle_id?, maintenance_order_id?, handover_id?, user_document_id?, support_ticket_id?}` cùng `purpose`; file chỉ attach một lần. Lưu liên kết FK trong `file_attachments`. Download qua `GET /files/{id}/download` trả URL ký ngắn hạn (5 phút), không trả `object_key`; kiểm tra quyền với tài nguyên cha trước khi cấp URL. Ảnh xe chỉ công khai nếu xe tương ứng được phép xem công khai; giấy tờ và bằng chứng nghiệp vụ chỉ Owner/S/M. Ghi audit tải ảnh nhạy cảm, không cache URL.
-- `GET /files/attachments` chỉ liệt kê metadata của tệp gắn với owner được phép xem; kiểm tra quyền trên tài nguyên cha trước khi trả kết quả, không cấp URL tải trong danh sách.
-- Khi object storage, malware/content validation hoặc ký URL chưa được cấu hình, endpoint liên quan trả `503 FEATURE_NOT_ENABLED`/`DEPENDENCY_UNAVAILABLE`, không tạo response giả hoặc chấp nhận URL bên ngoài. Xóa file và chính sách lưu trữ cần review riêng; V1 không xóa bằng chứng gắn với tài chính/giấy tờ.
-- Bảng `file_attachments` chỉ nhận file READY và đúng một owner FK; `purpose` phải phù hợp loại ảnh. CUSTOMER chỉ attach giấy tờ, bằng chứng ticket hoặc handover thuộc tài nguyên của mình; STAFF/MANAGER theo quyền tài nguyên. File không được attach nhiều lần. Download kiểm tra quyền cha mỗi lần cấp URL; URL hết hạn không thay quyền truy cập.
+- Upload chỉ nhận JPEG/PNG/WebP tối đa 10 MiB/file. Ở bản triển khai cục bộ hiện tại (`POST /files/upload`), backend đọc nội dung, tính SHA-256, lưu vào `backend/uploads/` và tạo `StoredFile` ở trạng thái `READY`. Ở bản mở rộng object storage (`upload-intents` / `complete`), client dùng URL ký ngắn hạn.
+- `POST /files/{id}/attachments` gắn `StoredFile` ở trạng thái `READY` với tài nguyên cha trong `file_attachments`; mỗi file chỉ attach một lần. Giấy tờ eKYC (`POST /users/me/documents`) tự gắn `front_file_id`/`back_file_id` với `USER_DOCUMENT_FRONT`/`USER_DOCUMENT_BACK` trong cùng transaction.
+- `GET /files/attachments` chỉ liệt kê metadata của tệp gắn với owner được phép xem; kiểm tra quyền trên tài nguyên cha trước khi trả kết quả.
 
-Tạo xe khóa trạm đích; điều chuyển khóa cả trạm nguồn/đích theo ID tăng dần trước khi khóa xe và kiểm tra lại chỗ. Không điều chuyển xe RESERVED/RENTED/RETURN_PENDING/SUSPECTED_STOLEN/STOLEN. Không giảm capacity dưới số xe đang đỗ; không ngừng trạm khi còn xe hoặc lượt giữ chỗ ở trạm. Không đặt/nhận/trả tại trạm không hoạt động hoặc ngoài giờ mở.
+Tạo xe khóa trạm đích; điều chuyển khóa cả trạm nguồn/đích theo ID tăng dần trước khi khóa xe và kiểm tra lại chỗ. Không điều chuyển xe `RESERVED`/`RENTED`/`RETURN_PENDING`/`SUSPECTED_STOLEN`/`STOLEN`. Không giảm capacity dưới số xe đang đỗ; không ngừng trạm khi còn xe hoặc lượt giữ chỗ ở trạm. Không đặt/nhận/trả tại trạm không hoạt động hoặc ngoài giờ mở.
 
-AVAILABLE ↔ MAINTENANCE chỉ khi xe đang ở trạm và không có thuê/giữ chỗ đang hiệu lực; không dùng endpoint status để bỏ qua bàn giao, giải phóng xe đang thuê hoặc xử lý mất xe. `note` cần kho audit theo mục 13. Giá mới không được thay đổi snapshot của rental đã tạo. Lưu lịch sử đổi giá/cọc. API cập nhật pin có audit; chặn sửa xe STOLEN/SUSPECTED_STOLEN và không mở lại khả năng thuê nếu còn rental/bảo trì chặn. Xe dưới 30% không cho đặt/pickup, nhưng vẫn được tiếp nhận trả.
+Luồng thường chỉ chuyển `AVAILABLE ↔ MAINTENANCE` khi xe ở trạm và không còn rental giữ quyền sử dụng. Xe sự cố thu hồi về trạm (`MAINTENANCE`) mở phiếu bảo trì qua `POST /maintenance-orders` với `incident_id`; sau khi phiếu đạt `COMPLETED`, `MANAGER` giải phóng xe qua `POST /rental-incidents/{id}/release-vehicle` mà không bắt khách cũ phải thanh toán xong trước. Giá mới không sửa snapshot. Pin dưới 30% không cho đặt/pickup nhưng vẫn được tiếp nhận khi trả xe.
 
 ## 6. Giữ xe, nhận xe và trả xe
 
@@ -287,7 +335,7 @@ AVAILABLE ↔ MAINTENANCE chỉ khi xe đang ở trạm và không có thuê/gi�
 | IN_RENT | initiate-return sau khi nhân viên giữ xe thực tế | RETURN_PENDING |
 | RETURN_PENDING | return quyết toán thành công | COMPLETED |
 
-STOLEN chưa giải quyết chặn khách/xe theo quyết định 6. Quy trình ghi nhận và giải quyết mất xe chờ bổ sung theo quyết định 12; không thêm CLOSED_INCIDENT, API khôi phục hoặc chính sách giữ cọc mất xe trong lần cập nhật này.
+Luồng sự cố theo mục 9.1 và quyết định 12: khách gửi ticket chưa tự đổi trạng thái; nhân viên tiếp nhận nghi mất (`intake`) chuyển xe sang `SUSPECTED_STOLEN`, `rental` vẫn `IN_RENT`. `MANAGER` bác báo nhầm (`FALSE_ALARM`) thì xe trở lại `RENTED`; xác nhận mất/trộm (`LOSS_THEFT`) thì xe và `rental` chuyển `STOLEN`; xác nhận bỏ xe (`ABANDONMENT`) thì `rental` chuyển `INCIDENT_PENDING`. Khi xe về trạm (`arrival`) chuyển `MAINTENANCE`; sau khi phiếu bảo trì gắn `incident_id` hoàn tất (`COMPLETED`) và `MANAGER` gọi `release-vehicle`, xe mới cho thuê lại. `rental` chỉ chuyển `CLOSED_INCIDENT` khi hồ sơ và nghĩa vụ tài chính đã giải quyết; xe chưa tìm thấy vẫn `STOLEN`. Thu hồi sau `CLOSED_INCIDENT` không mở lại `rental`.
 
 | Method / path | Quyền | Request | Thành công |
 | --- | --- | --- | --- |
@@ -306,22 +354,49 @@ STOLEN chưa giải quyết chặn khách/xe theo quyết định 6. Quy trình 
 
 Không có DELETE rental, PATCH status, gia hạn hoặc thời gian đặt trước nhiều ngày. Không nhận giá, customer_id, timestamp nghiệp vụ hoặc trạng thái tùy ý từ client. Body ngoài schema trả 422. Pickup yêu cầu xe RESERVED đúng rental/trạm; chuyển xe RENTED, current_station_id=null, ghi PICKUP và actual_start_time cùng transaction thu cọc. Chỉ thời gian thực tế sau khi lấy khóa < expires_at mới được nhận.
 
-Các trường mới của Rental đều được trả theo schema mục 3. `billing_unit = "FIRST_1800_SECONDS_THEN_CEIL_MINUTE"`; deposit_held là cọc hiện còn giữ cho chuyến (0 trước pickup và sau quyết toán thành công). total_price=null trước quyết toán; quote là báo giá riêng. cancellation_limit_exempt mặc định false, chỉ server thay đổi theo xác nhận vận hành có audit.
+Rental dùng schema mục 3. `billing_unit = FIRST_1800_SECONDS_THEN_CEIL_MINUTE`. `deposit_held` là cọc còn giữ: `0.00` trước pickup và sau khi xử lý hết cọc; trong luồng sự cố, sau khi `settle-rent` cấn tiền thuê, phần cọc dư còn lại được hoàn qua `deposit/refund` (không cấn vào bồi thường). `total_price` mô tả tiền thuê, không gộp bồi thường; chưa chốt thì `null`. `cancellation_limit_exempt` do server xác nhận kèm audit.
 
 Các mục 6.2–6.8 dưới đây chuyển nguyên nội dung chính sách 1–7 từ sổ quyết định; các tham chiếu “mục 1…7” bên trong chúng chỉ các mục của **v1-decisions.md**.
 
 ### 6.2. Giá thuê đã chốt
 
+Các tham chiếu chính sách theo số mục trong phần này thuộc [v1-decisions.md](v1-decisions.md).
+
 - Đơn vị thanh toán: VND. Dùng Decimal/NUMERIC, không dùng float.
 - Thu tối thiểu một block 1.800 giây (30 phút) đầu tiên. Chỉ phần vượt 30 phút được tính theo phút, làm tròn lên.
 - Giá cấu hình theo xe: `first_30_minutes_price = 10000.00`, `extra_minute_price = 350.00` trong seed.
-- Tính từ pickup thành công đến `return_initiated_at`, thời điểm server ghi nhận nhân viên kiểm tra trả xe thực tế tại trạm theo mục 7. Thời gian giữ xe chưa bàn giao không tính tiền; thời gian chờ thanh toán sau mốc này không tính thêm. Tạm dừng di chuyển trước mốc này vẫn tính tiền.
+- Tiền thuê bắt đầu từ actual_start_time khi pickup thành công.
+  Thời gian giữ xe trước bàn giao không tính tiền.
+- Luồng trả xe thông thường: dừng cước tại return_initiated_at,
+  khi nhân viên tiếp nhận xe thực tế tại trạm theo mục 7.
+- Luồng mất/trộm đã xác nhận: dừng cước tại thời điểm server
+  nhận báo cáo đã lưu và được MANAGER xác nhận hợp lệ
+  theo mục 12.3; không dùng thời điểm MANAGER duyệt thay
+  thời điểm server nhận báo cáo.
+- Luồng bỏ xe đã xác minh: dừng cước tại thời điểm nhân viên
+  thực sự thu hồi/tiếp nhận; không cộng thời gian vận chuyển,
+  sửa chữa hoặc chờ quyết toán sau mốc này.
+- Trong lúc xác minh sự cố, tiền hiển thị chỉ là tạm tính.
+  Báo nhầm và tiếp tục sử dụng không áp dụng mốc dừng cước
+  sự cố; chuyến tiếp tục theo luồng thông thường.
+- Không ghi giả return_initiated_at để tính tiền sự cố.
+  Thời điểm dừng cước và thời điểm thanh toán là hai mốc riêng.
 - Tối thiểu một block, kể cả nhận rồi trả ngay. Không thêm phí mở khóa, không phụ thu trả khác trạm, không có trần ngày hoặc gói ngày/tháng trong V1 này.
 - Làm tròn tổng tiền sau giảm giá đến 1 đồng bằng HALF_UP; API vẫn biểu diễn tiền bằng chuỗi, ví dụ `"10000.00"`.
 - Backend tính theo thời gian UTC với độ chính xác lưu trữ; không bỏ giây lẻ trước khi làm tròn. Đúng 30 phút chỉ thu 10.000đ; vượt 30 phút dù nhỏ hơn một giây tính thêm một phút. Timestamp ngược thứ tự phải bị từ chối.
 
+Trong công thức dưới đây, billing_end_time là ký hiệu mô tả
+mốc cuối dùng để tính cước, chưa phải tên cột database được chốt.
+Khi quyết toán, chọn mốc đã xác định theo từng nhánh ở trên.
+Khi chỉ hiển thị tạm tính cho chuyến chưa có mốc dừng cước hợp lệ,
+dùng thời gian server hiện tại và phải ghi rõ đây là số tạm tính.
+
+Giữ nguyên snapshot giá và cách làm tròn. Đối với chuyến đã
+xác nhận xử lý theo hồ sơ sự cố, valid_discount = 0 và không
+tiêu thụ mã khuyến mãi theo mục 12.7.
+
 ```text
-elapsed_seconds = return_initiated_at - actual_start_time
+elapsed_seconds = billing_end_time - actual_start_time
 extra_minutes = ceil(max(elapsed_seconds - 1800, 0) / 60)
 rental_fee = first_30_minutes_price_snapshot + extra_minutes × extra_minute_price_snapshot
 total_due = HALF_UP(rental_fee - valid_discount, đến 1 đồng)
@@ -354,13 +429,33 @@ Ví dụ: khách giữ lúc giá 10.000đ/30 phút đầu + 350đ/phút thêm, s
 
 ### 6.4. Cọc và số dư
 
+Các tham chiếu chính sách theo số mục trong phần này thuộc [v1-decisions.md](v1-decisions.md).
+
 - Cọc cấu hình theo xe qua `deposit_amount`; seed ban đầu: `100000.00`.
 - Khi giữ xe: ví phải ACTIVE và số dư ít nhất bằng cọc snapshot cộng giá một block snapshot. Chỉ kiểm tra, chưa trừ/khóa tiền.
 - Khi pickup: kiểm tra lại cùng điều kiện; thu cọc và ghi biên bản, chuyển trạng thái chuyến/xe trong cùng transaction. Với seed, cần số dư ít nhất 110.000đ, trừ cọc 100.000đ, còn 10.000đ trong ví.
 - Cọc được ghi riêng theo rental; không còn là số dư có thể chi tiêu và không được tính là doanh thu thuê.
-- Hủy giữ chỗ hoặc hết 30 phút trước pickup: không thu phí, không mất cọc vì chưa thu cọc. Sau pickup không dùng API cancel để kết thúc chuyến; phải return.
-- Trả xe: dùng cọc để thanh toán, thu thêm nếu thiếu, hoàn phần dư vào ví nếu thừa. Không coi thiếu phần thu thêm là được phép trừ hết cọc và ghi thanh toán dở.
-- Không giữ giấy tờ bản gốc làm cọc. Không tự động khấu trừ phí hỏng/mất xe chưa được chốt.
+- Hủy giữ chỗ hoặc hết 30 phút trước pickup không thu phí,
+  không mất cọc vì chưa thu cọc. Sau pickup không dùng API
+  cancel để kết thúc chuyến; xử lý theo luồng trả xe thông
+  thường hoặc luồng sự cố tại mục 12.
+- Trả xe thông thường: dùng cọc để thanh toán tiền thuê,
+  thu thêm nếu thiếu và hoàn phần cọc dư nếu thừa.
+  Thiếu phần thu thêm thì không cấn cọc dở hoặc đánh dấu
+  đã thanh toán.
+- Quyết toán sự cố (luồng thu gọn 13/11/2026): cọc chỉ dùng để cấn tiền thuê
+  trong `settle-rent` và hoàn phần dư qua `deposit/refund`; **không** cấn cọc
+  vào bồi thường hoặc tự trừ/hoàn bồi thường qua ví.
+- Định giá, thương lượng, tranh chấp và thanh toán/hoàn trả bồi thường diễn ra
+  **ngoài hệ thống**; backend chỉ ghi nhận kết quả và trạng thái thanh toán bên ngoài.
+- Theo dõi riêng cọc đã cấn tiền thuê, cọc đã hoàn và cọc còn giữ. Cọc đã thu
+  không được trừ khỏi ví lần thứ hai khi cấn vào tiền thuê.
+- Không giữ giấy tờ bản gốc làm cọc. Không ghi nhận thanh toán bồi thường khi
+  chưa có kết quả xác nhận từ quản lý.
+
+Công thức và bảng ví dụ dưới đây áp dụng cho quyết toán trả xe
+thông thường. Với hồ sơ sự cố, `settle-rent` cấn cọc vào tiền thuê (giữ phần
+dư cho bước `deposit/refund` riêng theo mục 9.1), không trộn bồi thường vào cọc.
 
 ```text
 additional_payment = max(total_due - deposit_held, 0)
@@ -409,12 +504,64 @@ Schema cần bổ sung ngày sinh đã xác minh, hạn CCCD, thông tin ngườ
 
 ### 6.7. Ràng buộc chuyến, hạn mức và khóa
 
-- Mỗi customer chỉ có tối đa một rental RESERVED, IN_RENT hoặc RETURN_PENDING. Rental STOLEN chưa giải quyết cũng chặn đặt xe mới.
-- Một xe chỉ có tối đa một rental RESERVED/IN_RENT/RETURN_PENDING/STOLEN.
-- RESERVED hết hạn phải chuyển EXPIRED trong transaction trước khi cho đặt mới. Không dùng thời gian hiện tại trong điều kiện partial unique index.
-- Thêm partial unique index cho customer_id và vehicle_id với trạng thái RESERVED/IN_RENT/RETURN_PENDING/STOLEN. RETURN_PENDING là xe đã được nhân viên giữ tại trạm nhưng còn chờ quyết toán theo mục 7.
-- Hai request đồng thời của cùng khách đặt hai xe: chỉ một request được thành công. Không hỗ trợ thuê hộ/thuê nhóm trong V1.
-- Hủy/hết hạn/trả hoàn tất mới cho đặt lượt tiếp theo, nếu tài khoản và ví vẫn đủ điều kiện. Không tự giải phóng rental STOLEN theo timeout 30 phút.
+Các tham chiếu chính sách theo số mục trong phần này thuộc [v1-decisions.md](v1-decisions.md).
+
+#### Chặn khách có chuyến chưa giải quyết
+
+- Mỗi customer chỉ có tối đa một lượt giữ/chuyến chưa giải quyết.
+  Các trạng thái `RESERVED`, `IN_RENT`, `RETURN_PENDING`, `STOLEN` và `INCIDENT_PENDING`
+  tiếp tục chặn khách tạo lượt thuê mới (`uq_active_customer_rental`).
+- Xe của chuyến cũ đã được thu hồi và cho thuê lại không có nghĩa
+  khách cũ đã hoàn thành nghĩa vụ. Khách cũ vẫn bị chặn thuê mới
+  đến khi chuyến được giải quyết theo quy trình tương ứng.
+- Rental CLOSED_INCIDENT không còn chặn khách thuê mới. Khách
+  vẫn phải đáp ứng các điều kiện tài khoản, ví và giấy tờ.
+- Hai request đồng thời của cùng khách đặt hai xe: chỉ một
+  request được thành công. V1 không hỗ trợ thuê hộ/thuê nhóm.
+- Không tự giải phóng rental STOLEN theo timeout 30 phút.
+
+#### Chặn xe và giải phóng xe sau sự cố
+
+- Một xe chỉ có tối đa một rental đang giữ quyền sử dụng xe.
+  Phân biệt quyền sử dụng xe với nghĩa vụ tài chính của khách.
+- Luồng thông thường: RESERVED, IN_RENT và RETURN_PENDING
+  giữ quyền sử dụng xe, không cho tạo chuyến mới trên xe đó.
+- Luồng sự cố: xe chỉ được tham gia chuyến mới sau khi đã thu hồi,
+  kiểm tra/sửa chữa đạt yêu cầu và được giải phóng hợp lệ
+  theo mục 12.6.
+- Việc giải phóng phải lưu người thực hiện, thời điểm, kết quả
+  kiểm tra và audit. Không chỉ đổi trạng thái xe sang AVAILABLE
+  hoặc đóng rental cũ để bỏ qua các điều kiện này.
+- Sau khi giải phóng hợp lệ, rental sự cố cũ có thể tiếp tục
+  tồn tại để xử lý nghĩa vụ tài chính nhưng không còn giữ
+  quyền sử dụng xe.
+- Xe chưa thu hồi vẫn STOLEN và không được thuê, kể cả khi
+  rental cũ đã CLOSED_INCIDENT.
+- Quyết toán hoặc hoàn tiền hồ sơ cũ không được thay đổi
+  trạng thái xe hoặc tác động chuyến mới.
+
+#### Ràng buộc dữ liệu và xử lý đồng thời
+
+- Điều kiện chặn khách và chặn xe phải được thiết kế riêng.
+  Không tiếp tục dùng cùng một tập trạng thái làm điều kiện
+  duy nhất cho cả hai partial unique index.
+- Ràng buộc theo customer_id bảo đảm một khách không có
+  nhiều lượt giữ/chuyến chưa giải quyết.
+- Ràng buộc theo vehicle_id bảo đảm một xe không có nhiều
+  rental đồng thời giữ quyền sử dụng xe. Phải thể hiện được
+  việc giải phóng xe hợp lệ khỏi rental sự cố cũ.
+- Không đơn thuần loại STOLEN khỏi unique index theo xe rồi
+  coi xe đã đủ điều kiện cho thuê.
+- Trạng thái xe, phiếu bảo trì hoạt động và các điều kiện thuê
+  khác vẫn phải được kiểm tra độc lập.
+- RESERVED hết hạn phải chuyển EXPIRED trong transaction
+  trước khi cho đặt mới. Không dùng thời gian hiện tại
+  trong điều kiện partial unique index.
+- Kiểm tra và cập nhật quyền sử dụng xe phải nằm trong
+  transaction, tuân thủ thứ tự khóa chung. Hai thao tác
+  giải phóng/đặt thuê đồng thời không được tạo quyền sử dụng
+  xe trùng nhau.
+- Trên DB, `uq_active_customer_rental` chặn theo `status IN ('RESERVED', 'IN_RENT', 'RETURN_PENDING', 'STOLEN', 'INCIDENT_PENDING')`, còn `uq_active_vehicle_rental` chặn khi `status IN ('RESERVED', 'IN_RENT', 'RETURN_PENDING', 'STOLEN', 'INCIDENT_PENDING', 'CLOSED_INCIDENT') AND vehicle_released_at IS NULL`.
 
 #### Giới hạn hủy/hết hạn theo ngày
 
@@ -431,8 +578,6 @@ Schema cần bổ sung ngày sinh đã xác minh, hạn CCCD, thông tin ngườ
 - Chuyển các rental đó sang EXPIRED; chỉ giải phóng xe nếu còn RESERVED cho chính lượt đó và không có lỗi/bảo trì chặn. Giữ lịch sử, hạn gốc và ngày tính hạn mức; không sửa lượt IN_RENT/RETURN_PENDING/STOLEN.
 - Ý nghĩa nghiệp vụ là `expires_at <= NOW()`. Với PostgreSQL, `NOW()` cố định từ đầu transaction: sau khi chờ lấy khóa phải lấy giờ thực tế mới bằng `clock_timestamp()` và dùng một mốc chung cho kiểm tra này. Không dùng thời gian cũ trước khi chờ khóa để nhận/đặt xe quá hạn.
 - Sau khi dọn, kiểm tra lại số lượt, hạn mức, tài khoản, ví, xe và trạm; chỉ tạo created_at/expires_at mới khi đủ điều kiện. Nếu từ chối đặt do điều kiện nghiệp vụ, vẫn commit việc dọn hết hạn đã hợp lệ rồi trả lỗi; lỗi hệ thống thì rollback. Không raise lỗi làm vô tình rollback việc dọn khi cần lưu kết quả.
-
-Các luồng TV1/TV2 và các module trước/sau khi tách `trips` phải theo cùng một orchestration contract: `station → customer → wallet → vehicle → rental`, khóa ID tăng dần trong từng nhóm, khóa xong đọc lại, xử lý expiration trong transaction, cùng quy tắc commit/rollback và idempotency. Không nhân đôi thao tác ghi trạng thái rental/xe/ví ở router hoặc module khác. Trước khi tách module, test PostgreSQL thật cho hai xe cùng customer, hai customer cùng xe, hai request cùng chỗ cuối, rollback giữa các bước ghi và retry sau timeout.
 - Job định kỳ chỉ giúp dọn sớm. Tính đúng ở mỗi thao tác không phụ thuộc job; đây không phải cam kết mọi dòng DB tự đổi trạng thái đúng từng giây khi không có request/job.
 
 #### Thứ tự khóa toàn cục (Global Lock Order)
@@ -445,11 +590,17 @@ Các luồng TV1/TV2 và các module trước/sau khi tách `trips` phải theo 
 - Lazy Expiration có thể chạm xe khác của cùng khách hoặc khách khác đang giữ xe được chọn. Đọc sơ bộ để thu thập đầy đủ tập trạm/customer/xe/rental, khóa theo thứ tự, rồi đọc lại xác minh. Nếu phát hiện thêm tài nguyên hoặc quan hệ thay đổi, rollback và retry với tập đầy đủ; không khóa bổ sung một nhóm đứng trước khi đã giữ nhóm sau.
 - Dùng cùng cơ chế cho reserve/cancel/expiry/pickup/return/move và giao dịch ví. Retry deadlock có giới hạn, kết hợp idempotency và unique index; thứ tự khóa không thay thế kiểm tra trạng thái sau khóa.
 
-API tạo rental: sau Lazy Expiration, nếu khách còn lượt chưa giải quyết trả 409 ACTIVE_RENTAL_EXISTS; nếu xe bị giữ/thuê trả 409 VEHICLE_UNAVAILABLE; hết hạn pickup trả 409 RESERVATION_EXPIRED. Xe chuyển RESERVED khi đặt, vẫn ở trạm. Mỗi thao tác lấy giờ server sau khi có khóa; giữ created_at/expires_at gốc. GET không được hiển thị lượt quá hạn như còn hiệu lực; replay idempotency vẫn trả kết quả gốc, khách cần GET để biết trạng thái hiện tại. Khi đặt lại dùng rental và key mới.
-
 ### 6.8. Tiếp nhận xe và quyết toán hai giai đoạn
 
-- Chốt kết hợp: **đóng băng thời gian cước bằng `return_initiated_at` và giữ báo giá 10 phút bằng `quote_expires_at`**. Thay thời hạn báo giá cũ trong luồng trả xe này.
+Các tham chiếu chính sách theo số mục trong phần này thuộc [v1-decisions.md](v1-decisions.md).
+
+Phần này mô tả luồng trả xe thông thường tại trạm.
+Hồ sơ sự cố áp dụng các quy định riêng tại mục 12 về mốc dừng
+cước, quyết toán từng khoản, cọc và giải phóng xe. Không dùng
+luồng return thông thường để tự đóng hồ sơ sự cố hoặc đổi
+trạng thái xe đang phục vụ một chuyến mới.
+
+- Chốt kết hợp: **đóng băng thời gian cước bằng `return_initiated_at` và giữ báo giá 10 phút bằng `quote_expires_at`**. Thay đề xuất quote 120 giây trước đây trong luồng trả xe này.
 - Tách hai hành động: xem báo giá ước tính không dừng cước; chỉ STAFF/MANAGER bấm kiểm tra trả xe sau khi xác nhận xe thực tế đã ở trạm và được nhân viên giữ mới được đóng băng cước. Khách không tự ghi timestamp hoặc tự dừng cước.
 - Bổ sung hành động `POST /rentals/{id}/initiate-return` có Idempotency-Key. Dưới khóa theo thứ tự mục 6, kiểm tra rental IN_RENT, đúng xe, trạm hoạt động/còn chỗ và pin/tình trạng xe thực tế; server lấy giờ sau khi có khóa, lưu `return_initiated_at` bất biến, `actual_end_time` bằng mốc nhận xe này, `actual_return_station_id`, biên bản RETURN, xe tại trạm với trạng thái RETURN_PENDING và rental RETURN_PENDING trong một transaction.
 - Ghi `settled_at` riêng khi quyết toán thành công. Thời điểm kết thúc sử dụng/nhận lại xe khác thời điểm trả tiền; không thay `actual_end_time` bằng thời điểm thanh toán.
@@ -466,7 +617,25 @@ API tạo rental: sau Lazy Expiration, nếu khách còn lượt chưa giải qu
 
 Ví dụ: nhân viên tiếp nhận sau 5 giờ 30 phút, phí cố định 115.000đ; cọc 100.000đ, ví còn 10.000đ thì cần thu thêm 15.000đ, thiếu 5.000đ. Xe ở trạm và rental RETURN_PENDING. Khách nạp thêm 5.000đ sau 12 phút: quote đầu đã hết hạn, lấy quote mới vẫn có phí thuê 115.000đ nếu không thay khuyến mãi; quyết toán xong ví còn 0đ. Không cộng 12 phút chờ vào cước.
 
-Thay đổi này cần bổ sung RETURN_PENDING cho rental và vehicle, cùng các trường timestamp, endpoint và test trong schema/contract. Không chỉ thêm quote_expires_at vào response rồi coi như đã xử lý việc nhận xe khi thiếu tiền. Báo cáo thời lượng dùng actual_start_time/actual_end_time; doanh thu vẫn chỉ tính COMPLETED + hóa đơn PAID theo định nghĩa contract, không tính RETURN_PENDING là doanh thu đã thu.
+Backend đã triển khai đầy đủ `RETURN_PENDING`, tiếp nhận trả xe, báo giá, quyết toán thông thường và luồng quyết toán thuê/hoàn cọc/ghi nhận bồi thường ngoài hệ thống cho hồ sơ sự cố (mục 9.1).
+
+Đối với chuyến thông thường, giữ quy tắc báo cáo hiện có:
+doanh thu thuê tính từ rental COMPLETED có hóa đơn PAID;
+RETURN_PENDING chưa quyết toán không được tính là doanh thu
+đã thu.
+
+Đối với hồ sơ sự cố, ghi nhận doanh thu thuê tại thời điểm
+quyết toán thành công khoản tiền thuê, kể cả rental chưa
+CLOSED_INCIDENT. Đóng rental sau đó không ghi doanh thu lần nữa.
+
+Khoản tiền thuê đã quyết toán bao gồm phần cọc được cấn vào
+tiền thuê và phần thu thêm, nếu có; không chỉ tính phần tiền
+mới trừ khỏi ví. Không cộng tiền cọc lúc mới thu, cọc còn giữ,
+bồi thường hoặc hoàn bồi thường vào doanh thu thuê.
+
+Báo cáo phải phân biệt thời gian sử dụng, mốc dừng cước và
+thời điểm quyết toán. Không ghi giả actual_end_time hoặc
+return_initiated_at để đưa hồ sơ sự cố vào báo cáo hiện có.
 
 ### 6.9. Schema báo giá
 
@@ -519,9 +688,9 @@ Topup ở đây là **luồng demo đã chốt về phạm vi**, chỉ bật khi
 
 Ví FROZEN/LOCKED không được nạp/trừ tự động. Không có API sửa trực tiếp balance hoặc tạo Transaction SUCCESS từ request khách. `balance_after` phải đúng với hướng tác động: TOPUP/RENTAL_REFUND cộng; WITHDRAW/RENTAL_PAYMENT/RENTAL_DEPOSIT trừ. Amount luôn là độ lớn dương; khoản bằng 0 không cần tạo bút toán.
 
-V1 chưa mở rút ví, hoàn tiền thủ công, thu phí sự cố tùy ý hay webhook thật. Hoàn phần cọc dư khi trả xe thành công là luồng đã chốt, khác hoàn tiền thủ công.
+V1 chưa mở rút ví, hoàn tiền tùy ý hoặc webhook thật. Hoàn cọc dư thông thường và hoàn cọc dư sự cố (`POST /rental-incidents/{id}/deposit/refund`) đã được triển khai. Bồi thường sự cố (thu/thương lượng/hoàn trả) được thực hiện ngoài hệ thống và không tạo giao dịch ví/doanh thu nội bộ.
 
-Pickup ghi DEPOSIT/RENTAL_DEPOSIT đúng một lần; cọc chuyển khỏi ví sang khoản giữ riêng theo rental. Quyết toán ghi phần cọc cấn trừ trong sổ giao dịch rental (không trừ ví lần hai); chỉ phần additional_payment mới ghi RENTAL_PAYMENT trừ ví, phần deposit_refund ghi RENTAL_REFUND cộng ví. Khoản 0 không ghi bút toán. Tổng invoice là total_amount, không cộng cọc vào doanh thu. Wallet balance_after phải khớp công thức mục 6.4. Ví phải ACTIVE kể cả khi cọc đủ.
+Pickup ghi DEPOSIT/RENTAL_DEPOSIT một lần. Luồng thường cấn cọc, thu thêm/hoàn dư theo mục 6.4. Luồng sự cố dùng cọc cho tiền thuê qua `settle-rent` và hoàn phần dư qua `deposit/refund`; không trừ ví lần hai khi cấn cọc, không cấn cọc vào bồi thường. Mỗi nghĩa vụ tiền thuê quyết toán toàn phần trong một transaction, không trả góp. Không tạo giao dịch tiền 0. Không dùng `return` thông thường quyết toán hồ sơ sự cố vì có thể sửa trạng thái xe ở chuyến mới. Xem mục 9.1.
 
 Không tích hợp hoặc bật thanh toán thật trong V1. Tài liệu thiết kế mô tả interface PaymentProvider với bản triển khai mô phỏng; provider thật (VNPay/MoMo/ZaloPay), xác minh webhook tại server và đối soát nằm ngoài phạm vi. Giao diện ví/nạp/thanh toán có nhãn “Tiền mô phỏng”. DEMO_PAYMENTS_ENABLED phải bật rõ ràng để nạp demo; tắt hoặc thiếu cấu hình thì FEATURE_NOT_ENABLED. Không có API nhận xác nhận thanh toán thật từ client.
 
@@ -543,18 +712,20 @@ Một user chỉ nhận một bản của mỗi mã (unique user_id/promotion_id
 
 Giảm trên rental_fee, không giảm cọc/phí sự cố. `PERCENTAGE` áp dụng `discount_value` phần trăm và giới hạn `max_discount_amount` nếu có; `FIXED_AMOUNT` trừ tối đa bằng tiền thuê. Tổng thuê sau giảm làm tròn đến 1 VND bằng `HALF_UP` theo R2. Quote không tiêu thụ mã; khi thanh toán thành công, service `app.services.promotions.consume_promotion` khóa promotion/claim, tăng `used_count` và cập nhật `is_used/used_at`; caller phải chạy cùng transaction quyết toán để rollback đồng bộ nếu thanh toán thất bại. Mức cap bị tranh chấp giữa các giao dịch được quyết định lại dưới khóa promotion, hết lượt trả `409 PROMOTION_EXHAUSTED`. Snapshot giữ loại/giá trị giảm, code, mẫu xe và số tiền giảm.
 
-## 9. Sự cố, bảo trì và đánh giá
+Không áp dụng/tiêu thụ mã khi quyết toán sự cố. Báo nhầm bị bác bỏ và tiếp tục chuyến thì theo luồng thường. Phản ánh mới sau COMPLETED không thu hồi mã đã dùng.
 
-**Quy trình sự cố/mất xe chờ bổ sung/chưa duyệt theo mục 12 của v1-decisions.** Schema ticket, endpoint và vòng đời ticket bên dưới là đề xuất. Chưa duyệt chính sách phụ thuộc thì từ chối thao tác bằng 503 POLICY_NOT_CONFIGURED. Không thêm CLOSED_INCIDENT hoặc endpoint xác nhận/khôi phục mất xe. Chưa chốt cách xử lý cọc, hóa đơn, bồi thường hoặc giải phóng rental STOLEN. Ràng buộc STOLEN tại mục 6.7 vẫn có hiệu lực. Quy tắc đánh giá chuyến COMPLETED, bảo trì thông thường và ảnh bằng chứng là các luồng riêng. API phiếu bảo trì dưới đây là hợp đồng/schema đề xuất, **chưa có nghĩa chức năng đã được triển khai**.
+## 9. Sự cố, kiểm tra 24 giờ, bảo trì và đánh giá
+
+Chính sách mục 12 đã được thu gọn ngày 13/11/2026: thay workflow cảnh báo worker bằng danh sách cần kiểm tra (`/rental-check-ins`), bỏ bước gán `assign` và kiểm tra riêng `/inspection`, dùng chung `/maintenance-orders` (thêm `incident_id` tùy chọn), và hợp nhất bồi thường ngoài hệ thống vào một endpoint `compensation/external-settlement`. Ticket không thay hồ sơ bồi thường; đóng ticket không tự đóng rental.
 
 | Method / path | Quyền | Request | Thành công |
 | --- | --- | --- | --- |
 | POST `/rentals/{id}/support-tickets` | Owner/S/M | `{title, description}` | 201 Ticket OPEN; created_by lấy từ token |
 | GET `/support-tickets` | C/S/M | `status?, rental_id?`, S/M thêm `assigned_to?`, phân trang | Ticket[]; C chỉ ticket của rental mình |
 | GET `/support-tickets/{id}` | Owner/S/M | — | Ticket |
-| PATCH `/support-tickets/{id}` | S/M | `{assigned_to?, status?}` | Ticket |
-| GET `/maintenance-orders` | S/M | `vehicle_id?, status?, assigned_to?`, phân trang | MaintenanceOrder[] |
-| POST `/maintenance-orders` | S/M, I | `{vehicle_id, title, description, assigned_to?}` | 201 MaintenanceOrder OPEN |
+| PATCH `/support-tickets/{id}` | S/M | `{assigned_to?, status?, resolution_note?}` | Ticket |
+| GET `/maintenance-orders` | S/M | `vehicle_id?, status?, assigned_to?, incident_id?`, phân trang | MaintenanceOrder[] |
+| POST `/maintenance-orders` | S/M, I | `{vehicle_id, title, description, assigned_to?, incident_id?}` | 201 MaintenanceOrder OPEN (hỗ trợ cả xe thường lẫn xe sự cố đã về trạm khi truyền `incident_id`) |
 | GET `/maintenance-orders/{id}` | S/M | — | MaintenanceOrder |
 | POST `/maintenance-orders/{id}/start` | S/M, I | `{assigned_to?}` | MaintenanceOrder IN_PROGRESS |
 | POST `/maintenance-orders/{id}/complete` | S/M, I | `{resolution_note}` | MaintenanceOrder COMPLETED |
@@ -562,58 +733,111 @@ Giảm trên rental_fee, không giảm cọc/phí sự cố. `PERCENTAGE` áp d�
 | POST `/rentals/{id}/review` | C sở hữu | `{rating, comment?}` | 201 Review |
 | GET `/rentals/{id}/review` | Owner/S/M | — | Review hoặc 404 |
 
-Đề xuất ticket được tạo cho IN_RENT/RETURN_PENDING/STOLEN/COMPLETED; rental giữ chỗ chưa nhận không tạo báo hỏng trong chuyến. Assigned_to phải là STAFF/MANAGER ACTIVE; null bỏ phân công. Luồng OPEN → IN_PROGRESS → RESOLVED → CLOSED; cùng trạng thái là no-op; chuyển ngược trả 409 `INVALID_STATE_TRANSITION`.
+Code ticket hiện nhận IN_RENT/RETURN_PENDING/STOLEN/COMPLETED. Assignee phải STAFF/MANAGER ACTIVE; IN_PROGRESS cần người phụ trách, RESOLVED cần resolution_note. OPEN → IN_PROGRESS → RESOLVED → CLOSED, không chuyển ngược. Trên COMPLETED chỉ lưu phản ánh/bằng chứng; không mở hồ sơ tài chính, mở lại rental, sửa hóa đơn hoặc thu hồi khuyến mãi. Kiểm tra/bảo trì vẫn được phép theo điều kiện vận hành.
 
-`POST /maintenance-orders` chỉ nhận xe đang ở trạm và không có rental hiệu lực; tạo OPEN và đặt xe MAINTENANCE cùng transaction. Xe có rental RESERVED/IN_RENT/RETURN_PENDING/STOLEN trả 409 `ACTIVE_RENTAL_EXISTS`; không tự hủy chuyến. Một xe chỉ có tối đa một phiếu OPEN/IN_PROGRESS. Chuyển trạng thái theo OPEN → IN_PROGRESS → COMPLETED; chỉ OPEN được hủy. Thao tác hoàn tất/hủy không tự đưa xe về AVAILABLE: MANAGER phải kiểm tra xe và dùng endpoint trạng thái mục 5 sau khi không còn phiếu đang hoạt động hoặc rental/bộ chặn khác. Không có yêu cầu quản lý vật tư/chi phí trong schema V1 tối thiểu.
+`POST /maintenance-orders` (luồng thường, `incident_id=null`) yêu cầu xe ở trạm, `AVAILABLE`/`MAINTENANCE`, không có rental `RESERVED`/`IN_RENT`/`RETURN_PENDING`/`STOLEN`. Khi truyền `incident_id`, backend mở phiếu bảo trì dùng chung cho xe sự cố đã về trạm (`MAINTENANCE`, `condition` là `INTACT` hoặc `REPAIRABLE`, chưa có rental khác chặn xe). Một phiếu `OPEN`/`IN_PROGRESS` mỗi xe; `OPEN → IN_PROGRESS → COMPLETED`; chỉ `OPEN` được hủy. Hoàn tất/hủy không tự đặt xe `AVAILABLE`; `MANAGER` gọi `POST /rental-incidents/{id}/release-vehicle` sau khi hoàn tất phiếu bảo trì sự cố.
 
 Ticket không tự dừng chuyến, tự hoàn tiền hoặc đổi xe MAINTENANCE. Ảnh báo hỏng gắn với ticket qua `file_attachments` và `purpose="TICKET_EVIDENCE"`. Chỉ đánh giá rental COMPLETED, mỗi rental một đánh giá; tạo lần hai trả 409 `ALREADY_REVIEWED`.
 
+### 9.1. Danh sách kiểm tra 24 giờ, hồ sơ sự cố, thu hồi và bồi thường ngoài hệ thống
+
+Các endpoint dưới đây đã có code tại `backend/app/api/v1/` (`rental_check_ins.py`, `incidents.py`, `incident_recovery.py`, `incident_finance.py`, `incident_completion.py`).
+
+- **Danh sách cần kiểm tra (`rental-check-ins`)**: `GET /rental-check-ins` là thao tác chỉ đọc (không tự đánh dấu đã xem/xử lý). Lần đầu đến lịch khi `server_time >= actual_start_time + 24h`; các lần tiếp theo dùng `rentals.next_check_at`. Chuyến có hồ sơ sự cố chưa `DISMISSED` hoặc không còn `IN_RENT` sẽ không xuất hiện. `POST /rental-check-ins/{rental_id}` hỗ trợ 3 hành động: `CONTINUE_RENTAL` (đặt `next_check_at`), `NO_ANSWER` (ghi lịch thử lại vào `next_check_at`), hoặc `ESCALATE` (tạo ticket + mở hồ sơ sự cố `SUSPECTED_STOLEN` nguyên tử trong cùng transaction).
+- **Xác minh sự cố (không còn bước `assign`)**: `POST /rentals/{id}/incident/intake` mở thẳng hồ sơ ở trạng thái `INVESTIGATING` mà không yêu cầu `assigned_to`; nếu `verify` kết luận `FALSE_ALARM` và `continue_rental=true`, hồ sơ chuyển `DISMISSED` và cập nhật `rentals.next_check_at` nhất quán.
+- **Thu hồi & về trạm gộp kiểm tra ban đầu**: `POST /rental-incidents/{id}/recovery` giữ tách biệt với `arrival`; `POST /rental-incidents/{id}/arrival` nhận `station_id`, `arrived_at` (lưu vào `arrived_station_at`), `inspected_at?` và đánh giá ban đầu `condition` (`INTACT` | `REPAIRABLE` | `UNREPAIRABLE`), không còn endpoint `/inspection` riêng và `/rental-incidents/{id}/maintenance-orders` riêng.
+- **Bồi thường xử lý ngoài hệ thống (1 endpoint duy nhất)**: Định giá xe/sửa chữa, thương lượng, tranh chấp và thanh toán/hoàn trả bồi thường diễn ra **ngoài hệ thống**. `POST /rental-incidents/{id}/compensation/external-settlement` ghi nhận trọn vẹn kết quả xác nhận (`assessed_amount`: `0.00` = xác nhận không phải bồi thường; `> 0` bắt buộc kèm phương thức/mã/thời điểm thanh toán ngoài hệ thống), `agreement_status`, lý do và bằng chứng vào `rental_incidents` + `AuditLog`. Ghi nhận bồi thường ngoài hệ thống **không** thay đổi `wallets.balance`, `rentals.deposit_held` hay doanh thu thuê; không còn `external-result`, `recovery-finance/apply` hay `compensation/refund`.
+- **Điều kiện đóng hồ sơ (`close`)**: Bắt buộc đã quyết toán tiền thuê (`rent_settled_at`), đã hoàn hết cọc dư (`deposit_held = 0.00`), và đã ghi nhận kết quả + thanh toán bồi thường ngoài hệ thống (`compensation_assessed_amount` không null — không coi chưa xác định là 0, và `compensation_settled_at` không null). Đóng hồ sơ chuyển `rental.status = CLOSED_INCIDENT` và không tự đổi `vehicle.status = AVAILABLE`.
+
+| Method / path | Quyền | Mục đích |
+| --- | --- | --- |
+| GET `/rental-check-ins` | S/M | Xem danh sách chuyến `IN_RENT` đến lịch kiểm tra 24h (chỉ đọc) |
+| POST `/rental-check-ins/{rental_id}` | S/M, I | Ghi kết quả kiểm tra (`CONTINUE_RENTAL` / `NO_ANSWER` / `ESCALATE`) |
+| POST `/rentals/{id}/incident/intake` | S/M, I | Tiếp nhận nghi mất (`SUSPECTED_STOLEN`, trạng thái `INVESTIGATING`), chưa chốt cutoff/tài chính |
+| GET `/rental-incidents`, `/{id}`, `/{id}/events` | S/M | Tra cứu hồ sơ sự cố và lịch sử `AuditLog` |
+| POST `/rental-incidents/{id}/verify` | M, I | Kết luận `FALSE_ALARM` / `LOSS_THEFT` / `ABANDONMENT` (`FALSE_ALARM` có thể kèm `next_check_at`) |
+| POST `/rental-incidents/{id}/evidence-tickets` | S/M, I | Tạo ticket bằng chứng sự cố |
+| POST `/rental-incidents/{id}/recovery` | S/M, I | Ghi nhận đã thu hồi xe thực địa (chốt `recovered_at`; với `ABANDONMENT` đang mở cập nhật `billing_cutoff_at`) |
+| POST `/rental-incidents/{id}/arrival` | S/M, I | Ghi nhận xe về trạm kèm `condition` (`INTACT` \| `REPAIRABLE` \| `UNREPAIRABLE`), chuyển xe sang `MAINTENANCE` nếu cần |
+| POST `/rental-incidents/{id}/release-vehicle` | M, I | Giải phóng xe `AVAILABLE` sau khi phiếu bảo trì gắn `incident_id` hoàn tất (`COMPLETED`) |
+| GET `/rental-incidents/{id}/rent-preview`, POST `/settle-rent` | S/M (preview), M, I (settle) | Xem trước và quyết toán tiền thuê đến `billing_cutoff_at` |
+| POST `/rental-incidents/{id}/compensation/external-settlement` | M, I | Ghi nhận một bước kết quả xác nhận & giải quyết bồi thường ngoài hệ thống (`0.00` = `NOT_REQUIRED`; `> 0` bắt buộc `AGREED`/`AUTHORITY_DECISION` và thông tin thanh toán ngoài) |
+| GET `/rental-incidents/{id}/finance-summary` | Owner/S/M | Xem tổng hợp tài chính (`compensation_mode = "EXTERNAL"`) và điều kiện đóng hồ sơ |
+| POST `/rental-incidents/{id}/deposit/refund` | M, I | Hoàn toàn bộ `deposit_held` dư sau khi đã `settle-rent` |
+| POST `/rental-incidents/{id}/close` | M, I | Đóng hồ sơ sự cố (`CLOSED` / `CLOSED_INCIDENT`) |
+
 ## 10. GPS và chatbot
 
-**GPS chờ duyệt theo mục 10 của v1-decisions.** Các ngưỡng và endpoint GPS dưới đây tiếp tục là đề xuất; không tự bật tích hợp thật hoặc coi demo đã được duyệt. Phụ thuộc chưa sẵn sàng trả FEATURE_NOT_ENABLED.
+GPS mô phỏng đã có code operations, chỉ ghi khi DEMO_GPS_ENABLED bật và APP_ENV thuộc development/test/demo. Ngưỡng hiện có 60 giây; tích hợp thiết bị thật chưa nằm trong V1. Code demo không phê duyệt thiết bị/kho ảnh production.
 
 | Method / path | Quyền | Request | Thành công |
 | --- | --- | --- | --- |
 | GET `/rentals/{id}/gps/latest` | Owner/S/M | — | `{point: GpsPoint hoặc null, stale_after_seconds: 60, is_stale: boolean}` |
 | GET `/rentals/{id}/gps` | Owner/S/M | `from?, to?`, phân trang | GpsPoint[] sắp recorded_at ASC, id ASC |
 | POST `/rentals/{id}/gps` | S/M, chỉ demo, I | `{latitude, longitude, recorded_at}` | 201 GpsPoint |
+| GET /faq | Public | — | Danh sách 12 câu FAQ hiện có và sources |
+| GET /faq/sources/{source_id} | Public | — | text/plain UTF-8 tài liệu thuộc allowlist, ngoại lệ envelope JSON |
 | POST `/chatbot/messages` | C | `{message}` | `{reply, sources: [{title, url}], mode: "FAQ"}` |
 
-GPS demo chỉ nhận rental IN_RENT; recorded_at không trước actual_start_time hoặc vượt giờ server quá 30 giây. `latest` chọn recorded_at lớn nhất; không có point thì is_stale=true. Đề xuất cảnh báo dữ liệu cũ sau 60 giây; frontend hiện thời điểm cập nhật, không giả định xe đang di chuyển từ dữ liệu cũ. C không được ghi tọa độ thay cho thiết bị xe.
+GPS demo chỉ nhận rental IN_RENT; recorded_at không trước actual_start_time hoặc vượt giờ server quá 30 giây. `latest` chọn recorded_at lớn nhất; không có point thì is_stale=true. Code cảnh báo dữ liệu cũ khi quá 60 giây; frontend hiện thời điểm cập nhật, không giả định xe đang di chuyển từ dữ liệu cũ. C không được ghi tọa độ thay cho thiết bị xe.
 
 GPS thật cần danh tính thiết bị, xác thực và chống replay riêng, chưa nằm trong hợp đồng 15 bảng. Endpoint demo tắt khi chạy thật; vượt phạm vi demo trả 503 `FEATURE_NOT_ENABLED`.
 
-Chatbot FAQ không có lịch sử hội thoại lưu DB, message 1–2.000 ký tự, sources chỉ trỏ tài liệu đã được hệ thống duyệt. Chưa tích hợp trả 503 `FEATURE_NOT_ENABLED`; chatbot không được thay khách đặt xe, chuyển tiền hoặc quyết định quyền thuê.
+Chatbot FAQ không lưu lịch sử hội thoại DB, message 1–2.000 ký tự. Code faq.py có 12 câu và allowlist nguồn nội bộ: v1-decisions, API contract, README. GET /faq trả danh sách, GET /faq/sources/{source_id} trả nguồn, POST /chatbot/messages trả đáp án khớp. Không khớp/khớp nhiều thì hướng dẫn hỏi rõ, không bịa đáp án; thiếu file nguồn trả DEPENDENCY_UNAVAILABLE. Không đặt xe, chuyển tiền hoặc quyết định trách nhiệm sự cố qua chatbot.
 
 ## 11. Báo cáo
 
-S/M được truy cập. Các endpoint dưới trả 200 theo envelope chung. Tham số `from_date`, `to_date` phải đi cùng nhau; bỏ cả hai lấy toàn bộ dữ liệu, có cả hai thì from_date <= to_date. Khoảng thời gian bao gồm ngày cuối bằng cách chuyển sang khoảng UTC `[đầu ngày from_date, đầu ngày sau to_date)` theo giờ Việt Nam.
+S/M được truy cập. Các endpoint dưới trả 200 theo envelope chung. Tham số `from_date`, `to_date` phải đi cùng nhau; bỏ cả hai lấy toàn bộ dữ liệu, có cả hai thì `from_date <= to_date`. Khoảng thời gian bao gồm ngày cuối bằng cách chuyển sang khoảng UTC `[đầu ngày from_date, đầu ngày sau to_date)` theo giờ Việt Nam.
 
-| GET path | Query bổ sung | Schema `data` |
-| --- | --- | --- |
-| `/analytics/overview` | — | `{trip_count, revenue, average_trip_minutes, customer_count, vehicles_by_status: [{status, count}], recent_tickets: Ticket[], near_full_stations: Station[]}` |
-| `/analytics/peak-hours` | `station_id?` | `{items: [{station_id, station_name, hour, rental_count}], filtered_trip_count, included_trip_count}`; tối đa 20 trạm |
-| `/analytics/revenue` | — | `{items: [{month, vehicle_model, rental_count, revenue, cumulative_revenue, share_percent}], total_revenue}` |
-| `/analytics/top-routes` | — | `{items: [{month, rank, pickup_station_id, return_station_id, rental_count}]}` |
-| `/analytics/idle-time` | `limit` mặc định 15, 1–100 | `{items: [{station_id, station_name, average_idle_minutes}], coverage: "OBSERVED_RETURN_PICKUP_PAIRS"}` |
-| `/analytics/inactive-customers` | `days` trong 14/30/60/90, mặc định 30; `as_of_date?`; phân trang; không dùng from_date/to_date | `{items: [{user_id, name, email, balance}], as_of_date, days}`; meta có phân trang |
+Hiện tại `backend/app/api/v1/analytics.py` đã triển khai 3 endpoint doanh thu/tài chính (`/analytics/revenue`, `/analytics/financial-summary`, `/analytics/revenue-details`); 5 endpoint thống kê vận hành còn lại là đặc tả dự kiến.
+
+| GET path | Trạng thái | Query bổ sung | Schema `data` |
+| --- | --- | --- | --- |
+| `/analytics/revenue` | **Đã triển khai** | `from_date?, to_date?` | `{items: [{month, vehicle_model, rental_count, revenue, cumulative_revenue, share_percent}], rental_count, total_revenue, missing_snapshot_count}` |
+| `/analytics/financial-summary` | **Đã triển khai** | `from_date?, to_date?` | Tổng doanh thu thuê thường/sự cố; bồi thường thu/hoàn trong kỳ (từ dữ liệu cũ nếu có); hoàn cọc sự cố trong kỳ; `deposit_held_current` (`all_rentals`, `confirmed_incidents`) |
+| `/analytics/revenue-details` | **Đã triển khai** | `from_date?, to_date?, page, page_size` | `{items: [{rental_id, invoice_id, revenue_type, recognized_at, vehicle_model, revenue}], page, page_size, total, missing_snapshot_count}` |
+| `/analytics/overview` | Đặc tả dự kiến | `from_date?, to_date?` | `{trip_count, revenue, average_trip_minutes, customer_count, vehicles_by_status: [{status, count}], recent_tickets: Ticket[], near_full_stations: Station[]}` |
+| `/analytics/peak-hours` | Đặc tả dự kiến | `station_id?` | `{items: [{station_id, station_name, hour, rental_count}], filtered_trip_count, included_trip_count}`; tối đa 20 trạm |
+| `/analytics/top-routes` | Đặc tả dự kiến | `from_date?, to_date?` | `{items: [{month, rank, pickup_station_id, return_station_id, rental_count}]}` |
+| `/analytics/idle-time` | Đặc tả dự kiến | `limit` mặc định 15, 1–100 | `{items: [{station_id, station_name, average_idle_minutes}], coverage: "OBSERVED_RETURN_PICKUP_PAIRS"}` |
+| `/analytics/inactive-customers` | Đặc tả dự kiến | `days` trong 14/30/60/90, mặc định 30; `as_of_date?`; phân trang; không dùng `from_date`/`to_date` | `{items: [{user_id, name, email, balance}], as_of_date, days}`; meta có phân trang |
 
 Định nghĩa:
 
 - Trip_count và heatmap đếm actual_start_time trong khoảng, không đếm RESERVED/CANCELLED/EXPIRED. Hour là 0–23 theo giờ Việt Nam. Heatmap chọn tối đa 20 trạm theo tổng số lượt DESC, station_id ASC; trả đủ 24 giờ cho từng trạm. `station_id` lọc một trạm cụ thể và không vượt giới hạn 20. `included_trip_count` là tổng lượt của các trạm hiển thị; `filtered_trip_count` là tổng trong phạm vi lọc trước khi giới hạn top 20.
-- Revenue chỉ tính rental COMPLETED có hóa đơn PAID, theo actual_end_time; không cộng cọc/topup, không tính hai lần do JOIN nhiều giao dịch. Hoàn phần cọc dư đã có trong V1, không phải giảm doanh thu thuê. Hoàn phí thuê/hoàn tiền thủ công chưa mở; nếu mở phải bổ sung quy tắc doanh thu thuần. Không tính RETURN_PENDING là doanh thu đã thu; settled_at lưu thời điểm quyết toán riêng.
-- month dạng `YYYY-MM`; cumulative_revenue cộng trong khoảng lọc theo từng loại xe, share_percent là chuỗi số có 2 chữ số lẻ, tháng tổng 0 thì tỷ trọng 0. Phải lưu loại xe/giá đã áp dụng hoặc khóa thay đổi làm sai lịch sử.
+- Revenue gồm hai nhánh: thường COMPLETED + invoice PAID theo actual_end_time; sự cố ghi khi tiền thuê quyết toán SUCCESS dù chưa CLOSED_INCIDENT. Đóng hồ sơ không ghi lần nữa. Tổng thuê gồm cọc cấn thuê + phần thu thêm; loại topup, cọc còn giữ, bồi thường/hoàn bồi thường. Giữ cơ sở thời gian báo cáo thường; chưa đổi toàn bộ sang settled_at. Công bố hai cơ sở thời gian, phân nhóm loại trừ nhau và chống nhân đôi khi JOIN.
+- month dạng `YYYY-MM`; cumulative_revenue cộng trong khoảng lọc theo từng mẫu xe snapshot, share_percent là chuỗi số có 2 chữ số lẻ, tháng tổng 0 thì tỷ trọng 0. Dùng vehicle_model_snapshot và giá snapshot; không lấy mẫu xe/giá hiện hành để sửa lịch sử.
 - Top routes đếm các chuyến COMPLETED theo actual_end_time, RANK theo số chuyến trong từng tháng, lấy rank <= 3; đồng hạng có thể trả hơn ba dòng.
 - Idle-time: với cùng xe, lấy một lần trả và lần nhận kế tiếp tại cùng trạm, không có lần nhận khác xen giữa; chỉ tính cặp có cả hai mốc nằm trong khoảng lọc, bỏ xe có điều chuyển ngoài chuyến không chứng minh được lịch sử. Đây là thời gian nằm tại trạm quan sát được, gồm thời gian giữ chỗ, không khẳng định là thời gian AVAILABLE. Báo cáo đầy đủ cần lịch sử vị trí/trạng thái theo mục 13.
 - Inactive: CUSTOMER ACTIVE, balance > 0, không có actual_start_time trong khoảng N ngày kết thúc ở đầu ngày sau as_of_date theo giờ Việt Nam. Mặc định as_of_date là ngày có actual_start_time mới nhất; không có chuyến thì dùng ngày server tại Việt Nam. Sắp balance DESC, user_id ASC.
 - Overview: average_trip_minutes tính trên chuyến COMPLETED kết thúc trong khoảng; không có thì 0. Customer_count là số khách khác nhau có chuyến bắt đầu trong khoảng. Xe theo trạng thái/trạm sắp đầy là snapshot hiện tại; near_full_stations có available_spaces <= 1, ACTIVE, tối đa 10 theo available_spaces ASC, id ASC. recent_tickets là 5 ticket mới nhất hiện tại.
 - Không có dữ liệu trả mảng rỗng/tổng 0, không trả 404. Truy vấn số liệu phải được đối chiếu độc lập khi kiểm thử.
+- `/analytics/revenue`, `/analytics/financial-summary` và
+  `/analytics/revenue-details` dùng cùng tập ghi nhận doanh thu thuê.
+- Tiền trả bằng chuỗi thập phân có 2 chữ số lẻ; ID trả bằng chuỗi.
+- `revenue_type` gồm NORMAL và INCIDENT.
+- `vehicle_model` có thể null khi thiếu snapshot; doanh thu vẫn được tính,
+  đồng thời trả `missing_snapshot_count`. Không lấy mẫu xe hiện tại để
+  thay thế dữ liệu lịch sử còn thiếu.
+- `compensation_collected` và `compensation_refunded` chỉ tính giao dịch
+  `COMPENSATION` nội bộ (từ dữ liệu cũ nếu có) với trạng thái `SUCCESS` trong
+  khoảng ngày; bồi thường xử lý ngoài hệ thống không ghi `transactions`.
+- `compensation_net_movement` là thu trừ hoàn trong kỳ, có thể âm và
+  không được cộng/trừ vào doanh thu thuê.
+- `incident_deposit_refunded` chỉ thống kê hoàn cọc của luồng sự cố
+  có obligation_type = DEPOSIT.
+- `deposit_held_current` là snapshot hiện tại, không áp dụng bộ lọc ngày.
+  Báo cáo này chưa cung cấp số dư cọc lịch sử tại cuối kỳ.
+- Dữ liệu tiền thuê sự cố không khớp hóa đơn/ledger trả
+  409 REVENUE_DATA_INCONSISTENT.
+- Khoảng ngày thiếu một đầu hoặc bị đảo trả 400; định dạng ngày sai
+  trả 422. Không có dữ liệu trả items rỗng và tổng bằng 0.
 
 `/prices` là endpoint quản lý đã triển khai ở mục 5.1; bảng giá theo từng xe, có lịch sử append-only và snapshot bất biến tại thời điểm giữ xe. `model` là mẫu xe và là tiêu chí phân loại/lọc duy nhất; báo cáo nhóm theo `vehicle_model_snapshot` đã lưu ở rental snapshot, không suy ra mẫu xe/giá lịch sử từ giá trị hiện tại của `vehicles`.
 
 ## 12. Kiểm tra hệ thống và tiêu chí nghiệm thu
 
-GET `/health`: Public, 200 `{status: "ok"}` trong envelope, không lộ cấu hình. GET `/health/ready`: chỉ hạ tầng nội bộ, 200 `{status: "ready"}` hoặc 503 `DEPENDENCY_UNAVAILABLE` nếu DB/migration chưa sẵn sàng.
+GET `/health`: Public, 200 `{"status": "ok"}` (trả JSON trực tiếp, không bọc envelope `{data, meta}`), không lộ cấu hình. GET `/health/ready`: đặc tả dự kiến cho hạ tầng nội bộ (chưa triển khai trong `health.py`), trả 200 `{status: "ready"}` hoặc 503 `DEPENDENCY_UNAVAILABLE` nếu DB/migration chưa sẵn sàng.
 
 | Ca kiểm thử | Kết quả bắt buộc |
 | --- | --- |
@@ -665,14 +889,14 @@ Các ca bắt buộc bổ sung theo R2:
 | Quyết toán lỗi giữa transaction | Rollback tài chính, giữ tiếp nhận đã commit; không tiêu thụ mã |
 | Cọc thừa/thiếu và nạp ví đồng thời | Bút toán đúng, không ví âm, không trả một phần, không trừ cọc hai lần |
 | STAFF thao tác ở nhiều trạm / CUSTOMER gọi API vận hành | Cho phép khi đủ điều kiện / 403 |
-| STOLEN chưa giải quyết | Chặn đặt mới, không tự hết hạn; không tự áp chính sách mất cọc/khôi phục |
+| STOLEN chưa giải quyết | Khách cũ bị chặn; xe thu hồi/kiểm tra/giải phóng hợp lệ được thuê lại; tiền hồ sơ cũ không sửa chuyến mới |
 | Bộ đếm trạm | Đếm động, không nhân đôi khi JOIN bảo trì; tính cả RETURN_PENDING |
 
 Kiểm thử tranh chấp dùng PostgreSQL thật với các kết nối độc lập. Frontend đếm ngược dựa expires_at/server_time, không dùng đồng hồ client để quyết định quyền nhận xe; tải lại dữ liệu sau lỗi xung đột.
 
 ## 13. Đối chiếu DBML và yêu cầu lưu trữ
 
-Contract này phân biệt rõ: **15 bảng nghiệp vụ gốc** trong DBML ban đầu, **24 bảng ORM** sau khi bổ sung hạ tầng báo giá/bảo trì/file/idempotency/audit, và **26 bảng ORM** sau khi thêm hai bảng xác thực `user_sessions` và `refresh_tokens` (không tính `alembic_version`). Các yêu cầu sau phải được đồng bộ trước khi API liên quan sẵn sàng. Không trả dữ liệu giả để che thiếu schema.
+Contract này phân biệt rõ: **15 bảng nghiệp vụ gốc** trong thiết kế ban đầu, **24 bảng ORM** sau khi bổ sung hạ tầng báo giá/bảo trì/file/idempotency/audit, **26 bảng ORM** sau khi thêm hai bảng xác thực (`user_sessions`, `refresh_tokens`), và **27 bảng ORM hiện hành** sau khi thêm `rental_incidents` (không tính `alembic_version`).
 
 | Hạng mục | Yêu cầu |
 | --- | --- |
@@ -682,67 +906,31 @@ Contract này phân biệt rõ: **15 bảng nghiệp vụ gốc** trong DBML ban
 | Snapshot | Lưu first_30_minutes_price_snapshot, extra_minute_price_snapshot, deposit_amount_snapshot, vehicle_model_snapshot, pricing_policy_version, billing_unit ngay khi reserve thành công; lịch sử đổi giá/cọc |
 | Trạng thái và thời gian | RETURN_PENDING cho rental/vehicle; return_initiated_at, actual_end_time, settled_at; expires_at=created_at+30 phút. settled_at khác mốc nhận xe |
 | Phiên trả và quote | Lưu trạm, pin, tình trạng, RETURN bất biến; quote_created_at, quote_expires_at, nguồn/version và token. Hết hạn quote không đổi return_initiated_at |
-| Unique lượt đang hoạt động | Hai partial unique index riêng trên customer_id và vehicle_id cho RESERVED/IN_RENT/RETURN_PENDING/STOLEN; không dùng NOW() trong predicate |
+| Unique lượt đang hoạt động | Hiện hai index cùng tập trạng thái; cần tách predicate chặn khách khỏi quyền sử dụng xe. Không chỉ bỏ STOLEN, không dùng NOW()/JOIN trong partial index |
 | Hủy/hết hạn | cancelled_at, reason, cancellation_limit_exempt, người xác nhận/audit; hết hạn tính ngày theo expires_at; không reset hạn mức bằng cron |
 | CCCD/tuổi | Ngày sinh đã xác minh, expires_on, verified_by/verified_at, revoked_at và audit thu hồi; giữ lịch sử giấy tờ và không dùng bản PENDING thay bản VERIFIED hợp lệ |
-| Cọc và giao dịch | Cọc riêng theo rental, liên kết DEPOSIT/PAYMENT/REFUND với bút toán ví và hóa đơn; cấn trừ cọc không trừ ví lần hai; unique định danh nghiệp vụ |
+| Cọc và giao dịch | Cọc riêng theo rental, liên kết DEPOSIT/PAYMENT/REFUND với bút toán ví và hóa đơn; cấn trừ cọc không trừ ví lần hai; unique định danh nghiệp vụ. Cọc sự cố chỉ cấn tiền thuê và hoàn dư |
 | Sức chứa | stations chỉ lưu capacity về sức chứa; bộ đếm tính động bằng COUNT/View thường; đếm cả RETURN_PENDING |
-| Bảo trì | Bổ sung cấu trúc phiếu bảo trì OPEN/IN_PROGRESS hoặc mô hình chặn vận hành tương ứng có contract rõ ràng để thực thi bộ lọc NOT EXISTS đã chốt; không coi Ticket là phiếu bảo trì |
+| Bảo trì | `maintenance_orders` dùng chung cho xe thường và xe sự cố đã về trạm (qua `incident_id` tùy chọn); giải phóng xe có `MANAGER` duyệt (`release-vehicle`) |
 | Handover | UNIQUE(rental_id,kind), lưu pin/tình trạng/lý do và người thực hiện; chỉ một PICKUP và một RETURN |
 | Idempotency/audit | Kho bền vững và request hash/kết quả, audit vận hành; review thứ tự khóa phụ sau nhóm station/customer/wallet/vehicle/rental |
-| Khuyến mãi | Thiết kế dự kiến UNIQUE(user_id,promotion_id), snapshot mã/giảm giá và tiêu thụ nguyên tử; chờ duyệt chính sách mục 8 |
+| Khuyến mãi | UNIQUE(user_id,promotion_id), snapshot/consume có code luồng thường; sự cố không apply/consume; phản ánh sau COMPLETED không sửa lịch sử |
 | STAFF | Không thêm staff_station_assignments trong V1; quyền vận hành toàn hệ thống, giữ giới hạn vai trò |
-| GPS/upload/sự cố | Chờ duyệt; không thêm trạng thái CLOSED_INCIDENT hoặc tự quyết chính sách tài chính mất xe |
+| GPS/upload/sự cố | Code demo/file/ticket đã có; `rental_incidents`, `rental-check-ins`, `CLOSED_INCIDENT` và bồi thường ngoài hệ thống đã triển khai ở backend |
 | CHECK/FK | Enum hợp lệ, capacity>0, pin 0–100, tiền không âm, thứ tự thời gian hợp lệ, FK và unique wallets.user_id/invoices.rental_id/rental_reviews.rental_id |
 
 Migration phải bảo toàn nghĩa dữ liệu lịch sử. Nếu giá cũ chưa rõ đơn vị thì xử lý tường minh, không áp giá seed mới lên lịch sử. Giá trị chưa có vẫn null khi schema cho phép, không lấy 0 thay thiếu dữ liệu. Không xóa lịch sử liên quan tài chính. Kiểm tra tranh chấp trên PostgreSQL thật.
 
-## 14. Trạng thái quyết định và việc cần đồng bộ
+## 14. Tổng hợp phạm vi đã triển khai và phần mở rộng
 
-| Mục trong v1-decisions | Trạng thái | Phần contract liên quan |
-| Thời hạn | Schema dùng rentals.expires_at, bỏ planned_start_time/planned_end_time; migration backfill hạn giữ chỗ 30 phút và backend phải kiểm tra/hết hạn |
-| Trạng thái | Rental dùng RESERVED/IN_RENT/RETURN_PENDING/STOLEN/COMPLETED/CANCELLED/EXPIRED; vehicle có RETURN_PENDING; schema/migration phải có CHECK |
-| Tiền chưa tính | rentals.total_price nullable trước khi chốt phí; migration giữ null khác 0 |
-| Chống đặt trùng | Hai partial unique index theo vehicle_id và customer_id cho RESERVED/IN_RENT/RETURN_PENDING/STOLEN; expiration được cập nhật trong transaction, không dùng NOW() trong predicate |
-| Bàn giao | Đã khai báo UNIQUE handovers(rental_id, kind); cần tạo bằng migration |
-| Mã cá nhân | Có UNIQUE user_promotions(user_id, promotion_id); backend phải tiêu thụ voucher trong cùng transaction với thanh toán |
-| Snapshot và lịch sử giá | Snapshot rental bất biến; `/prices` quản lý giá theo xe với version append-only, schema/API đề xuất tại mục 5.1 |
-| Ghi sổ một lần | Có liên kết duy nhất wallet_transactions.transaction_id; backend phải ghi transaction, số dư ví và bút toán cùng một DB transaction |
-| Idempotency | Có idempotency_records lưu scope, request hash, trạng thái, response và thời hạn tối thiểu 24 giờ; backend vẫn phải triển khai claim/replay/cleanup |
-| Audit / GPS thật | Có audit_logs cho actor/action/resource/before-after; backend phải ghi sự kiện, loại bỏ bí mật payload. GPS thật vẫn cần mô hình thiết bị khi tích hợp |
-| Bảo trì / bảng giá | `maintenance_orders`, `vehicle_pricing_history` và `vehicle_move_audits` là schema đề xuất; support_tickets không thay thế phiếu bảo trì |
-| Ảnh đính kèm | `stored_files`/`file_attachments`, upload intent và download URL ký là schema/API đề xuất; object storage chưa tích hợp thì trả FEATURE_NOT_ENABLED |
-| Kiểm tra giá trị | Đã mô tả quy tắc trong DBML; cần CHECK enum, capacity > 0, pin 0–100, tiền không âm, thứ tự các mốc thời gian và expires_at = created_at + 30 phút trong migration/backend |
-| FK DBML | Đã sửa ký hiệu quan hệ nullable sang cột nullable và quan hệ chuẩn; dùng bản thiết kế mới khi xuất ERD |
-
-Giữ các ràng buộc unique sẵn có như users.email, wallets.user_id, invoices.rental_id, rental_reviews.rental_id, handovers(rental_id, kind), user_promotions(user_id, promotion_id), wallet_transactions.transaction_id. Partial unique index của rentals bảo đảm tối đa một lượt đang hiệu lực trên mỗi xe và mỗi khách, gồm `RESERVED/IN_RENT/RETURN_PENDING/STOLEN`; không đặt `NOW()` trong predicate. Lazy expiration cập nhật trạng thái trong transaction trước khi xét index. Không xóa dữ liệu lịch sử có liên quan tài chính. Các bảng lưu trữ đã có không đồng nghĩa endpoint/backend đã triển khai thao tác ghi hoặc replay.
-
-## 14. Các quyết định cần nhóm duyệt trước khi đóng băng V1
-
-| Quyết định | Đề xuất/phạm vi hiện tại | API bị ảnh hưởng |
-| --- | --- | --- |
-| 1. Giá thuê | Đã chốt R2: 10.000đ/30 phút đầu + 350đ/phút thêm, ceil phút lẻ, HALF_UP tổng đến 1đ | 5, 6.2, 6.9 |
-| 2. Snapshot | Đã chốt tại giữ xe; lưu lịch sử đổi giá | 3, 6.3, 13 |
-| 3. Cọc/hủy | Đã chốt: 100.000đ demo, kiểm tra cọc + block lúc reserve/pickup, thu lúc pickup; hủy trước nhận miễn phí | 6.4, 7 |
-| 4. Điều kiện khách | Đã chốt demo: đủ 16 tuổi, CUSTOMER ACTIVE, CCCD VERIFIED còn hạn/chưa thu hồi | 4, 6.5 |
-| 5. Pin/sức chứa | Đã chốt 30%; đếm xe/chỗ động | 5, 6.6 |
-| 6. Giới hạn chuyến/hủy | Đã chốt một chuyến chưa giải quyết, 3 hủy/hết hạn/ngày; Lazy Expiration và Global Lock Order | 6.7 |
-| 7. Trả thiếu tiền/ví khóa | Đã chốt RETURN_PENDING, dừng cước lúc nhận xe, quote 10 phút, quyết toán riêng | 6.8–6.9, 7 |
-| 8. Khuyến mãi | Chờ ý kiến thành viên; chưa chốt làm tròn riêng, claim/thanh toán và min/max | 8 |
-| 9. Thanh toán thật | Chốt chỉ mô phỏng trong V1; không chốt provider hoặc triển khai production | 7 |
-| 10. GPS/upload | Chờ ý kiến thành viên | 4, 10 |
-| 11. Quyền STAFF | Đã chốt vận hành mọi trạm; MANAGER quản trị toàn bộ | 2.4, 5–6 |
-| 12. Sự cố/mất xe | Chờ bổ sung/chưa duyệt; giữ chặn STOLEN theo mục 6, không tự xử lý tài chính hoặc khôi phục | 6.1, 9 |
-
-Checklist đồng bộ issue #14 và hai issue backend:
-
-- [ ] Đồng bộ mục 1–7, 9, 11 vào tài liệu yêu cầu, DBML/migration, backend, frontend và OpenAPI; giữ mục 8/10/12 chờ duyệt.
-- [ ] Đổi field giá, bổ sung snapshot/lịch sử và sổ cọc; kiểm tra dữ liệu cũ trước migration.
-- [ ] Bổ sung CCCD/tuổi, pin và truy vấn đếm động, quyền STAFF mọi trạm.
-- [ ] Thêm initiate-return, RETURN_PENDING và quyết toán riêng; cập nhật client để không dùng request return cũ.
-- [ ] Thực thi Lazy Expiration hai phía, unique customer/vehicle, hạn mức hủy và thứ tự khóa toàn cục; kiểm tra cả khóa ẩn/FK.
-- [ ] Chỉ nạp tiền demo khi cờ bật, gắn nhãn tiền mô phỏng và mô tả PaymentProvider; không bật production.
-- [ ] Chạy ca kiểm thử mục 12, kiểm tra rollback/retry và báo cáo không cộng cọc hoặc RETURN_PENDING thành doanh thu.
-- [ ] Bổ sung rồi duyệt riêng quy trình sự cố/mất xe; không triển khai đề xuất CLOSED_INCIDENT hoặc xử lý cọc mất xe khi chưa duyệt.
-
-Các tên endpoint/field kỹ thuật bổ sung là thiết kế thực thi chính sách để nhóm review, không phải xác nhận tính năng đã chạy. Mọi thay đổi wire schema phải được cập nhật cùng OpenAPI và thông báo trước khi tích hợp.
+- **Đã triển khai ở Backend (`backend/app/`, migration tới `f4c2a1b8e901`):**
+  - Xác thực phiên (`user_sessions`, `refresh_tokens`, rotation + grace replay), người dùng và giấy tờ eKYC.
+  - Trạm, xe, lịch sử giá theo xe (`vehicle_pricing_history`), điều chuyển xe (`vehicle_move_audits`).
+  - Ví mô phỏng, khuyến mãi, giữ xe 30 phút, nhận xe, tiếp nhận trả xe (`RETURN_PENDING`), báo giá 10 phút và quyết toán trả xe.
+  - Ticket hỗ trợ, upload/download file cục bộ, đính kèm bằng chứng ticket, bảo trì dùng chung (`/maintenance-orders` với `incident_id` tùy chọn), GPS demo, đánh giá chuyến và 12 câu FAQ có nguồn.
+  - Danh sách cần kiểm tra 24 giờ (`/rental-check-ins`) và phân hệ sự cố thu gọn (`rental_incidents`, `INCIDENT_PENDING`, `CLOSED_INCIDENT`, giải phóng xe độc lập công nợ khách, quyết toán thuê/hoàn cọc dư, ghi nhận bồi thường ngoài hệ thống qua `POST /compensation/external-settlement`).
+  - 3 API báo cáo doanh thu và tổng hợp tài chính (`/analytics/revenue`, `/analytics/financial-summary`, `/analytics/revenue-details`).
+- **Phần mở rộng / chưa triển khai ở Backend:**
+  - Luồng presigned URL với object storage bên ngoài (`POST /files/upload-intents`, `POST /files/{id}/complete`) và đính kèm ảnh qua API cho mọi loại owner ngoài ticket/eKYC.
+  - 5 API báo cáo vận hành dự kiến (`/analytics/overview`, `/analytics/peak-hours`, `/analytics/top-routes`, `/analytics/idle-time`, `/analytics/inactive-customers`).
+  - Tích hợp cổng thanh toán thật và thiết bị GPS phần cứng (nằm ngoài phạm vi V1 demo).

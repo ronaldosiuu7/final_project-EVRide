@@ -16,17 +16,29 @@ Phạm vi hệ thống gồm quản lý phương tiện, trạm xe, khách hàng
 
 ## Trạng thái dự án
 
-Cập nhật ngày 20/10/2026: repo đang ở giai đoạn thiết kế và chuẩn bị triển khai. Đã có tài liệu nghiệp vụ, thiết kế CSDL, kế hoạch kiểm thử và hạ tầng; chưa có mã ứng dụng backend/frontend, migration thực thi, kiểm thử tự động hay workflow CI/CD. Các chức năng nêu trên là phạm vi cần triển khai, chưa phải tính năng đã chạy được.
+Mốc lịch sử 20/10/2026: repo khi đó ở giai đoạn thiết kế và chuẩn bị triển khai. Mô tả này không còn đại diện cho toàn bộ trạng thái mã nguồn hiện tại.
 
 Cập nhật backend ngày 30/10/2026: đã khởi tạo FastAPI với `GET /api/v1/health` và Swagger tại `/docs`. Xem [hướng dẫn cài đặt và chạy backend](backend/README.md).
 
 Cập nhật xác thực backend ngày 06/11/2026: đã triển khai cơ chế **Rolling Session và Refresh Token Rotation** phía backend (`POST /api/v1/auth/login`, `/auth/refresh`, `/auth/logout`, `/users/me/change-password`, thu hồi phiên khi khóa tài khoản, kiểm thử tự động trên PostgreSQL 16). Xem chi tiết tại [backend/README.md](backend/README.md), [docs/api-contract.md](docs/api-contract.md).
 Xem [quy tắc nghiệp vụ](docs/requirements.md).
 
+Cập nhật backend 13/11/2026: đã hoàn thiện các luồng thuê/trả thường, ví demo,
+khuyến mãi, ticket/ảnh, bảo trì, GPS mô phỏng, review, 12 FAQ có nguồn, 3 API báo
+cáo doanh thu/tài chính (`/api/v1/analytics/*`), danh sách cần kiểm tra 24 giờ
+(`/api/v1/rental-check-ins`) và phân hệ sự cố/bồi thường ngoài hệ thống thu gọn
+(`POST /compensation/external-settlement`, quyết toán thuê/cọc tách biệt, dùng chung
+`/maintenance-orders`). Xem [hợp đồng API](docs/api-contract.md) và [kiến trúc hệ thống](docs/architecture.md).
+
 
 ## Cấu trúc dự án
 
 Thư mục repository hiện tại là thư mục gốc của EVRide; không cần tạo thêm thư mục `evride/` lồng bên trong.
+
+Cây dưới là định hướng tổ chức ban đầu. Code backend thực tế hiện dùng
+`app/api/v1/`, `app/schemas/`, `app/services/`, `app/models.py` và
+`app/database.py`; migration/seed/query nằm trong `backend/database/`.
+Không tạo nguồn migration thứ hai ở thư mục database ngoài backend.
 
 ```text
 evride/
@@ -84,10 +96,16 @@ evride/
 │   ├── scripts/
 │   └── README.md
 ├── docs/
-│   ├── architecture.md
+│   ├── README.md
 │   ├── requirements.md
-│   ├── api.md
-│   └── README.md
+│   ├── v1-decisions.md
+│   ├── architecture.md
+│   ├── api-contract.md
+│   ├── database.md
+│   ├── ER_diagram.pdf
+│   ├── dac_ta_quan_tri_bao_cao.md
+│   ├── ke_hoach_kiem_thu.md
+│   └── ke_hoach_ha_tang.md
 ├── README.md
 ├── AI_USAGE.md
 ├── .editorconfig
@@ -100,7 +118,7 @@ Các thư mục chưa có mã nguồn được để trống. Git chỉ lưu cá
 
 1. Đọc [phạm vi chức năng](docs/requirements.md) và [kiến trúc dự kiến](docs/architecture.md).
 2. Chạy FastAPI theo [backend/README.md](backend/README.md); phát triển frontend theo hướng dẫn trong `frontend/`.
-3. Chọn thư viện truy cập PostgreSQL và công cụ migration; đặt lịch sử schema tại `database/migrations/`.
+3. Dùng SQLAlchemy/PostgreSQL và Alembic hiện có; lịch sử schema ở `backend/database/migrations/`. Kiểm tra heads/current trước khi chuẩn bị revision mới.
 4. Cấu hình môi trường, sau đó triển khai từng luồng nghiệp vụ và kiểm thử tương ứng.
 
 
@@ -110,7 +128,7 @@ Các thư mục chưa có mã nguồn được để trống. Git chỉ lưu cá
 | --- | --- |
 | Backend và các module nghiệp vụ | [backend/README.md](backend/README.md) |
 | Frontend và các feature | [frontend/README.md](frontend/README.md) |
-| Migration, dữ liệu mẫu và truy vấn | [database/README.md](database/README.md) |
+| Migration, dữ liệu mẫu và truy vấn | [backend/database/README.md](backend/database/README.md) |
 | Cấu hình triển khai | [deploy/README.md](deploy/README.md) |
 | Kiến trúc, chức năng và API | [docs/README.md](docs/README.md) |
 | Ghi nhận hỗ trợ từ AI | [AI_USAGE.md](AI_USAGE.md) |

@@ -13,13 +13,14 @@ from app.models import (
     MaintenanceOrder,
     Rental,
     Station,
+    User,
     Vehicle,
     VehicleMoveAudit,
     VehiclePricingHistory,
 )
 from app.services.errors import ServiceError
+from app.services.rental_guards import vehicle_blocking_clause
 
-ACTIVE_RENTAL_STATUSES = ("RESERVED", "IN_RENT", "RETURN_PENDING", "STOLEN")
 LOCAL_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
 
 
@@ -75,7 +76,7 @@ def require_no_active_rental(session: Session, vehicle_id: int) -> None:
     exists = session.scalar(
         select(Rental.id).where(
             Rental.vehicle_id == vehicle_id,
-            Rental.status.in_(ACTIVE_RENTAL_STATUSES),
+            vehicle_blocking_clause(),
         ).limit(1)
     )
     if exists is not None:
@@ -206,6 +207,22 @@ def set_vehicle_status(
     )
     if vehicle is None:
         raise ServiceError(404, "NOT_FOUND", "Xe không tồn tại.")
+    if (
+        vehicle.status == "MAINTENANCE"
+        and target_status == "AVAILABLE"
+    ):
+        actor = session.get(User, actor_id)
+
+        if (
+            actor is None
+            or actor.role != "MANAGER"
+            or actor.status != "ACTIVE"
+        ):
+            raise ServiceError(
+                403,
+                "FORBIDDEN",
+                "Chỉ MANAGER được mở lại xe sau bảo trì.",
+            )
     if target_status == vehicle.status:
         return vehicle
     if target_status not in ("AVAILABLE", "MAINTENANCE"):
