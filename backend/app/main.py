@@ -8,6 +8,8 @@ from fastapi.responses import JSONResponse
 from app.api.v1.router import api_router
 from app.core.responses import make_response
 
+from app.services.errors import ServiceError
+
 app = FastAPI(title=os.getenv("APP_NAME", "EVRide"), version="0.1.0")
 
 # ── CORS: cho phép Frontend gọi từ port khác ──
@@ -23,6 +25,20 @@ app.add_middleware(
 )
 
 # ── Error handler: lỗi validation trả đúng format contract ──
+@app.exception_handler(ServiceError)
+async def service_error_handler(request: Request, exc: ServiceError):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": {
+                "code": exc.code,
+                "message": exc.message,
+            },
+            "meta": make_response(None)["meta"],
+        },
+        headers={"Cache-Control": "no-store"},
+    )
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     fields = []

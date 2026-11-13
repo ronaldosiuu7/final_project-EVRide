@@ -35,8 +35,11 @@ from app.services.promotions import (
     calculate_promotion_discount,
     consume_promotion,
 )
+from app.services.rental_guards import (
+    customer_blocking_clause,
+    vehicle_blocking_clause,
+)
 
-ACTIVE_RENTAL_STATUSES = ("RESERVED", "IN_RENT", "RETURN_PENDING", "STOLEN")
 MIN_BATTERY_PERCENT = 30
 HOLD_DURATION = timedelta(minutes=30)
 QUOTE_DURATION = timedelta(minutes=10)
@@ -117,7 +120,7 @@ def _set_reserved_vehicle_after_expiry(
         select(Rental.id).where(
             Rental.vehicle_id == vehicle.id,
             Rental.id != expired_rental.id,
-            Rental.status.in_(ACTIVE_RENTAL_STATUSES),
+            vehicle_blocking_clause(),
         ).limit(1)
     )
     if other_live is not None:
@@ -268,7 +271,7 @@ def create_rental(
     active_customer_rental = session.scalar(
         select(Rental.id).where(
             Rental.customer_id == customer_id,
-            Rental.status.in_(ACTIVE_RENTAL_STATUSES),
+            customer_blocking_clause(),
         ).limit(1)
     )
     if active_customer_rental is not None:
@@ -350,11 +353,13 @@ def cancel_rental(
     now = _clock(session)
     if rental.expires_at <= now:
         rental.status = "EXPIRED"
-    else:
-        rental.status = "CANCELLED"
-        rental.cancelled_at = now
-        rental.cancelled_by = customer_id
-        rental.cancellation_reason = "CUSTOMER_CANCELLED"
+        if vehicle is not None:
+            _set_reserved_vehicle_after_expiry(session, vehicle, rental)
+        raise ServiceError(409, "RESERVATION_EXPIRED", "Lượt giữ xe đã hết hạn.")
+    rental.status = "CANCELLED"
+    rental.cancelled_at = now
+    rental.cancelled_by = customer_id
+    rental.cancellation_reason = "CUSTOMER_CANCELLED"
     if vehicle is not None:
         _set_reserved_vehicle_after_expiry(session, vehicle, rental)
     session.flush()
@@ -456,6 +461,23 @@ def pickup_rental(
         or station.id != rental.pickup_station_id
     ):
         raise ServiceError(409, "VEHICLE_UNAVAILABLE", "Xe không ở trạm nhận của lượt thuê.")
+
+    active_maintenance = session.scalar(
+        select(MaintenanceOrder.id)
+        .where(
+            MaintenanceOrder.vehicle_id == vehicle.id,
+            MaintenanceOrder.status.in_(("OPEN", "IN_PROGRESS")),
+        )
+        .limit(1)
+    )
+
+    if active_maintenance is not None:
+        raise ServiceError(
+            409,
+            "VEHICLE_UNAVAILABLE",
+            "Xe đang có phiếu bảo trì hoạt động.",
+        )
+    
     if battery_percent < MIN_BATTERY_PERCENT:
         raise ServiceError(409, "VEHICLE_UNAVAILABLE", "Pin xe dưới ngưỡng cho phép nhận.")
     if wallet.status != "ACTIVE":
