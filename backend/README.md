@@ -2,6 +2,8 @@
 
 Nền tảng REST API bằng Python/FastAPI. Backend có health/auth/users/documents/files cùng các luồng trạm, xe, bảng giá, ví demo, khuyến mãi và thuê/nhận/trả/quyết toán. PostgreSQL được cấu hình cho Alembic, ORM và seed tiện ích; health endpoint vẫn không cần kết nối database.
 
+Module operations và sự cố đã có danh sách kiểm tra 24 giờ (`/rental-check-ins`), ticket/ảnh bằng chứng, bảo trì dùng chung (`/maintenance-orders`), GPS demo, review, FAQ 12 câu có nguồn, 3 API báo cáo doanh thu/tài chính (`/analytics/*`) và luồng sự cố thu gọn (`POST /rental-incidents/{id}/verify`, thu hồi/về trạm kèm trạng thái xe, giải phóng xe, quyết toán thuê/hoàn cọc dư, ghi nhận bồi thường ngoài hệ thống qua `POST /rental-incidents/{id}/compensation/external-settlement`). Xem [hợp đồng API](../docs/api-contract.md).
+
 ## Cài đặt và chạy
 
 Yêu cầu Python 3.10 trở lên (đã kiểm tra với Python 3.13) và pip. Chạy các lệnh từ thư mục gốc của repo.
@@ -93,10 +95,11 @@ $env:TEST_DATABASE_URL = 'postgresql+psycopg://test_user:YOUR_TEST_PASSWORD@loca
 .\.venv\Scripts\python.exe -m pytest tests/test_auth_sessions.py -q
 ```
 
-Tác vụ dọn dẹp (`app.cleanup_auth`) xóa `replay_ciphertext` đã qua thời gian grace và xóa các phiên đã kết thúc (revoked/expired) quá 30 ngày:
+Tác vụ dọn dẹp phiên (`app.cleanup_auth`) xóa `replay_ciphertext` đã qua thời gian grace và xóa các phiên đã kết thúc (revoked/expired) quá 30 ngày; tác vụ quét giữ chỗ quá hạn (`app.expire_reservations`) giải phóng sớm các lượt `RESERVED` đã quá 30 phút:
 
 ```powershell
 .\.venv\Scripts\python.exe -m app.cleanup_auth
+.\.venv\Scripts\python.exe -m app.expire_reservations
 ```
 
 Trên macOS/Linux, thay Python executable bằng `.venv/bin/python`. Chạy lại seed cập nhật các bản ghi có ID/email/mã fixture ổn định, không thêm bản sao; lịch sử giá và audit điều chuyển được insert một lần. Toàn bộ script và fixture seed nằm trong `database/seeds/`; fixture chung được script seed và `tests/test_demo_fixtures.py` dùng.
@@ -108,10 +111,10 @@ Seed tạo CUSTOMER có CCCD `PENDING`, đã `VERIFIED` và chưa nộp giấy t
 | Thư mục | Trách nhiệm |
 | --- | --- |
 | `app/main.py` | Khởi tạo ứng dụng FastAPI và đăng ký router. |
-| `app/api/v1/` | Router dưới tiền tố `/api/v1`: auth, users, documents/files, fleet, wallets và rentals. |
+| `app/api/v1/` | Router `/api/v1`: auth, users, documents/files, fleet, wallets, promotions, rentals, operations, rental_check_ins, incidents (`incidents`, `incident_recovery`, `incident_finance`, `incident_completion`) và analytics. |
 | `app/core/` | Cấu hình môi trường, bảo mật, logging và xử lý lỗi chung. |
 | `app/database.py` | Cấu hình kết nối PostgreSQL. |
-| `app/models.py` | SQLAlchemy ORM cho bảng nghiệp vụ và bảng hạ tầng; migration nằm ở `../database/migrations/`. |
+| `app/models.py` | SQLAlchemy ORM; migration nằm ở `database/migrations/` tính từ backend. |
 | `app/schemas/` | Pydantic request/response cho API. |
 | `app/services/` | Quy tắc nghiệp vụ, tính giá/khuyến mãi, idempotency và giao dịch ví/thuê. |
 | `database/seeds/` | Script seed idempotent, fixture dữ liệu demo và hướng dẫn; chỉ cho phép PostgreSQL loopback đã ở Alembic head. |
@@ -124,8 +127,14 @@ Seed tạo CUSTOMER có CCCD `PENDING`, đã `VERIFIED` và chưa nộp giấy t
 | Trạm/xe/bảng giá/điều chuyển | `/stations`, `/vehicles`, `/prices` |
 | Ví và khuyến mãi | `/wallets`, `/promotions`, `/users/me/promotions` |
 | Giữ xe và vòng đời thuê | `/rentals`, pickup, initiate-return, return-quote, return |
-| Tệp và bảo trì | Một số schema/contract đã có; xem `docs/api-contract.md` để biết phần chưa tích hợp. |
+| Ticket, ảnh và bảo trì | `/support-tickets`, `/files`, `/maintenance-orders` (hỗ trợ `incident_id` cho sự cố); upload intent/URL ký trong contract chưa đầy đủ |
+| GPS, review và FAQ | `/rentals/{id}/gps`, `/rentals/{id}/review`, `/faq`, `/faq/sources/{source_id}`, `/chatbot/messages` |
+| Kiểm tra 24 giờ & sự cố | `/rental-check-ins*`, `/rentals/{id}/incident/intake`, `/rental-incidents*` (verify, recovery/arrival/release-vehicle, settle-rent, deposit/refund, `compensation/external-settlement`, close); xem [contract](../docs/api-contract.md) |
+| Báo cáo thống kê | `/analytics/revenue`, `/analytics/financial-summary`, `/analytics/revenue-details` |
 
 Mọi thay đổi tài chính được xử lý trong transaction PostgreSQL; các endpoint ghi được contract gắn `I` yêu cầu `Idempotency-Key`. Top-up chỉ là mô phỏng và trả `503 FEATURE_NOT_ENABLED` nếu `DEMO_PAYMENTS_ENABLED` không bật.
 
-Các thư mục nghiệp vụ còn lại là khung dự kiến, chưa có mã triển khai.
+GPS demo chỉ ghi khi DEMO_GPS_ENABLED bật và APP_ENV thuộc development/test/demo; code đánh dấu
+dữ liệu cũ khi quá 60 giây hoặc chưa có điểm. Đây không phải ngưỡng cảnh báo
+chuyến dài 24 giờ và không là bằng chứng kết luận mất xe. Thư mục module dự
+kiến không phản ánh vị trí code services hiện tại.

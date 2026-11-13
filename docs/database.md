@@ -1,6 +1,10 @@
-# EVRide – Hệ thống Quản lý Cho thuê Xe máy Điện theo Trạm
-> **Cập nhật thiết kế:** 03/11/2026
-> **Định dạng gốc:** DBML (Database Markup Language) – Dùng để vẽ sơ đồ ERD & tham chiếu thiết kế backend.
+# EVRide – Thiết kế Cơ sở Dữ liệu PostgreSQL
+> **Cập nhật:** 13/11/2026
+> **Nguồn chuẩn hiện hành:** SQLAlchemy ORM tại `backend/app/models.py` (27 bảng) và lịch sử Alembic migration tại `backend/database/migrations/` (revision mới nhất trong mã nguồn: `f4c2a1b8e901`).
+
+Tài liệu này mô tả cấu trúc cơ sở dữ liệu hiện hành trong mã nguồn. Lưu ý phân biệt với các bản xuất tham khảo lịch sử:
+- `docs/ER_diagram.pdf` và `backend/database/stored_database/database.sql` là các bản thiết kế/xuất tham khảo từ giai đoạn 15–18 bảng ban đầu, không bao gồm các bảng bổ sung ở các revision sau (`user_sessions`, `refresh_tokens`, `rental_incidents`, v.v.).
+- Môi trường kiểm thử `evride_test` đã kiểm chứng `alembic upgrade head` (`f4c2a1b8e901`); database phát triển `evride_db` cần được chạy `python -m alembic upgrade head` khi cập nhật backend.
 
 ---
 
@@ -10,7 +14,7 @@
 2. **Hết hạn giữ chỗ:** Tại hoặc sau `expires_at`, lượt đặt chuyển sang `EXPIRED`. Xe sẽ được giải phóng về trạng thái `AVAILABLE` (trừ khi gặp sự cố/sửa chữa).
 3. **Nhận xe (Pickup):** Khi nhân viên giao xe thành công, trạng thái chuyển sang `IN_RENT`. Xe rời trạm (`current_station_id = NULL`).
 4. **Trả xe (Return):** Nhân viên tiếp nhận xe thực tế tại trạm còn chỗ, dừng cước và chuyển rental/vehicle sang `RETURN_PENDING`; quyết toán là giao dịch riêng, thành công mới chuyển rental `COMPLETED`.
-5. **Rental đang hiệu lực:** Partial unique index ngăn khách hoặc xe có nhiều rental `RESERVED`, `IN_RENT`, `RETURN_PENDING`, `STOLEN`; trạng thái hết hạn cập nhật trong transaction trước khi tạo rental mới.
+5. **Khách và xe chặn độc lập:** Xe thu hồi/kiểm tra/giải phóng hợp lệ được thuê lại dù khách cũ còn nợ. Hai index hiện vẫn chặn theo cùng tập trạng thái; phải sửa predicate và mọi guard theo thiết kế sự cố, không chỉ bỏ STOLEN. Hết hạn giữ chỗ vẫn cập nhật trong transaction.
 
 ---
 
@@ -156,21 +160,27 @@ Thông tin chi tiết từng lượt đặt / thuê xe.
 | `expires_at` | `timestamptz` | NOT NULL (Backend ấn định bằng `created_at + 30m`; client không truyền) |
 | `actual_start_time` | `timestamptz` | NULL (Thời điểm nhận xe thực tế) |
 | `actual_end_time` | `timestamptz` | NULL (Thời điểm trả xe thực tế) |
-| `return_initiated_at` | `timestamptz` | NULL (mốc dừng cước, bất biến sau tiếp nhận) |
-| `settled_at` | `timestamptz` | NULL (thời điểm quyết toán, sau `return_initiated_at`) |
+| `return_initiated_at` | `timestamptz` | NULL (mốc dừng cước trả xe thông thường, bất biến sau tiếp nhận) |
+| `settled_at` | `timestamptz` | NULL (thời điểm quyết toán luồng thường, sau `return_initiated_at`) |
+| `next_check_at` | `timestamptz` | NULL (lịch kiểm tra tiếp theo cho danh sách `/rental-check-ins`; lần đầu dùng `actual_start_time + 24h`) |
+| `vehicle_released_at` | `timestamptz` | NULL (dấu `MANAGER` giải phóng xe sự cố để cho khách mới thuê) |
+| `vehicle_released_by` | `bigint` | **FK** -> `users.id`, NULL |
+| `vehicle_release_note` | `text` | NULL (ghi chú giải phóng xe, bắt buộc khác rỗng khi `vehicle_released_at IS NOT NULL`) |
 | `cancelled_at` | `timestamptz` | NULL |
 | `cancellation_reason` | `varchar(100)` | NULL |
 | `cancellation_limit_exempt` | `boolean` | NOT NULL, default false |
 | `deposit_held` | `numeric(12,2)` | NOT NULL, default 0, CHECK >= 0 |
-| `status` | `varchar(20)` | NOT NULL, Default: `'RESERVED'` (`RESERVED`, `IN_RENT`, `RETURN_PENDING`, `STOLEN`, `COMPLETED`, `CANCELLED`, `EXPIRED`) |
-| `total_price` | `numeric(12,2)`| NULL (Tổng chi phí sau khi tính toán) |
+| `status` | `varchar(20)` | NOT NULL, Default: `'RESERVED'` (`RESERVED`, `IN_RENT`, `RETURN_PENDING`, `STOLEN`, `INCIDENT_PENDING`, `CLOSED_INCIDENT`, `COMPLETED`, `CANCELLED`, `EXPIRED`) |
+| `total_price` | `numeric(12,2)`| NULL (Tiền thuê sau tính toán; không gộp bồi thường sự cố) |
 | `created_at` | `timestamptz` | NOT NULL |
 
 - **Indexes:**
   - `idx_rentals_status_expires_at` (`status`, `expires_at`)
   - `idx_rentals_customer_created_at` (`customer_id`, `created_at`)
   - `idx_rentals_vehicle_id` (`vehicle_id`)
-  - Partial unique index theo `vehicle_id` và theo `customer_id` cho `RESERVED`, `IN_RENT`, `RETURN_PENDING`, `STOLEN`; predicate chỉ dựa trên trạng thái, không dùng `NOW()`.
+  - `ix_rentals_in_rent_check` (`next_check_at`) WHERE `status = 'IN_RENT'` (hỗ trợ danh sách `/rental-check-ins`)
+  - `uq_active_customer_rental` (`customer_id`) WHERE `status IN ('RESERVED', 'IN_RENT', 'RETURN_PENDING', 'STOLEN', 'INCIDENT_PENDING')`
+  - `uq_active_vehicle_rental` (`vehicle_id`) WHERE `status IN ('RESERVED', 'IN_RENT', 'RETURN_PENDING', 'STOLEN', 'INCIDENT_PENDING', 'CLOSED_INCIDENT') AND vehicle_released_at IS NULL`
   - CHECK thời gian bắt đầu/kết thúc/nhận xe/quyết toán theo thứ tự; trạng thái hết hạn phải được cập nhật trong transaction trước khi đặt mới.
 
 #### Bảng `handovers`
@@ -275,20 +285,40 @@ Lưu actor, action, loại/ID tài nguyên, request ID, JSON trước/sau và th
 
 ### 2.6. Hỗ trợ & Giám sát (Support & Tracking)
 
-* **`support_tickets`**: `id`, `rental_id` (FK), `created_by` (FK -> `users`), `assigned_to` (FK -> `users`), `title`, `description`, `status` (`OPEN`, `IN_PROGRESS`, `RESOLVED`, `CLOSED`), `created_at`.
+* **`support_tickets`**: `id`, `rental_id` (FK), `created_by` (FK -> `users`), `assigned_to` (FK -> `users`), `title`, `description`, `status` (`OPEN`, `IN_PROGRESS`, `RESOLVED`, `CLOSED`), `resolution_note`, `resolved_at`, `created_at`, `updated_at`.
 * **`gps_points`**: `id`, `rental_id` (FK), `latitude`, `longitude`, `recorded_at`.
 
-### 2.7. Bảng đề xuất cho quản trị giá, bảo trì, ảnh và điều chuyển
+### 2.7. Bảng quản trị giá, bảo trì, ảnh và điều chuyển
 
-Các bảng dưới đây chốt schema/API ở mức thiết kế; **chưa có nghĩa migration, endpoint hoặc chức năng đã triển khai**.
+Các bảng dưới đã có ORM và migration trong source; API quản trị giá, bảo trì,
+file và điều chuyển đã có code. Upload intent/URL ký và mọi loại attachment
+trong contract chưa đồng nghĩa đã triển khai đầy đủ. Có code không chứng
+minh đã kiểm thử thành công.
 
 * **`vehicle_pricing_history`**: `id`, `vehicle_id` (FK), `version_number`, giá/cọc cũ nullable và giá/cọc mới (`first_30_minutes_price`, `extra_minute_price`, `deposit_amount`), `changed_by` (FK -> users), `created_at`. UNIQUE (`vehicle_id`, `version_number`); CHECK version > 0, mọi giá không âm. Phiên bản đầu có giá cũ NULL. Ghi lịch sử và cập nhật `vehicles` trong cùng transaction; trigger DB chặn UPDATE/DELETE.
-* **`maintenance_orders`**: `id`, `vehicle_id` (FK), `created_by`/`assigned_to` (FK -> users), `title`, `description`, `status` (`OPEN`, `IN_PROGRESS`, `COMPLETED`, `CANCELLED`), `opened_at`, `started_at`, `completed_at`, `resolution_note`, `created_at`, `updated_at`. CHECK trạng thái/mốc thời gian; partial unique index một phiếu OPEN/IN_PROGRESS trên mỗi xe. Không coi `support_tickets` là phiếu bảo trì.
+* **`maintenance_orders`**: `id`, `vehicle_id` (FK -> `vehicles.id`), `incident_id` (FK nullable -> `rental_incidents.id`, ON DELETE RESTRICT, index `ix_maintenance_orders_incident`), `created_by`/`assigned_to` (FK -> `users.id`), `title`, `description`, `status` (`OPEN`, `IN_PROGRESS`, `COMPLETED`, `CANCELLED`), `opened_at`, `started_at`, `completed_at`, `resolution_note`, `created_at`, `updated_at`. CHECK trạng thái/mốc thời gian; partial unique index một phiếu `OPEN`/`IN_PROGRESS` trên mỗi xe. Dùng chung cho cả xe thường và xe sự cố đã về trạm. Không coi `support_tickets` là phiếu bảo trì.
 * **`stored_files`**: metadata file riêng tư gồm object key UNIQUE, tên gốc, MIME, byte size, SHA-256, trạng thái (`PENDING`, `READY`, `REJECTED`), uploader (FK -> users), `created_at`, `verified_at`. CHECK chỉ JPEG/PNG/WebP, 1–10 MiB và SHA-256 64 ký tự.
-* **`file_attachments`**: `file_id` (FK UNIQUE), đúng một FK owner trong `vehicle_id`, `maintenance_order_id`, `handover_id`, `user_document_id`, `support_ticket_id`; `purpose`, `attached_by` (FK -> users), `created_at`. CHECK đúng một owner và purpose thuộc enum contract. Hình ảnh chỉ tải qua URL ký ngắn hạn sau kiểm tra quyền; không lưu URL public.
+* **`file_attachments`**: `file_id` (FK UNIQUE), đúng một FK owner trong `vehicle_id`, `maintenance_order_id`, `handover_id`, `user_document_id`, `support_ticket_id`; `purpose`, `attached_by` (FK -> users), `created_at`. CHECK đúng một owner và purpose thuộc enum contract. URL ký ngắn hạn là thiết kế mở rộng; code hiện tải qua endpoint kiểm tra quyền, không công khai object key.
 * **`vehicle_move_audits`**: `vehicle_id`, `from_station_id`, `to_station_id`, `actor_id` (các FK), `idempotency_record_id` (FK nullable UNIQUE), `note`, `moved_at`. CHECK trạm nguồn khác trạm đích; trigger DB chặn UPDATE/DELETE. Cập nhật vị trí xe và audit cùng transaction.
 
-API đề xuất tương ứng (`/prices`, `/maintenance-orders`, `/files/*`, lịch sử điều chuyển) được mô tả trong `api-contract.md`. Tiền dùng `numeric(12,2)`, thời gian dùng `timestamptz` (UTC); JSON API dùng ID/tiền dạng string và thời gian UTC.
+API tương ứng xem `api-contract.md`, phân biệt code hiện có với endpoint
+dự kiến. File hiện phục vụ qua lưu trữ cục bộ và endpoint kiểm tra quyền;
+URL ký là thiết kế mở rộng. Tiền `numeric(12,2)`, thời gian `timestamptz` UTC;
+JSON ID/tiền string. Helper `operations.output` hiện chuyển Decimal thành
+float; cần serializer phù hợp trước khi dùng cho tài chính sự cố mới.
+
+### 2.8. Hồ sơ sự cố (`rental_incidents`, đã triển khai tới `f4c2a1b8e901`)
+
+Bảng `rental_incidents` (1–1 với `rentals.id`) lưu hồ sơ tiếp nhận, xác minh, thu hồi/về trạm, mốc quyết toán thuê, thông tin bồi thường ngoài hệ thống và mốc đóng hồ sơ:
+
+- **Định danh & tiếp nhận**: `id`, `rental_id` (UNIQUE FK -> `rentals.id`), `initial_ticket_id` (FK -> `support_tickets.id`), `source` (`CUSTOMER_REPORT`, `STAFF_REPORT`, `SYSTEM_ALERT`), `status` (`OPEN`, `INVESTIGATING`, `CONFIRMED`, `DISMISSED`, `CLOSED`), `assigned_to` (nullable để tương thích dữ liệu cũ; luồng hiện hành không yêu cầu gán người xử lý).
+- **Xác minh & dừng cước**: `verified_outcome` (`FALSE_ALARM`, `LOSS_THEFT`, `ABANDONMENT`), `verification_reason`, `verified_by`, `verified_at`, `valid_report_ticket_id`, `valid_report_received_at`, `billing_cutoff_at`, `billing_cutoff_reason` (`VALID_REPORT`, `RECOVERED_AT`).
+- **Thu hồi & về trạm**: `recovered_at`, `received_by`, `recovery_note`, `arrived_station_at`, `received_station_id`, `station_received_by`, `recovery_condition` (`INTACT`, `REPAIRABLE`, `UNREPAIRABLE`), `inspected_at` (ghi nhận cùng lúc tại `arrival`), `inspected_by`, `inspection_note`, `inspection_ticket_id`.
+- **Bồi thường ngoài hệ thống**: `compensation_assessed_amount` (`numeric(12,2)` nullable; `null` = chưa xác định, `0.00` = xác nhận không phải bồi thường), `agreement_status` (`PENDING`, `NOT_REQUIRED`, `AGREED`, `AUTHORITY_DECISION`, `DISPUTED`), `compensation_basis`, `compensation_approved_by`, `compensation_approved_at`, `compensation_ticket_id`, `compensation_settled_at`. Chi tiết thanh toán ngoài hệ thống (`payment_method`, `payment_reference`, `paid_at`) được lưu kèm trong `AuditLog` (`RENTAL_INCIDENT_EXTERNAL_COMPENSATION_SETTLED`). Các cột định giá cũ (`vehicle_value_snapshot`, `valuation_*`, `approved_repair_cost`, `repair_cost_*`, `recovered_asset_*`, `compensation_proposed_amount`) giữ nullable để bảo toàn schema lịch sử.
+- **Đóng hồ sơ & liên kết**: `rent_settled_at`, `closed_at`, `closed_by`, `closure_note`. `transactions.incident_id` (nullable FK -> `rental_incidents.id`) liên kết bút toán tiền thuê/hoàn cọc sự cố; bồi thường ngoài hệ thống **không** tạo `Transaction`/`WalletTransaction`.
+- **Phản ánh sau `COMPLETED`**: chỉ tạo `support_tickets`/bằng chứng, không mở hồ sơ tài chính mới. Thu hồi sau `CLOSED_INCIDENT` ghi nhận trên hồ sơ cũ, không mở lại `rental`.
+
+Chi tiết API và quy tắc nghiệp vụ xem tại [api-contract.md](api-contract.md) (Mục 9) và [architecture.md](architecture.md).
 
 ---
 
@@ -329,13 +359,22 @@ users (1) <---> (N) audit_logs / vehicle_move_audits
 
 ## 4. QUY TẮC KỸ THUẬT (MIGRATIONS & BACKEND LOGIC)
 
-Alembic revision được quản lý tập trung tại `database/migrations/`; chạy từ `backend/` bằng `alembic upgrade head`. ORM SQLAlchemy trong `backend/app/models.py` mô tả schema hiện có và các bảng đề xuất bổ sung. Migration mới chỉ thay đổi database sau khi chạy lệnh upgrade; không dùng `create_all()` trong lúc chạy ứng dụng.
+Alembic revision nằm tại `backend/database/migrations/`; chạy từ `backend/`.
+ORM `backend/app/models.py` mô tả schema hiện tại trong source. Kiểm tra
+`heads`/`current` và review migration trên DB thử trước khi upgrade lên `evride_db`.
+Không dùng `create_all()` trong lúc chạy ứng dụng.
 
 Revision `888ad91e139e` bổ sung lịch sử giá, phiếu bảo trì, kho file/đính kèm, audit điều chuyển và báo giá trả xe; đồng thời thêm CHECK còn thiếu, mở rộng unique rental sang `RETURN_PENDING` và cấm UPDATE/DELETE lịch sử giá/audit điều chuyển. Migration cố ý dừng nếu database có xe hoặc snapshot giá cũ, URL ảnh giấy tờ chưa chuyển sang kho riêng tư, hay giấy tờ VERIFIED chưa có dữ liệu xác minh mới. Không suy diễn giá block đầu/phút từ `daily_price`; cần lập kế hoạch chuyển đổi dữ liệu trước khi chạy migration trên môi trường có dữ liệu.
 
-Revision `d3f914a27c6b` bổ sung mẫu xe riêng, hai kiểu giảm, phạm vi xe và hạn mức lượt dùng. Revision `f73c21e84a6b` bỏ bộ lọc `vehicle_type`, giữ phạm vi theo mẫu xe. Mẫu xe dữ liệu cũ được backfill từ `vehicles.name`; số lượt đã dùng được backfill từ các claim `is_used`. Mã cũ giữ `usage_limit = NULL` vì không thể suy ra hạn mức lịch sử; mã mới phải khai báo hạn mức dương. Migration dừng nếu gặp khuyến mãi/snapshot có phần trăm không hợp lệ thay vì tự sửa dữ liệu. Service `app/services/promotions.py` tính mức giảm và tiêu thụ claim/hạn mức trong transaction do caller quản lý; quote/thanh toán hiện chưa có để tích hợp service.
+Revision `d3f914a27c6b` bổ sung mẫu xe riêng, hai kiểu giảm, phạm vi xe và hạn mức lượt dùng. Revision `f73c21e84a6b` bỏ bộ lọc `vehicle_type`, giữ phạm vi theo mẫu xe. Mẫu xe dữ liệu cũ được backfill từ `vehicles.name`; số lượt đã dùng được backfill từ các claim `is_used`. Mã cũ giữ `usage_limit = NULL` vì không thể suy ra hạn mức lịch sử; mã mới phải khai báo hạn mức dương. Migration dừng nếu gặp khuyến mãi/snapshot có phần trăm không hợp lệ thay vì tự sửa dữ liệu. Service `app/services/promotions.py` tính mức giảm và tiêu thụ claim/hạn mức trong transaction do caller quản lý; quote/thanh toán thông thường đã gọi service này; luồng sự cố mới phải không apply/consume mã.
 
 Revision `b18f7e4c2a91` loại bỏ phân loại `vehicles.type` và `rental_pricing_snapshots.vehicle_type_snapshot`; `vehicles.model`/`vehicle_model_snapshot` là trường mẫu xe duy nhất. Cập nhật schema bằng `alembic upgrade head` trước khi chạy phiên bản backend mới.
+
+Revision `de606e75dbc8` (cha `b18f7e4c2a91`) bổ sung dữ liệu xử lý ticket và ràng buộc/index GPS.
+
+Revision `e8a412c9f603` bổ sung bảng `rental_incidents`, trạng thái `INCIDENT_PENDING`/`CLOSED_INCIDENT`, dấu giải phóng xe trên `rentals`, và liên kết `transactions.incident_id`.
+
+Revision `f4c2a1b8e901` (cha `e8a412c9f603`) thu gọn phân hệ sự cố & kiểm tra 24 giờ: thêm `rentals.next_check_at` + partial index `ix_rentals_in_rent_check`, thêm `maintenance_orders.incident_id` + index `ix_maintenance_orders_incident`, bỏ ràng buộc bắt buộc `rental_incidents.assigned_to`, và bỏ ràng buộc cảnh báo thừa. Đã kiểm chứng upgrade/downgrade/`alembic check` trên `evride_test`; `evride_db` cần chạy `alembic upgrade head` khi triển khai.
 
 ### 4.1. Xử lý Thời gian & Hết hạn giữ xe
 * **Múi giờ:** Luôn lưu dưới dạng `timestamptz` (thống nhất chuẩn UTC trong CSDL).
@@ -344,15 +383,16 @@ Revision `b18f7e4c2a91` loại bỏ phân loại `vehicles.type` và `rental_pri
 * **Giải phóng xe:** Lazy expiration trong cùng transaction với thao tác đặt mới phải cập nhật `RESERVED` -> `EXPIRED` trước khi xét unique index; job nền chỉ là tối ưu, không phải nguồn quyết định duy nhất.
 
 ### 4.2. Khóa chống Tranh chấp (Concurrency & Locking)
-* **Partial Unique Index:** Khống chế 1 xe không thể có 2 đơn thuê hoạt động cùng lúc:
+* **Partial Unique Index hiện hành (từ `e8a412c9f603` trở đi):** Tách điều kiện chặn khách khỏi quyền sử dụng xe để xe sự cố đã giải phóng (`vehicle_released_at IS NOT NULL`) cho phép khách mới thuê:
   ```sql
   CREATE UNIQUE INDEX uq_active_vehicle_rental
   ON rentals (vehicle_id)
-  WHERE status IN ('RESERVED', 'IN_RENT', 'RETURN_PENDING', 'STOLEN');
+  WHERE status IN ('RESERVED', 'IN_RENT', 'RETURN_PENDING', 'STOLEN', 'INCIDENT_PENDING', 'CLOSED_INCIDENT')
+    AND vehicle_released_at IS NULL;
 
   CREATE UNIQUE INDEX uq_active_customer_rental
   ON rentals (customer_id)
-  WHERE status IN ('RESERVED', 'IN_RENT', 'RETURN_PENDING', 'STOLEN');
+  WHERE status IN ('RESERVED', 'IN_RENT', 'RETURN_PENDING', 'STOLEN', 'INCIDENT_PENDING');
   ```
 * **Pessimistic Locking (`SELECT ... FOR UPDATE`):**
   * Thứ tự chung: `station → customer(users) → wallet → vehicle → rental`; trong nhóm khóa ID tăng dần. Thực hiện trên cùng DB transaction, sau khóa đọc lại và kiểm tra điều kiện.
@@ -361,8 +401,9 @@ Revision `b18f7e4c2a91` loại bỏ phân loại `vehicles.type` và `rental_pri
   * Sau khi khóa các tài nguyên nghiệp vụ của rental, khóa promotion rồi claim trước khi tiêu thụ mã; `used_count` và `user_promotions.is_used/used_at` phải commit/rollback cùng quyết toán.
 
 ### 4.3. Kiểm tra Sức chứa Trạm (Station Capacity)
-* Số chỗ đang dùng tại trạm = Tổng tất cả xe có `current_station_id = station_id` (Bao gồm xe `AVAILABLE`, `RESERVED`, và `MAINTENANCE`).
-* Không cho phép thực hiện hành động Trả xe / Điều chuyển xe vào trạm nếu số xe hiện tại $\ge$ `capacity`.
+* Số chỗ đang dùng = tất cả xe có `current_station_id = station_id`, gồm AVAILABLE, RESERVED, RETURN_PENDING và MAINTENANCE.
+* Nhận trả/điều chuyển/nhận xe thu hồi vào trạm phải khóa trạm và kiểm tra capacity. Nhận lại cùng sự kiện không chiếm chỗ hai lần.
+* Thu hồi ngoài trạm chưa gán current_station_id; chỉ ghi khi thực sự đến trạm. Quyết toán hồ sơ cũ không kiểm thêm chỗ hoặc ghi đè vị trí xe ở chuyến mới.
 
 ### 4.4. Check Constraints & Ràng buộc Dữ liệu
 * `capacity > 0`

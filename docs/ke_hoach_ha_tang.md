@@ -1,5 +1,12 @@
 # Kế hoạch hạ tầng: 3 máy ảo (Demo VirtualBox & Production Azure)
 
+Cập nhật phạm vi sự cố 13/11/2026: kiến trúc triển khai dưới đây không đồng
+nghĩa cho phép tiền thật/GPS thật. V1 tiếp tục tiền mô phỏng; GPS demo có cờ
+riêng và không ghi trong production. Không cần chạy worker cảnh báo 24 giờ
+(đã thay bằng truy vấn danh sách động `GET /api/v1/rental-check-ins` và lịch
+`rentals.next_check_at`). Cần đưa docs nguồn FAQ vào gói triển khai để các
+link nguồn nội bộ không bị thiếu.
+
 Tài liệu mô tả cách triển khai hệ thống EVRide trên kiến trúc 3 máy ảo theo mục V của thông báo học phần, gồm hai phần tách biệt rõ ràng:
 - **Phần I:** Môi trường **Demo nội bộ trên VirtualBox** (dải IP `192.168.56.x`, dùng khi bảo vệ offline).
 - **Phần II:** Môi trường **Production trên 3 VM Azure với tên miền `thuexedien.me` và HTTPS Let's Encrypt** (PostgreSQL 16, Rolling Session Auth, NSG/Firewall). Tuyệt đối không dùng IP demo `192.168.56.x` cho cấu hình Production.
