@@ -13,7 +13,7 @@ Tài liệu này là nguồn hợp đồng API chính của EVRide V1, đối ch
 | Ticket hỗ trợ, bảo trì (`incident_id` tùy chọn), GPS demo, đánh giá, 12 FAQ | Đã triển khai (`operations.py`) |
 | Tải lên/tải xuống file cục bộ & đính kèm bằng chứng ticket | Đã triển khai (`files.py`, `operations.py`); luồng presigned URL (`upload-intents`/`complete`) là mở rộng dự kiến |
 | Kiểm tra chuyến 24 giờ & phân hệ sự cố thu gọn (bồi thường ngoài hệ thống) | Đã triển khai (`rental_check_ins.py`, `incidents.py`, `incident_recovery.py`, `incident_finance.py`, `incident_completion.py`) |
-| Báo cáo thống kê (`/analytics/*`) | Đã triển khai 3 API doanh thu/tài chính (`revenue`, `financial-summary`, `revenue-details` trong `analytics.py`); 5 API thống kê vận hành còn lại là đặc tả dự kiến |
+| Báo cáo thống kê (`/analytics/*`) | Đã triển khai 3 API doanh thu/tài chính (`revenue`, `financial-summary`, `revenue-details` trong `analytics.py`) |
 
 Số mục chính sách (1–12) được trích dẫn trong tài liệu này thuộc [Sổ quyết định V1](v1-decisions.md); mục 12 của tài liệu này là phần kiểm tra hệ thống và tiêu chí nghiệm thu.
 
@@ -789,28 +789,18 @@ Chatbot FAQ không lưu lịch sử hội thoại DB, message 1–2.000 ký tự
 
 S/M được truy cập. Các endpoint dưới trả 200 theo envelope chung. Tham số `from_date`, `to_date` phải đi cùng nhau; bỏ cả hai lấy toàn bộ dữ liệu, có cả hai thì `from_date <= to_date`. Khoảng thời gian bao gồm ngày cuối bằng cách chuyển sang khoảng UTC `[đầu ngày from_date, đầu ngày sau to_date)` theo giờ Việt Nam.
 
-Hiện tại `backend/app/api/v1/analytics.py` đã triển khai 3 endpoint doanh thu/tài chính (`/analytics/revenue`, `/analytics/financial-summary`, `/analytics/revenue-details`); 5 endpoint thống kê vận hành còn lại là đặc tả dự kiến.
+Hiện tại `backend/app/api/v1/analytics.py` triển khai 3 endpoint doanh thu/tài chính (`/analytics/revenue`, `/analytics/financial-summary`, `/analytics/revenue-details`). Phạm vi V1 không bao gồm các API thống kê vận hành bổ sung.
 
 | GET path | Trạng thái | Query bổ sung | Schema `data` |
 | --- | --- | --- | --- |
 | `/analytics/revenue` | **Đã triển khai** | `from_date?, to_date?` | `{items: [{month, vehicle_model, rental_count, revenue, cumulative_revenue, share_percent}], rental_count, total_revenue, missing_snapshot_count}` |
 | `/analytics/financial-summary` | **Đã triển khai** | `from_date?, to_date?` | Tổng doanh thu thuê thường/sự cố; bồi thường thu/hoàn trong kỳ (từ dữ liệu cũ nếu có); hoàn cọc sự cố trong kỳ; `deposit_held_current` (`all_rentals`, `confirmed_incidents`) |
 | `/analytics/revenue-details` | **Đã triển khai** | `from_date?, to_date?, page, page_size` | `{items: [{rental_id, invoice_id, revenue_type, recognized_at, vehicle_model, revenue}], page, page_size, total, missing_snapshot_count}` |
-| `/analytics/overview` | Đặc tả dự kiến | `from_date?, to_date?` | `{trip_count, revenue, average_trip_minutes, customer_count, vehicles_by_status: [{status, count}], recent_tickets: Ticket[], near_full_stations: Station[]}` |
-| `/analytics/peak-hours` | Đặc tả dự kiến | `station_id?` | `{items: [{station_id, station_name, hour, rental_count}], filtered_trip_count, included_trip_count}`; tối đa 20 trạm |
-| `/analytics/top-routes` | Đặc tả dự kiến | `from_date?, to_date?` | `{items: [{month, rank, pickup_station_id, return_station_id, rental_count}]}` |
-| `/analytics/idle-time` | Đặc tả dự kiến | `limit` mặc định 15, 1–100 | `{items: [{station_id, station_name, average_idle_minutes}], coverage: "OBSERVED_RETURN_PICKUP_PAIRS"}` |
-| `/analytics/inactive-customers` | Đặc tả dự kiến | `days` trong 14/30/60/90, mặc định 30; `as_of_date?`; phân trang; không dùng `from_date`/`to_date` | `{items: [{user_id, name, email, balance}], as_of_date, days}`; meta có phân trang |
 
 Định nghĩa:
 
-- Trip_count và heatmap đếm actual_start_time trong khoảng, không đếm RESERVED/CANCELLED/EXPIRED. Hour là 0–23 theo giờ Việt Nam. Heatmap chọn tối đa 20 trạm theo tổng số lượt DESC, station_id ASC; trả đủ 24 giờ cho từng trạm. `station_id` lọc một trạm cụ thể và không vượt giới hạn 20. `included_trip_count` là tổng lượt của các trạm hiển thị; `filtered_trip_count` là tổng trong phạm vi lọc trước khi giới hạn top 20.
 - Revenue gồm hai nhánh: thường COMPLETED + invoice PAID theo actual_end_time; sự cố ghi khi tiền thuê quyết toán SUCCESS dù chưa CLOSED_INCIDENT. Đóng hồ sơ không ghi lần nữa. Tổng thuê gồm cọc cấn thuê + phần thu thêm; loại topup, cọc còn giữ, bồi thường/hoàn bồi thường. Giữ cơ sở thời gian báo cáo thường; chưa đổi toàn bộ sang settled_at. Công bố hai cơ sở thời gian, phân nhóm loại trừ nhau và chống nhân đôi khi JOIN.
 - month dạng `YYYY-MM`; cumulative_revenue cộng trong khoảng lọc theo từng mẫu xe snapshot, share_percent là chuỗi số có 2 chữ số lẻ, tháng tổng 0 thì tỷ trọng 0. Dùng vehicle_model_snapshot và giá snapshot; không lấy mẫu xe/giá hiện hành để sửa lịch sử.
-- Top routes đếm các chuyến COMPLETED theo actual_end_time, RANK theo số chuyến trong từng tháng, lấy rank <= 3; đồng hạng có thể trả hơn ba dòng.
-- Idle-time: với cùng xe, lấy một lần trả và lần nhận kế tiếp tại cùng trạm, không có lần nhận khác xen giữa; chỉ tính cặp có cả hai mốc nằm trong khoảng lọc, bỏ xe có điều chuyển ngoài chuyến không chứng minh được lịch sử. Đây là thời gian nằm tại trạm quan sát được, gồm thời gian giữ chỗ, không khẳng định là thời gian AVAILABLE. Báo cáo đầy đủ cần lịch sử vị trí/trạng thái theo mục 13.
-- Inactive: CUSTOMER ACTIVE, balance > 0, không có actual_start_time trong khoảng N ngày kết thúc ở đầu ngày sau as_of_date theo giờ Việt Nam. Mặc định as_of_date là ngày có actual_start_time mới nhất; không có chuyến thì dùng ngày server tại Việt Nam. Sắp balance DESC, user_id ASC.
-- Overview: average_trip_minutes tính trên chuyến COMPLETED kết thúc trong khoảng; không có thì 0. Customer_count là số khách khác nhau có chuyến bắt đầu trong khoảng. Xe theo trạng thái/trạm sắp đầy là snapshot hiện tại; near_full_stations có available_spaces <= 1, ACTIVE, tối đa 10 theo available_spaces ASC, id ASC. recent_tickets là 5 ticket mới nhất hiện tại.
 - Không có dữ liệu trả mảng rỗng/tổng 0, không trả 404. Truy vấn số liệu phải được đối chiếu độc lập khi kiểm thử.
 - `/analytics/revenue`, `/analytics/financial-summary` và
   `/analytics/revenue-details` dùng cùng tập ghi nhận doanh thu thuê.
@@ -932,5 +922,4 @@ Migration phải bảo toàn nghĩa dữ liệu lịch sử. Nếu giá cũ chư
   - 3 API báo cáo doanh thu và tổng hợp tài chính (`/analytics/revenue`, `/analytics/financial-summary`, `/analytics/revenue-details`).
 - **Phần mở rộng / chưa triển khai ở Backend:**
   - Luồng presigned URL với object storage bên ngoài (`POST /files/upload-intents`, `POST /files/{id}/complete`) và đính kèm ảnh qua API cho mọi loại owner ngoài ticket/eKYC.
-  - 5 API báo cáo vận hành dự kiến (`/analytics/overview`, `/analytics/peak-hours`, `/analytics/top-routes`, `/analytics/idle-time`, `/analytics/inactive-customers`).
   - Tích hợp cổng thanh toán thật và thiết bị GPS phần cứng (nằm ngoài phạm vi V1 demo).
