@@ -2,7 +2,8 @@
 
 Tài liệu mô tả các màn hình dành cho nhân viên vận hành của hệ thống EVRide: mỗi màn hình hiển thị dữ liệu gì, lấy từ truy vấn nào, lọc ra sao và điều kiện để coi là hoàn thành. Đây là căn cứ để xây dựng API báo cáo, giao diện quản trị và kiểm thử phần thống kê.
 
-Đường dẫn API theo quy ước của dự án (`/api/v1/…`, module `analytics` trong `backend/app/modules/`); giao diện đặt trong `frontend/src/features/admin/`. Đường dẫn cụ thể được chốt trong `docs/api.md` khi xây dựng API.
+API báo cáo thuộc `/api/v1/analytics/…` (`backend/app/api/v1/analytics.py`). Hiện tại backend đã triển khai 3 API báo cáo doanh thu và tổng hợp tài chính (`GET /api/v1/analytics/revenue`, `GET /api/v1/analytics/financial-summary`, `GET /api/v1/analytics/revenue-details`); 5 API thống kê vận hành còn lại (`overview`, `peak-hours`, `top-routes`, `idle-time`, `inactive-customers`) là đặc tả dự kiến. Giao diện quản trị dự kiến trong `frontend/src/features/admin/`.
+Contract ở [api-contract.md](api-contract.md); chính sách nghiệp vụ tại [v1-decisions.md](v1-decisions.md).
 
 ## 1. Người dùng và quyền
 
@@ -16,7 +17,7 @@ Tài liệu mô tả các màn hình dành cho nhân viên vận hành của h�
 | --- | --- | --- | --- | --- |
 | M1 | Tổng quan | Nhìn nhanh tình hình vận hành | Số chuyến, doanh thu, phút trung bình, số khách, số xe theo trạng thái; 5 báo hỏng mới; trạm sắp đầy | `GET /api/v1/analytics/overview`, view `v_tinh_trang_tram` |
 | M2 | **Báo cáo 1 – Mức sử dụng trạm** | Biết trạm nào đông vào giờ nào, trạm nào thừa xe | Lượt thuê theo trạm × giờ; thời gian xe nằm chờ trung bình theo trạm | **Q3** (`/api/v1/analytics/peak-hours`), Q8 (`/api/v1/analytics/idle-time`) |
-| M3 | **Báo cáo 2 – Doanh thu** | Theo dõi doanh thu theo tháng và loại xe | Doanh thu theo tháng × loại xe, lũy kế, tỷ trọng; top 3 tuyến mỗi tháng | **Q4** (`/api/v1/analytics/revenue`), Q5 (`/api/v1/analytics/top-routes`) |
+| M3 | **Báo cáo 2 – Doanh thu** | Theo dõi doanh thu theo tháng và mẫu xe | Doanh thu theo tháng × mẫu xe, lũy kế, tỷ trọng; top 3 tuyến mỗi tháng | **Q4** (`/api/v1/analytics/revenue`), Q5 (`/api/v1/analytics/top-routes`) |
 | M4 | Xe và trạm | Tra cứu xe, điều chuyển xe, ngừng hoạt động xe | Danh sách xe có lọc theo trạm, trạng thái, mã xe; phân trang | `GET /api/v1/vehicles`, `POST /api/v1/vehicles/{id}/move`, `POST /api/v1/vehicles/{id}/status` |
 | M5 | Bảng giá | Xem lịch sử giá, áp dụng giá mới | Các phiên bản giá theo từng xe, gồm giá 30 phút đầu, giá phút thêm và cọc | `GET/POST /api/v1/prices` |
 | M6 | Khách lâu không đi | Chăm sóc khách còn tiền trong ví nhưng không đi xe | Khách không có chuyến trong N ngày, sắp theo số dư | **Q6** (`/api/v1/analytics/inactive-customers`) |
@@ -49,26 +50,42 @@ Màn hình Báo hỏng và Bảo trì thuộc luồng nghiệp vụ báo hỏng 
 
 ## 4. Đặc tả Báo cáo 2 – Doanh thu (M3)
 
-**Câu hỏi nghiệp vụ trả lời được:** doanh thu từng tháng bao nhiêu, loại xe nào đóng góp nhiều nhất, xu hướng tăng hay giảm, tuyến nào phổ biến.
+**Câu hỏi nghiệp vụ trả lời được:** doanh thu từng tháng bao nhiêu, mẫu xe nào đóng góp nhiều nhất, xu hướng tăng hay giảm, tuyến nào phổ biến.
 
-**Quy tắc tính:** chỉ cộng rental `COMPLETED` có hóa đơn `PAID`, theo `actual_end_time`; không cộng cọc/top-up và không tính hai lần khi nối giao dịch.
+**Quy tắc tính:** tách hai tập loại trừ nhau:
+
+- Chuyến thường: giữ quy ước COMPLETED + hóa đơn PAID, theo actual_end_time.
+- Hồ sơ sự cố: ghi doanh thu khi khoản tiền thuê quyết toán SUCCESS, theo
+  thời điểm quyết toán tiền thuê, kể cả chưa CLOSED_INCIDENT. Đóng hồ sơ
+  sau đó không tạo doanh thu lần nữa.
+
+Tiền thuê đã thu gồm cọc cấn vào thuê và phần thu thêm; không chỉ cộng tiền
+mới trừ ví. Không cộng topup, cọc còn giữ, bồi thường hoặc hoàn bồi thường.
+Các khoản này có thống kê riêng, không trừ hoàn bồi thường khỏi doanh thu thuê.
+Không nhân bản số tiền khi JOIN nhiều transaction/attachment/audit.
+
+UI/API phải ghi rõ hai cơ sở thời gian; chưa có quyết định đổi toàn bộ báo
+cáo thường sang settled_at. Không ghi giả actual_end_time/RETURN cho sự cố.
+Mẫu xe lấy vehicle_model_snapshot, không lấy mẫu xe hiện tại.
 
 **Bộ lọc:** từ ngày – đến ngày.
 
 **Phần 1 – Biểu đồ cột chồng theo tháng (Q4)**
 
-- Trục ngang: tháng. Mỗi cột chia 3 đoạn theo loại xe, **màu cố định theo loại xe** (không đổi khi lọc). Có chú giải; tổng doanh thu ghi trên đỉnh cột.
-- Di chuột vào đoạn: tháng, loại xe, doanh thu, số chuyến, tỷ trọng.
+- Trục ngang: tháng. Mỗi cột chia theo mẫu xe thực sự có trong snapshot; màu cố định theo mẫu xe, không hard-code ba loại. Có chú giải và tổng trên đỉnh cột.
+- Di chuột vào đoạn: tháng, mẫu xe, doanh thu, số chuyến, tỷ trọng.
 
-**Phần 2 – Bảng chi tiết (Q4):** tháng, loại xe, số chuyến, doanh thu, **lũy kế** theo loại xe, **tỷ trọng** trong tháng. Q4 dùng hàm cửa sổ `SUM() OVER (PARTITION BY …)`.
+**Phần 2 – Bảng chi tiết (Q4):** tháng, mẫu xe, số chuyến, doanh thu, **lũy kế** theo mẫu xe, **tỷ trọng** trong tháng. Q4 dùng hàm cửa sổ `SUM() OVER (PARTITION BY …)`.
 
 **Phần 3 – Top 3 tuyến mỗi tháng (Q5):** tháng, hạng, trạm đi, trạm đến, số chuyến; các tuyến bằng số chuyến cùng hạng (`RANK`).
 
 **Điều kiện hoàn thành**
 
-- [ ] Tổng tỷ trọng các loại xe trong mỗi tháng bằng 100% (sai số làm tròn ≤ 0,5).
-- [ ] Lũy kế tháng cuối bằng tổng doanh thu của loại xe đó trong cả khoảng.
+- [ ] Tháng doanh thu > 0: tổng tỷ trọng mẫu xe bằng 100% (sai số làm tròn ≤ 0,5); tháng tổng 0: tỷ trọng 0, không chia 0.
+- [ ] Lũy kế tháng cuối bằng tổng doanh thu của mẫu xe đó trong cả khoảng.
 - [ ] Biểu đồ luôn có bảng số liệu đi kèm (người mù màu vẫn đọc được).
+- [ ] Tiền thuê sự cố quyết toán tháng A, đóng hồ sơ tháng B chỉ được tính một lần ở tháng A; thu hồi/hoàn bồi thường tháng C không sửa doanh thu thuê đó.
+- [ ] Top tuyến và thời gian chuyến hoàn tất thường không tự kéo CLOSED_INCIDENT vào hoặc dựng trạm trả/thời điểm kết thúc giả.
 
 ## 5. Đặc tả Q6 – Khách lâu không đi (M6)
 
@@ -91,4 +108,13 @@ Màn hình Báo hỏng và Bảo trì thuộc luồng nghiệp vụ báo hỏng 
 3. Bảng giá là theo từng xe, lịch sử append-only; `model` là mẫu xe duy nhất, doanh thu nhóm theo `vehicle_model_snapshot` đã lưu ở rental, không dùng mẫu xe hiện tại để viết lại lịch sử.
 4. Thay đổi chính sách giá hiện tại: 10.000đ cho 30 phút đầu, 350đ/phút thêm; seed chỉ dành cho dữ liệu demo. Xe chỉ được đặt/pickup khi pin từ 30% trở lên.
 5. Thiếu số dư trả `409 INSUFFICIENT_BALANCE`, không dùng HTTP 402. Ngưỡng đặt xe phụ thuộc `deposit_amount_snapshot + first_30_minutes_price_snapshot`, không phải một con số cố định 20.000đ.
-6. API quản lý bảng giá, bảo trì, file upload/download và audit điều chuyển được mô tả ở mức đề xuất trong `api-contract.md`; chưa coi là chức năng đã triển khai.
+6. Bảng giá, bảo trì (hỗ trợ `incident_id`), file upload/download cục bộ, danh sách kiểm tra 24 giờ (`/rental-check-ins`), hồ sơ sự cố thu gọn (`rental_incidents` với bồi thường ngoài hệ thống) và 3 API báo cáo doanh thu/tài chính đã có code trong backend.
+
+## 8. Màn hình kiểm tra 24 giờ và hồ sơ sự cố (theo phạm vi thu gọn 13/11/2026)
+
+- **Danh sách cần kiểm tra (`GET/POST /api/v1/rental-check-ins`):** Hiển thị các chuyến `IN_RENT` đến lịch kiểm tra (`>= 24h` từ `actual_start_time` hoặc đến mốc `next_check_at`) và chưa có hồ sơ sự cố đang mở. Nhân viên ghi kết quả `CONTINUE_RENTAL` (đặt `next_check_at`), `NO_ANSWER` (đặt lịch thử lại `next_check_at`), hoặc `ESCALATE` (tạo ticket + mở hồ sơ sự cố nguyên tử).
+- **Hồ sơ sự cố (`/api/v1/rental-incidents`):** Hiển thị báo cáo hợp lệ server nhận, bằng chứng (`evidence-tickets`), kết luận `MANAGER` duyệt (`FALSE_ALARM`, `LOSS_THEFT`, `ABANDONMENT`), mốc dừng cước (`billing_cutoff_at`), thu hồi thực địa (`recovery`), tiếp nhận về trạm kèm đánh giá ban đầu (`arrival` + `condition`), giải phóng xe (`release-vehicle`) và quyết toán.
+- **Tài chính sự cố & bồi thường ngoài hệ thống:** Tiền thuê (`settle-rent`) và hoàn cọc dư (`deposit/refund`) tách biệt hoàn toàn với bồi thường ngoài hệ thống (`POST /compensation/external-settlement`). `compensation_assessed_amount = null` hiển thị là chưa xác định; `0.00` (`NOT_REQUIRED`) là xác nhận không phải bồi thường; `> 0` (`AGREED` / `AUTHORITY_DECISION`) hiển thị kèm thông tin thanh toán ngoài hệ thống.
+- **Tách công nợ khách và quyền sử dụng xe:** `MANAGER` chỉ giải phóng xe (`release-vehicle`) sau khi phiếu bảo trì gắn `incident_id` hoàn tất (`COMPLETED`); không đóng nợ giả để mở xe.
+- **Giới hạn sau khi kết thúc chuyến:** Chuyến `COMPLETED` nhận phản ánh mới chỉ tạo ticket/bằng chứng, không mở hồ sơ tài chính sự cố mới. Chuyến `CLOSED_INCIDENT` tìm lại xe sau khi đóng vẫn ghi nhận `recovery`/`arrival` trên hồ sơ cũ mà không mở lại `rental`.
+- **GPS demo:** Hiển thị nhãn mô phỏng, thời điểm cập nhật và cảnh báo dữ liệu cũ (`is_stale`); mất tín hiệu hoặc không liên lạc được không tự kết luận gian lận.

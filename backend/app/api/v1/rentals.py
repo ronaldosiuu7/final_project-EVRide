@@ -1,7 +1,6 @@
 """Rental lifecycle, return quotes, invoices, and transactions."""
-
 from __future__ import annotations
-
+from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
@@ -93,7 +92,10 @@ def _idempotency_error_response(session: Session, record, error: ServiceError):
     has_expiration = any(
         isinstance(row, Rental) and row.status == "EXPIRED" for row in session.dirty
     )
-    body = {"detail": {"code": error.code, "message": error.message}}
+    body = {
+        "error": {"code": error.code, "message": error.message},
+        "meta": make_response(None)["meta"],
+    }
     if has_expiration:
         complete_idempotent_request(
             record, status_code=error.status_code, response_body=body
@@ -226,6 +228,17 @@ def post_cancel(
         return _commit_idempotent_response(db, record, response_body, 200)
     except ServiceError as error:
         return _idempotency_error_response(db, record, error)
+    except IntegrityError as error:
+        db.rollback()
+        constraint = getattr(getattr(error.orig, "diag", None), "constraint_name", "")
+        code = (
+            "ACTIVE_RENTAL_EXISTS"
+            if constraint == "uq_active_customer_rental"
+            else "VEHICLE_UNAVAILABLE"
+        )
+        raise HTTPException(
+            409, detail={"code": code, "message": "Xe hoặc khách đã có lượt đang hoạt động."}
+        ) from error
 
 
 @router.post("/rentals/{rental_id}/cancel-operational")

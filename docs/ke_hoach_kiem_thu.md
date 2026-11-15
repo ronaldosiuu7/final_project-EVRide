@@ -21,9 +21,14 @@ Tài liệu xác định phạm vi kiểm thử của hệ thống EVRide, công
 
 ## 2. Công cụ và môi trường
 
-- Kiểm thử tự động: **pytest** chạy trên **PostgreSQL thật**, CSDL riêng `evride_test` (không dùng mock, không đụng dữ liệu chính). Đặt trong `backend/tests/unit/` (hàm xử lý riêng lẻ) và `backend/tests/integration/` (API + CSDL) theo cấu trúc repo.
-- Mỗi Pull Request chạy lại toàn bộ kiểm thử trên GitHub Actions.
-- Kiểm thử giao diện: trình duyệt Chrome, kích thước 1280px và 390px.
+- Kiểm thử tích hợp chạy trên **PostgreSQL thật**, sử dụng database riêng có tên kết thúc bằng `_test` (`evride_test`); không tác động vào database chính (`evride_db`).
+- Các bộ kiểm thử tự động hiện có trong `backend/tests/`:
+  - `test_auth_sessions.py`: Rolling Session, Refresh Token Rotation, grace replay, thu hồi phiên và tranh chấp đồng thời trên PostgreSQL.
+  - `test_rental_flow.py`: Giữ xe 30 phút, tranh chấp đồng thời 2 khách đặt cùng 1 xe, kiểm tra số dư, idempotency, hết hạn/hủy giữ chỗ và thu cọc khi pickup trên PostgreSQL.
+  - `test_incident_checkin_flow.py`: Danh sách kiểm tra 24 giờ (`/rental-check-ins`), `NO_ANSWER`, `ESCALATE` nguyên tử, `FALSE_ALARM`, vòng đời sự cố `LOSS_THEFT`, quyết toán thuê/hoàn cọc dư, bồi thường ngoài hệ thống, đóng hồ sơ, thu hồi sau đóng, bảo trì dùng chung (`incident_id`), `MANAGER` giải phóng xe và phân quyền HTTP trên PostgreSQL.
+  - `test_external_compensation.py`: Kiểm thử schema, quy tắc nghiệp vụ, RBAC và idempotency cho luồng bồi thường ngoài hệ thống và hoàn tất sự cố.
+  - `test_rental_pricing.py`, `test_promotions.py`, `test_business_schemas.py`, `test_demo_fixtures.py`: Unit test cho tính giá thuê/cọc, khuyến mãi, ràng buộc schema tiền tệ và dữ liệu seed demo.
+- Kiểm thử giao diện (thủ công): trình duyệt Chrome ở kích thước 1280px và 390px.
 
 ## 3. Mẫu ghi một ca kiểm thử
 
@@ -40,7 +45,7 @@ Quy ước: mỗi ca kiểm thử tự động có tên hàm mô tả rõ (ví d
 | Mã | Thao tác | Kết quả mong đợi |
 | --- | --- | --- |
 | QT-01 | Gọi API giờ cao điểm (`/api/v1/analytics/peak-hours`) cho tháng 6 | `filtered_trip_count` = số chuyến có `actual_start_time` trong tháng 6; `included_trip_count` = tổng `rental_count` của tối đa 20 trạm hiển thị |
-| QT-02 | Gọi API doanh thu (`/api/v1/analytics/revenue`) cho 6 tháng | Tỷ trọng mỗi tháng cộng lại = 100% |
+| QT-02 | Gọi API doanh thu (`/api/v1/analytics/revenue`) cho 6 tháng | Tháng doanh thu dương tỷ trọng tổng 100% theo sai số quy định; tháng 0 trả tỷ trọng 0; tách thu thuê sự cố và bồi thường |
 | QT-03 | Gọi API khách lâu không đi với `days=30` | Mọi khách trả về đều ACTIVE, `balance > 0` và có 0 chuyến bắt đầu trong 30 ngày |
 | QT-04 | CUSTOMER gọi bất kỳ API báo cáo | 403 `FORBIDDEN`; STAFF/MANAGER ACTIVE được phép |
 | QT-05 | Báo cáo với ngày kết thúc trước ngày bắt đầu | 400 `INVALID_DATE_RANGE`, giao diện hiện thông báo |
@@ -70,3 +75,53 @@ Quy ước: mỗi ca kiểm thử tự động có tên hàm mô tả rõ (ví d
 | 8 | Chạy kiểm thử triển khai trên 3 VM |
 | 9 | Chạy kiểm thử tổng hợp, cập nhật `docs/kiem_thu.md`, mở Issue cho lỗi tìm thấy |
 | 10 | Dựng lại hệ thống từ README trên máy khác để kiểm chứng |
+
+## 6. Ma trận sự cố theo phạm vi thu gọn 13/11/2026
+
+Nguồn: [quyết định mục 12](v1-decisions.md), [hợp đồng API mục 9.1](api-contract.md) và [kiến trúc hệ thống](architecture.md).
+Các ca tự động tương ứng được triển khai tại `backend/tests/test_incident_checkin_flow.py` và `backend/tests/test_external_compensation.py`.
+Các ca định giá/hoàn bồi thường qua ví nội bộ ngày 12/11/2026 đã được thay thế bởi quy trình bồi thường ngoài hệ thống (1 bước `POST /compensation/external-settlement`).
+
+| Mã | Tình huống | Kết quả bắt buộc |
+| --- | --- | --- |
+| INC-01 | Chuyến trước/đúng ngưỡng 24 giờ | Chưa đến ngưỡng không có trong `GET /rental-check-ins`; đến ngưỡng xuất hiện, không phạt, không STOLEN, không tự dừng cước |
+| INC-02 | `GET /rental-check-ins` chỉ đọc & `NO_ANSWER` / `CONTINUE_RENTAL` | `GET` nhiều lần không tự đánh dấu đã xử lý; `NO_ANSWER`/`CONTINUE_RENTAL` lưu `next_check_at`; `ESCALATE` tạo ticket + hồ sơ sự cố trước khi ẩn khỏi danh sách |
+| INC-03 | Khách báo và nhân viên tiếp nhận nghi mất (`intake`) | Báo không đổi trạng thái; tiếp nhận mở hồ sơ `INVESTIGATING` (không cần `assigned_to`), xe `SUSPECTED_STOLEN`, rental `IN_RENT`; tiền tạm tính |
+| INC-04 | M xác nhận mất tại T2, báo cáo server nhận T1, khách khai T0 | Cutoff = T1, không T0/T2; kiểm tra 24h không phải báo cáo hợp lệ; snapshot giá giữ nguyên |
+| INC-05 | Báo nhầm bị bác (`FALSE_ALARM`) và tiếp tục dùng | Xe `RENTED`/rental `IN_RENT`, đồng bộ `next_check_at` nhất quán; cước thường và khuyến mãi thường tiếp tục |
+| INC-06 | Chưa đủ căn cứ, GPS stale hoặc không liên lạc được | Giữ trạng thái xác minh và lịch `next_check_at`; không tự kết luận lỗi/trộm hoặc trừ tiền |
+| INC-07 | Khách khác đọc hồ sơ/ảnh; STAFF gọi endpoint của M | Không rò dữ liệu; sai role bị 403; M hợp lệ vẫn phải đáp ứng điều kiện nghiệp vụ |
+| INC-08 | Bỏ xe: thu hồi T1 (`recovery`), về trạm T2 (`arrival` + `condition`), thanh toán T3 | Cước snapshot đến T1; không tính vận chuyển/sửa/chờ, không phí thu hồi, không trần tự đặt |
+| INC-09..14 | Ghi nhận bồi thường ngoài hệ thống (`POST /compensation/external-settlement`) | `0.00` (`NOT_REQUIRED`) xác nhận không phải bồi thường; `> 0` bắt buộc `AGREED`/`AUTHORITY_DECISION` và thông tin thanh toán ngoài; không sửa ví, cọc hay doanh thu thuê |
+| INC-15 | Cọc 100.000, tiền thuê 41.500 | `settle-rent` cấn 41.500 (không trừ ví 2 lần, ghi doanh thu 41.500), giữ 58.500 chờ `deposit/refund`; không cấn cọc vào bồi thường |
+| INC-16 | Thiếu tiền/ví khóa khi quyết toán tiền thuê | Rollback `settle-rent`, không cấn dở; không trả góp |
+| INC-17 | Chưa ghi nhận bồi thường ngoài hệ thống (`compensation_assessed_amount = null`) | `close` từ chối (không coi `null` là `0`); chưa hoàn `deposit_held` cũng từ chối đóng |
+| INC-18 | Thu hồi ngoài trạm rồi tranh chỗ cuối cùng khi về trạm (`arrival`) | Ngoài trạm chưa gán station; `arrival` kiểm tra chỗ và đánh dấu `condition`; retry không chiếm hai chỗ |
+| INC-19 | Xe thu hồi, khách cũ còn nợ, mở `/maintenance-orders` với `incident_id` hoàn tất & M `release-vehicle` | Xe cho khách mới thuê nếu điều kiện khác đạt; khách cũ vẫn bị chặn; không đóng rental cũ để mở xe |
+| INC-20 | Hai khách mới tranh xe đã giải phóng | Chỉ một rental giữ quyền xe; unique customer vẫn chặn khách cũ còn chuyến chưa giải quyết |
+| INC-21 | Quyết toán/hoàn cọc/đóng hồ sơ cũ khi xe đang `RESERVED`/`RENTED` bởi khách mới | Xe, snapshot, cọc và rental mới không thay đổi; không gọi `settle_return` thường cho hồ sơ cũ |
+| INC-22 | Đóng hồ sơ còn nợ thuê / còn `deposit_held` / chưa ghi bồi thường ngoài | Từ chối; đủ điều kiện mới `CLOSED_INCIDENT`; xe chưa tìm thấy vẫn `STOLEN` |
+| INC-23 | Thu hồi (`recovery`/`arrival`) sau khi đã `CLOSED_INCIDENT` | Ghi nhận trên hồ sơ cũ, không mở lại rental, không tính lại tiền thuê hoặc doanh thu thuê lần nữa |
+| INC-24 | Phản ánh mới sau `COMPLETED` có invoice/mã đã dùng | Chỉ ticket/bằng chứng; không hồ sơ tài chính mới, thu thêm, sửa invoice hoặc phục hồi mã; bảo trì vẫn theo quy trình |
+| INC-25..26 | Retry `settle-rent`/`deposit/refund`/`external-settlement` | Cùng key replay; bồi thường ngoài đã settled trả lỗi khi ghi đè; số dư/sổ giao dịch/audit nhất quán |
+| INC-27 | Sự cố dùng promotion còn lượt | Không giảm thuê, không consume claim/`used_count`; báo nhầm bác bỏ vẫn theo luồng thường |
+| INC-28 | Thuê sự cố quyết toán tháng A, đóng B | Doanh thu thuê một lần tháng A gồm cọc cấn + thu thêm; bồi thường ngoài không vào doanh thu |
+| INC-29 | Migration với dữ liệu lịch sử (`e8a412c9f603` -> `f4c2a1b8e901`) | Bảo toàn snapshot/ledger/CHECK thường; upgrade/downgrade/`alembic check` sạch trên `evride_test` |
+| INC-30 | Nhiều báo cáo, báo nhầm rồi báo mới, kiểm tra lại | Lịch sử không bị ghi đè, đúng báo cáo chọn làm cutoff, đúng `next_check_at` và owner |
+
+Ca concurrency dùng kết nối/transaction độc lập và điểm đồng bộ để bảo đảm
+thực sự tranh chấp, không chỉ gọi nối tiếp. Kiểm tra cả khóa FK/idempotency
+với thứ tự station → customer → wallet → vehicle → rental và phần bổ sung.
+Upgrade/downgrade chỉ trên DB thử; downgrade có dữ liệu sự cố mới phải từ
+chối khi chưa có phương án bảo toàn, không drop mất lịch sử tiền.
+
+## 7. Ticket, ảnh, bảo trì, GPS, review và FAQ
+
+| Mã | Kiểm tra | Kết quả mong đợi |
+| --- | --- | --- |
+| OPS-01 | Ticket có ảnh và người tiếp nhận, resolve/close | Ảnh đúng owner/READY; IN_PROGRESS có assignee; RESOLVED có resolution_note; không tự đổi rental/tiền |
+| OPS-02 | Hai phiếu bảo trì active cùng xe; thuê xe đang bảo trì | Unique chặn phiếu active trùng; reserve/pickup từ chối; complete/cancel không tự AVAILABLE |
+| OPS-03 | GPS demo tắt, sai role/timestamp/tọa độ | Từ chối theo contract; không ghi điểm; không giả định thiết bị thật |
+| OPS-04 | GPS không điểm, tuổi điểm đúng 60 giây và quá 60 giây | Không điểm stale; code hiện dùng quá 60 giây; trả recorded_at/ngưỡng để UI hiển thị, không kết luận mất xe |
+| OPS-05 | Review owner COMPLETED, lần hai/đồng thời; trạng thái khác | Chỉ một review bằng unique; lần hai ALREADY_REVIEWED; không cho IN_RENT/CLOSED_INCIDENT hoặc khách khác |
+| OPS-06 | Ít nhất 10 FAQ chuẩn, link nguồn, câu mơ hồ/ngoài phạm vi | Hiện có 12 câu; mỗi đáp án khớp có nguồn truy cập được; không bịa khi không khớp/khớp nhiều; thiếu nguồn báo lỗi phụ thuộc |

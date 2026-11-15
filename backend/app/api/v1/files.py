@@ -18,6 +18,7 @@ from app.core.responses import make_response
 from app.database import get_db
 from app.models import FileAttachment, StoredFile, User, UserDocument
 
+from app.models import Rental, SupportTicket
 router = APIRouter(tags=["Files"])
 
 BACKEND_DIR = Path(__file__).resolve().parents[3]
@@ -126,17 +127,29 @@ def download_file(
     is_staff_or_manager = current_user.role in ("STAFF", "MANAGER")
     # 2. Người upload trực tiếp
     is_uploader = stored_file.uploaded_by == current_user.id
-    # 3. Chủ sở hữu tài liệu được đính kèm file
+    # 3. Chủ sở hữu tài liệu hoặc chủ sở hữu ticket được đính kèm file
     is_document_owner = False
+    is_ticket_owner = False
+
+    # Phải truy vấn attachment TRƯỚC khi kiểm tra
     attachment = db.scalars(
         select(FileAttachment).where(FileAttachment.file_id == stored_file.id)
     ).first()
-    if attachment and attachment.user_document_id:
-        doc = db.get(UserDocument, attachment.user_document_id)
-        if doc and doc.user_id == current_user.id:
-            is_document_owner = True
 
-    if not (is_staff_or_manager or is_uploader or is_document_owner):
+    if attachment:
+        if attachment.user_document_id is not None:
+            doc = db.get(UserDocument, attachment.user_document_id)
+            if doc and doc.user_id == current_user.id:
+                is_document_owner = True
+
+        if attachment.support_ticket_id is not None:
+            ticket = db.get(SupportTicket, attachment.support_ticket_id)
+            if ticket is not None and ticket.rental_id is not None:
+                rental = db.get(Rental, ticket.rental_id)
+                if rental is not None and rental.customer_id == current_user.id:
+                    is_ticket_owner = True
+
+    if not (is_staff_or_manager or is_uploader or is_document_owner or is_ticket_owner):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"code": "NOT_FOUND", "message": "File không tồn tại."},
