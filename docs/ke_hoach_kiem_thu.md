@@ -44,14 +44,12 @@ Quy ước: mỗi ca kiểm thử tự động có tên hàm mô tả rõ (ví d
 
 | Mã | Thao tác | Kết quả mong đợi |
 | --- | --- | --- |
-| QT-01 | Gọi API giờ cao điểm (`/api/v1/analytics/peak-hours`) cho tháng 6 | `filtered_trip_count` = số chuyến có `actual_start_time` trong tháng 6; `included_trip_count` = tổng `rental_count` của tối đa 20 trạm hiển thị |
-| QT-02 | Gọi API doanh thu (`/api/v1/analytics/revenue`) cho 6 tháng | Tháng doanh thu dương tỷ trọng tổng 100% theo sai số quy định; tháng 0 trả tỷ trọng 0; tách thu thuê sự cố và bồi thường |
-| QT-03 | Gọi API khách lâu không đi với `days=30` | Mọi khách trả về đều ACTIVE, `balance > 0` và có 0 chuyến bắt đầu trong 30 ngày |
-| QT-04 | CUSTOMER gọi bất kỳ API báo cáo | 403 `FORBIDDEN`; STAFF/MANAGER ACTIVE được phép |
-| QT-05 | Báo cáo với ngày kết thúc trước ngày bắt đầu | 400 `INVALID_DATE_RANGE`, giao diện hiện thông báo |
-| QT-06 | Điều chuyển xe vào trạm đã đầy | 409 "Trạm đích đã đầy" |
-| QT-07 | Ngừng hoạt động xe đang được thuê | 409 "Xe đang được thuê" |
-| QT-08 | Mở các màn hình quản trị ở 390px | Không tràn ngang, bảng cuộn được |
+| QT-01 | Gọi các API doanh thu (`revenue`, `financial-summary`, `revenue-details`) cho 6 tháng | Tỷ trọng đúng quy định; tách thu thuê sự cố và bồi thường; chi tiết và tổng hợp khớp nhau |
+| QT-02 | CUSTOMER gọi API báo cáo | 403 `FORBIDDEN`; STAFF/MANAGER ACTIVE được phép |
+| QT-03 | Báo cáo với ngày kết thúc trước ngày bắt đầu | 400 `INVALID_DATE_RANGE`, giao diện hiện thông báo |
+| QT-04 | Điều chuyển xe vào trạm đã đầy | 409 "Trạm đích đã đầy" |
+| QT-05 | Ngừng hoạt động xe đang được thuê | 409 "Xe đang được thuê" |
+| QT-06 | Mở các màn hình quản trị ở 390px | Không tràn ngang, bảng cuộn được |
 | QT-09 | Trên VM1 chạy `pg_isready -h <IP VM3>` | Không kết nối được (firewall chặn) |
 | QT-10 | Khởi động lại VM3 | Đăng nhập lại, dữ liệu và ảnh vẫn còn |
 | QT-11 | Hai giao dịch cùng CUSTOMER giữ hai xe khác nhau đồng thời | Một rental active thành công; request còn lại 409 `ACTIVE_RENTAL_EXISTS`; xác minh khóa customer, unique partial index và không có dữ liệu dở |
