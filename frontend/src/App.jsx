@@ -14,6 +14,11 @@ import AdminPromotionList from './features/promotions/AdminPromotionList';
 import AdminRentalList from './features/rentals/AdminRentalList';
 import RentalDetailPage from './features/rentals/RentalDetailPage';
 import AdminCheckInList from './features/checkins/AdminCheckInList';
+import AdminTicketList from './features/tickets/AdminTicketList';
+import TicketDetailPage from './features/tickets/TicketDetailPage';
+import AdminMaintenanceList from './features/maintenance/AdminMaintenanceList';
+import AdminIncidentList from './features/incidents/AdminIncidentList';
+import IncidentDetailPage from './features/incidents/IncidentDetailPage';
 
 export default function App() {
   return (
@@ -35,6 +40,11 @@ export default function App() {
         <Route path="rentals" element={<AdminRentalList />} />
         <Route path="rentals/:rentalId" element={<RentalDetailPage />} />
         <Route path="check-ins" element={<AdminCheckInList />} />
+        <Route path="tickets" element={<AdminTicketList />} />
+        <Route path="tickets/:ticketId" element={<TicketDetailPage />} />
+        <Route path="maintenance" element={<AdminMaintenanceList />} />
+        <Route path="incidents" element={<AdminIncidentList />} />
+        <Route path="incidents/:incidentId" element={<IncidentDetailPage />} />
         <Route path="users" element={<AdminUserList />} />
         <Route path="users/:userId" element={<UserDetailPage />} />
         <Route path="documents" element={<AdminDocumentVerifyPage />} />
