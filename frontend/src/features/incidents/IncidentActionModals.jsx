@@ -25,6 +25,13 @@ import { formatVnd, nowLocalInput, toIsoWithVietnamOffset } from '../../utils/fo
 import { normalizeMoneyString } from '../../utils/validation';
 
 function TicketSelector({ label, tickets, value, onChange, hint }) {
+  if (!tickets || tickets.length === 0) {
+    return (
+      <div className="alert alert-warning" role="alert">
+        Chưa có ticket bằng chứng hợp lệ từ <code>CUSTOMER</code> hoặc <code>STAFF</code> (không tính cảnh báo chu kỳ của <code>SYSTEM</code>). Vui lòng bấm <strong>&ldquo;+ Tạo ticket bằng chứng&rdquo;</strong> trên trang hồ sơ sự cố trước khi thực hiện bước này.
+      </div>
+    );
+  }
   return (
     <SelectField
       label={label}
@@ -551,6 +558,7 @@ export function ReleaseVehicleModal({
           label="Ticket bằng chứng giải phóng xe"
           tickets={humanTickets}
           value={evidenceTicketId}
+          hint="Ticket bằng chứng nghiệm thu phải được lập SAU thời điểm hoàn tất phiếu bảo trì sự cố (COMPLETED)."
           onChange={setEvidenceTicketId}
         />
 

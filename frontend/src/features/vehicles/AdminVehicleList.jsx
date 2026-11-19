@@ -33,6 +33,7 @@ export default function AdminVehicleList() {
   const [stationId, setStationId] = useState(searchParams.get('station_id') || '');
   const [status, setStatus] = useState('');
   const [model, setModel] = useState('');
+  const [nameSearch, setNameSearch] = useState('');
   const [lookupId, setLookupId] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
@@ -59,6 +60,14 @@ export default function AdminVehicleList() {
   const stations = stationsQuery.data || [];
   const stationMap = new Map(stations.map((s) => [s.id, s]));
 
+  const loadedVehicles = vehiclesQuery.data || [];
+  const normalizedNameSearch = nameSearch.trim().toLowerCase();
+  const visibleVehicles = normalizedNameSearch
+    ? loadedVehicles.filter((v) =>
+        `${v.name || ''} ${v.model || ''}`.toLowerCase().includes(normalizedNameSearch)
+      )
+    : loadedVehicles;
+
   const reloadAll = () => {
     vehiclesQuery.reload();
     stationsQuery.reload();
@@ -68,6 +77,7 @@ export default function AdminVehicleList() {
     setStationId('');
     setStatus('');
     setModel('');
+    setNameSearch('');
     setPage(1);
   };
 
@@ -225,6 +235,13 @@ export default function AdminVehicleList() {
             setPage(1);
           }}
         />
+        <TextField
+          label="Tìm nhanh tên / biển số (trang hiện tại)"
+          type="search"
+          placeholder="Lọc trên trang hiện tại..."
+          value={nameSearch}
+          onChange={(e) => setNameSearch(e.target.value)}
+        />
         <SelectField
           label="Trạng thái"
           value={status}
@@ -239,7 +256,7 @@ export default function AdminVehicleList() {
 
       <DataTable
         columns={columns}
-        rows={vehiclesQuery.data || []}
+        rows={visibleVehicles}
         loading={vehiclesQuery.loading}
         error={vehiclesQuery.error}
         onRetry={reloadAll}
@@ -250,7 +267,11 @@ export default function AdminVehicleList() {
           setPage(1);
         }}
         emptyTitle="Không tìm thấy xe máy điện phù hợp"
-        emptyHint="Thử xóa bộ lọc hoặc thêm xe mới (MANAGER)."
+        emptyHint={
+          normalizedNameSearch
+            ? 'Không có xe nào trên trang hiện tại khớp từ khóa; thử sang trang khác hoặc xóa bộ lọc.'
+            : 'Thử xóa bộ lọc hoặc thêm xe mới (MANAGER).'
+        }
         emptyAction={
           <Button size="sm" onClick={resetFilters}>
             Xóa bộ lọc

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   Button,
@@ -41,6 +41,11 @@ export default function IncidentDetailPage() {
   const [activeTab, setActiveTab] = useState('overview');
   const [eventsPage, setEventsPage] = useState(1);
   const [modal, setModal] = useState(null);
+  const [releasedAtOverride, setReleasedAtOverride] = useState(null);
+
+  useEffect(() => {
+    setReleasedAtOverride(null);
+  }, [incidentId]);
 
   const incidentQuery = useApiQuery(() => getIncident(incidentId), [incidentId]);
   const incident = incidentQuery.data;
@@ -65,6 +70,10 @@ export default function IncidentDetailPage() {
   const eventsQuery = useApiQuery(
     () => listIncidentEvents(incidentId, { page: eventsPage, page_size: 20 }),
     [incidentId, eventsPage]
+  );
+  const allEventsQuery = useApiQuery(
+    () => listIncidentEvents(incidentId, { page: 1, page_size: 100 }),
+    [incidentId]
   );
 
   const rentPreviewQuery = useApiQuery(
@@ -102,16 +111,28 @@ export default function IncidentDetailPage() {
     ticketsQuery.reload();
     maintQuery.reload();
     eventsQuery.reload();
+    allEventsQuery.reload();
     if (isConfirmedOrClosed) {
       rentPreviewQuery.reload();
       financeQuery.reload();
     }
   };
 
+  // GET /rentals/{id} không trả về vehicle_released_at; đọc từ audit log RENTAL_INCIDENT_VEHICLE_RELEASED hoặc kết quả release gần nhất.
+  const releaseEvent = [...(allEventsQuery.data || []), ...(eventsQuery.data || [])].find(
+    (e) => e.action === 'RENTAL_INCIDENT_VEHICLE_RELEASED'
+  );
+  const vehicleReleasedAt =
+    releasedAtOverride ||
+    releaseEvent?.after_data?.physical_state?.vehicle_released_at ||
+    releaseEvent?.created_at ||
+    rental?.vehicle_released_at ||
+    null;
+
   // Xác định điều kiện mở các thao tác theo trạng thái & quyền từ backend.
   const canCreateEvidence = ['INVESTIGATING', 'CONFIRMED', 'CLOSED'].includes(incident.status);
   const canVerify = isManager && incident.status === 'INVESTIGATING';
-  const vehicleNotReleased = !rental || rental.vehicle_released_at === null;
+  const vehicleNotReleased = !vehicleReleasedAt;
   const canRecordRecovery = isConfirmedOrClosed && vehicleNotReleased && !incident.recovered_at;
   const canRecordArrival =
     isConfirmedOrClosed &&
@@ -121,7 +142,11 @@ export default function IncidentDetailPage() {
   const canCreateIncidentMaint =
     isConfirmedOrClosed && vehicleNotReleased && Boolean(incident.arrived_station_at);
   const canReleaseVehicle =
-    isManager && isConfirmedOrClosed && vehicleNotReleased && Boolean(incident.arrived_station_at);
+    isManager &&
+    isConfirmedOrClosed &&
+    vehicleNotReleased &&
+    Boolean(incident.arrived_station_at) &&
+    ['INTACT', 'REPAIRABLE'].includes(incident.recovery_condition);
 
   const canSettleRent =
     isManager &&
@@ -258,6 +283,12 @@ export default function IncidentDetailPage() {
                 )}
               </dd>
             </div>
+            {incident.closure_note && (
+              <div className="detail-item">
+                <dt>Ghi chú đóng hồ sơ ({formatDateTimeVN(incident.closed_at)})</dt>
+                <dd>{incident.closure_note}</dd>
+              </div>
+            )}
           </dl>
         </div>
 
@@ -267,9 +298,16 @@ export default function IncidentDetailPage() {
             <div className="detail-item">
               <dt>Thu hồi ngoài hiện trường</dt>
               <dd>
-                {incident.recovered_at
-                  ? formatDateTimeVN(incident.recovered_at, { withSeconds: true })
-                  : 'Chưa ghi nhận thu hồi'}
+                {incident.recovered_at ? (
+                  <>
+                    <div>{formatDateTimeVN(incident.recovered_at, { withSeconds: true })}</div>
+                    {incident.recovery_note && (
+                      <div className="muted">Ghi chú: {incident.recovery_note}</div>
+                    )}
+                  </>
+                ) : (
+                  'Chưa ghi nhận thu hồi'
+                )}
               </dd>
             </div>
             <div className="detail-item">
@@ -277,8 +315,13 @@ export default function IncidentDetailPage() {
               <dd>
                 {incident.arrived_station_at ? (
                   <>
-                    Trạm #{incident.received_station_id} ·{' '}
-                    <StatusBadge domain="recoveryCondition" value={incident.recovery_condition} />
+                    <div>
+                      Trạm #{incident.received_station_id} ·{' '}
+                      <StatusBadge domain="recoveryCondition" value={incident.recovery_condition} />
+                    </div>
+                    {incident.inspection_note && (
+                      <div className="muted">Kiểm tra: {incident.inspection_note}</div>
+                    )}
                   </>
                 ) : (
                   'Chưa về trạm'
@@ -288,11 +331,13 @@ export default function IncidentDetailPage() {
             <div className="detail-item">
               <dt>Giải phóng xe cho thuê lại</dt>
               <dd>
-                {rental?.vehicle_released_at ? (
+                {vehicleReleasedAt ? (
                   <StatusBadge
-                    label={`Đã giải phóng (${formatDateTimeVN(rental.vehicle_released_at)})`}
+                    label={`Đã giải phóng (${formatDateTimeVN(vehicleReleasedAt)})`}
                     tone="success"
                   />
+                ) : incident.recovery_condition === 'UNREPAIRABLE' ? (
+                  <StatusBadge label="UNREPAIRABLE — Không thể giải phóng cho thuê" tone="danger" />
                 ) : (
                   'Chưa giải phóng khỏi hồ sơ sự cố'
                 )}
@@ -392,6 +437,9 @@ export default function IncidentDetailPage() {
                   value={financeSummary?.agreement_status || incident.agreement_status || 'PENDING'}
                 />
               </div>
+              {incident.compensation_basis && (
+                <small>Căn cứ: {incident.compensation_basis}</small>
+              )}
               <small>Không trừ hoặc hoàn bồi thường qua ví / cọc nội bộ.</small>
               {canSettleExternalComp && (
                 <Button size="sm" variant="primary" onClick={() => setModal('compensation')}>
@@ -533,7 +581,10 @@ export default function IncidentDetailPage() {
           humanTickets={humanTickets}
           completedOrders={completedOrders}
           onClose={() => setModal(null)}
-          onSuccess={() => {
+          onSuccess={(resData) => {
+            setReleasedAtOverride(
+              resData?.rental?.vehicle_released_at || new Date().toISOString()
+            );
             setModal(null);
             reloadAll();
           }}

@@ -24,6 +24,7 @@ export default function RentalGpsPanel({ rental }) {
   const [latitude, setLatitude] = useState('21.028500');
   const [longitude, setLongitude] = useState('105.854200');
   const [recordedAt, setRecordedAt] = useState(nowLocalInput());
+  const [coordError, setCoordError] = useState('');
 
   const latestQuery = useApiQuery(() => getLatestRentalGps(rental.id), [rental.id]);
   const historyQuery = useApiQuery(
@@ -37,11 +38,27 @@ export default function RentalGpsPanel({ rental }) {
 
   const handlePostDemoGps = async (event) => {
     event.preventDefault();
+    const latNum = Number(latitude);
+    const lngNum = Number(longitude);
+    if (String(latitude).trim() === '' || Number.isNaN(latNum) || latNum < -90 || latNum > 90) {
+      setCoordError('Vĩ độ (latitude) phải là số từ -90 đến 90.');
+      return;
+    }
+    if (String(longitude).trim() === '' || Number.isNaN(lngNum) || lngNum < -180 || lngNum > 180) {
+      setCoordError('Kinh độ (longitude) phải là số từ -180 đến 180.');
+      return;
+    }
+    const recordedIso = toIsoWithVietnamOffset(recordedAt);
+    if (!recordedIso) {
+      setCoordError('Thời điểm ghi nhận GPS không hợp lệ.');
+      return;
+    }
+    setCoordError('');
     try {
       await gpsMutation.execute(`gps_${rental.id}`, {
-        latitude: Number(latitude),
-        longitude: Number(longitude),
-        recorded_at: toIsoWithVietnamOffset(recordedAt),
+        latitude: latNum.toFixed(6),
+        longitude: lngNum.toFixed(6),
+        recorded_at: recordedIso,
       });
       toast.success('Đã ghi điểm GPS mô phỏng.');
       latestQuery.reload();
@@ -141,9 +158,9 @@ export default function RentalGpsPanel({ rental }) {
               Gửi điểm GPS demo
             </Button>
           </form>
-          {gpsMutation.error && (
+          {(coordError || gpsMutation.error) && (
             <div className="alert alert-danger" role="alert">
-              {getApiErrorMessage(gpsMutation.error)}
+              {coordError || getApiErrorMessage(gpsMutation.error)}
             </div>
           )}
         </div>

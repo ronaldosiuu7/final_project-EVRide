@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
+  Button,
   DataTable,
   ErrorState,
   LoadingState,
@@ -17,12 +18,17 @@ import {
   listRentalTransactions,
 } from '../../services/rentalsApi';
 import { formatDateTimeVN, formatDurationSeconds, formatVnd } from '../../utils/format';
+import IncidentIntakeModal from '../incidents/IncidentIntakeModal';
+import TicketCreateModal from '../tickets/TicketCreateModal';
 import RentalGpsPanel from './RentalGpsPanel';
 import RentalLifecyclePanel from './RentalLifecyclePanel';
 
 export default function RentalDetailPage() {
+  const navigate = useNavigate();
   const { rentalId } = useParams();
   const [activeTab, setActiveTab] = useState('lifecycle');
+  const [ticketModalOpen, setTicketModalOpen] = useState(false);
+  const [incidentModalOpen, setIncidentModalOpen] = useState(false);
 
   const rentalQuery = useApiQuery(() => getRental(rentalId), [rentalId]);
   const stationsQuery = useApiQuery(() => listAdminStations({ page: 1, page_size: 100 }), []);
@@ -92,9 +98,19 @@ export default function RentalDetailPage() {
           <Link to={`/admin/tickets?rental_id=${rental.id}`} className="btn">
             Xem ticket của chuyến
           </Link>
+          {['IN_RENT', 'RETURN_PENDING', 'STOLEN', 'INCIDENT_PENDING', 'COMPLETED'].includes(
+            rental.status
+          ) && (
+            <Button onClick={() => setTicketModalOpen(true)}>+ Tạo ticket mới</Button>
+          )}
           <Link to={`/admin/incidents?rental_id=${rental.id}`} className="btn">
             Kiểm tra hồ sơ sự cố
           </Link>
+          {rental.status === 'IN_RENT' && (
+            <Button variant="danger" onClick={() => setIncidentModalOpen(true)}>
+              + Tiếp nhận sự cố
+            </Button>
+          )}
         </div>
       </div>
 
@@ -312,6 +328,32 @@ export default function RentalDetailPage() {
           </div>
         )}
       </div>
+
+      {ticketModalOpen && (
+        <TicketCreateModal
+          initialRentalId={String(rental.id)}
+          onClose={() => setTicketModalOpen(false)}
+          onSuccess={(ticket) => {
+            setTicketModalOpen(false);
+            if (ticket?.id) {
+              navigate(`/admin/tickets/${ticket.id}`);
+            }
+          }}
+        />
+      )}
+
+      {incidentModalOpen && (
+        <IncidentIntakeModal
+          initialRentalId={String(rental.id)}
+          onClose={() => setIncidentModalOpen(false)}
+          onSuccess={(incident) => {
+            setIncidentModalOpen(false);
+            if (incident?.id) {
+              navigate(`/admin/incidents/${incident.id}`);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

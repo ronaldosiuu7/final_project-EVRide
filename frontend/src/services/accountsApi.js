@@ -1,5 +1,24 @@
 import { apiRequest } from '../integrations/apiClient';
 
+export function updateMyProfile(payload) {
+  return apiRequest('/users/me', {
+    method: 'PATCH',
+    body: payload,
+  });
+}
+
+export function changeMyPassword(payload) {
+  return apiRequest('/users/me/change-password', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-EVRide-CSRF': '1',
+    },
+    body: payload,
+    credentials: 'include',
+  });
+}
+
 export function listUsers(params = {}) {
   return apiRequest('/users', { query: params });
 }
