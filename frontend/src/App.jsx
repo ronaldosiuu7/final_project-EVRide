@@ -11,6 +11,9 @@ import AdminUserList from './features/users/AdminUserList';
 import UserDetailPage from './features/users/UserDetailPage';
 import AdminDocumentVerifyPage from './features/documents/AdminDocumentVerifyPage';
 import AdminPromotionList from './features/promotions/AdminPromotionList';
+import AdminRentalList from './features/rentals/AdminRentalList';
+import RentalDetailPage from './features/rentals/RentalDetailPage';
+import AdminCheckInList from './features/checkins/AdminCheckInList';
 
 export default function App() {
   return (
@@ -29,6 +32,9 @@ export default function App() {
         <Route path="vehicles/:vehicleId" element={<VehicleDetailPage />} />
         <Route path="stations" element={<AdminStationList />} />
         <Route path="prices" element={<AdminPriceList />} />
+        <Route path="rentals" element={<AdminRentalList />} />
+        <Route path="rentals/:rentalId" element={<RentalDetailPage />} />
+        <Route path="check-ins" element={<AdminCheckInList />} />
         <Route path="users" element={<AdminUserList />} />
         <Route path="users/:userId" element={<UserDetailPage />} />
         <Route path="documents" element={<AdminDocumentVerifyPage />} />
