@@ -40,6 +40,7 @@ export const ERROR_MESSAGES_BY_CODE = {
   VEHICLE_UNAVAILABLE: 'Xe hiện không sẵn sàng cho thao tác này.',
   STATION_FULL: 'Trạm đã đầy sức chứa, không thể nhận thêm xe.',
   STATION_UNAVAILABLE: 'Trạm đang ngừng hoạt động hoặc ngoài giờ mở cửa.',
+  STATION_NOT_EMPTY: 'Không thể ngừng hoạt động trạm khi vẫn còn xe đang đỗ hoặc lượt giữ chỗ.',
   STATION_CAPACITY_INCONSISTENT: 'Sức chứa trạm không thể nhỏ hơn số xe đang đỗ.',
   RESERVATION_EXPIRED: 'Lượt giữ xe đã hết hạn.',
   INVALID_RENTAL_STATE: 'Trạng thái chuyến thuê hiện tại không cho phép thao tác này.',
