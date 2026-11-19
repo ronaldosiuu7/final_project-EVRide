@@ -123,7 +123,12 @@ export default function IncidentDetailPage() {
   const canReleaseVehicle =
     isManager && isConfirmedOrClosed && vehicleNotReleased && Boolean(incident.arrived_station_at);
 
-  const canSettleRent = isManager && isConfirmedOrClosed && !incident.rent_settled_at && Boolean(rentPreview);
+  const canSettleRent =
+    isManager &&
+    incident.status === 'CONFIRMED' &&
+    Boolean(incident.billing_cutoff_at) &&
+    !incident.rent_settled_at &&
+    Boolean(rentPreview);
   const canRefundDeposit =
     isManager &&
     isConfirmedOrClosed &&
@@ -346,6 +351,13 @@ export default function IncidentDetailPage() {
               ) : (
                 <StatusBadge label="Chưa quyết toán tiền thuê" tone="warning" />
               )}
+              {incident.status === 'CONFIRMED' &&
+                !incident.rent_settled_at &&
+                !incident.billing_cutoff_at && (
+                  <small>
+                    Cần ghi nhận thu hồi ngoài hiện trường để chốt mốc dừng cước trước khi quyết toán tiền thuê.
+                  </small>
+                )}
               {canSettleRent && (
                 <Button size="sm" variant="primary" onClick={() => setModal('settleRent')}>
                   Quyết toán tiền thuê

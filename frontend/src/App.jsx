@@ -3,6 +3,8 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { RequireRole } from './integrations/authBridge';
 import AdminLayout from './layouts/AdminLayout';
 import AdminDashboard from './features/admin/AdminDashboard';
+import RevenueReportPage from './features/analytics/RevenueReportPage';
+import OperationalAnalyticsPage from './features/analytics/OperationalAnalyticsPage';
 import AdminVehicleList from './features/vehicles/AdminVehicleList';
 import VehicleDetailPage from './features/vehicles/VehicleDetailPage';
 import AdminStationList from './features/stations/AdminStationList';
@@ -33,6 +35,8 @@ export default function App() {
         }
       >
         <Route index element={<AdminDashboard />} />
+        <Route path="reports" element={<RevenueReportPage />} />
+        <Route path="reports/operations" element={<OperationalAnalyticsPage />} />
         <Route path="vehicles" element={<AdminVehicleList />} />
         <Route path="vehicles/:vehicleId" element={<VehicleDetailPage />} />
         <Route path="stations" element={<AdminStationList />} />
