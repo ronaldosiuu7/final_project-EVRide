@@ -3,7 +3,7 @@
 // Cơ chế Rolling Session, Refresh Token Rotation, Web Locks và BroadcastChannel thuộc phạm vi #15;
 // khi #15 hoàn thiện, truyền `externalAuth` vào <AuthProvider> hoặc thay thế file này.
 
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
 import { apiRequest, configurePlatformApi } from './apiClient';
 import { getApiErrorMessage } from '../utils/errorMessages';
 
@@ -17,34 +17,38 @@ export function AuthProvider({ children, externalAuth = null }) {
     user: null,
   });
   const [authNotice, setAuthNotice] = useState(null);
+  // Giữ token đồng bộ trong ref để apiClient luôn đọc được ngay lập tức trước khi useEffect của component con chạy.
+  const tokenRef = useRef(null);
 
   const activeUser = externalAuth ? externalAuth.user : session.user;
   const activeToken = externalAuth ? externalAuth.accessToken : session.accessToken;
   const activeSessionId = externalAuth ? externalAuth.sessionId : session.sessionId;
 
   const clearLocalSession = useCallback((notice = null) => {
+    tokenRef.current = null;
     setSession({ accessToken: null, sessionId: null, user: null });
     if (notice) setAuthNotice(notice);
   }, []);
 
-  useEffect(() => {
-    if (externalAuth?.getAccessToken || externalAuth?.request) {
-      configurePlatformApi({
-        getAccessToken: externalAuth.getAccessToken || (() => externalAuth.accessToken || null),
-        customRequest: externalAuth.request || null,
-        onAuthInvalid: externalAuth.onAuthInvalid || ((err) => clearLocalSession(getApiErrorMessage(err))),
-      });
-      return;
-    }
-
+  // Đồng bộ handler cho apiClient ngay trong phase render (không chờ passive useEffect)
+  // để tránh race condition khiến useApiQuery ở component con gửi request trước khi token được gắn.
+  tokenRef.current = activeToken || null;
+  if (externalAuth) {
     configurePlatformApi({
-      getAccessToken: () => session.accessToken,
+      getAccessToken: externalAuth.getAccessToken || (() => tokenRef.current),
+      customRequest: externalAuth.request || null,
+      onAuthInvalid:
+        externalAuth.onAuthInvalid || ((err) => clearLocalSession(getApiErrorMessage(err))),
+    });
+  } else {
+    configurePlatformApi({
+      getAccessToken: () => tokenRef.current,
       customRequest: null,
       onAuthInvalid: (err) => {
         clearLocalSession(getApiErrorMessage(err));
       },
     });
-  }, [externalAuth, session.accessToken, clearLocalSession]);
+  }
 
   const login = useCallback(async (email, password) => {
     setAuthNotice(null);
@@ -86,13 +90,23 @@ export function AuthProvider({ children, externalAuth = null }) {
       throw forbiddenErr;
     }
 
+    // Gán token đồng bộ trước setSession để mọi request từ component con sau khi mount luôn có Authorization.
+    tokenRef.current = data.access_token;
+    configurePlatformApi({
+      getAccessToken: () => tokenRef.current,
+      customRequest: null,
+      onAuthInvalid: (err) => {
+        clearLocalSession(getApiErrorMessage(err));
+      },
+    });
+
     setSession({
       accessToken: data.access_token,
       sessionId: data.session_id,
       user: data.user,
     });
     return data.user;
-  }, []);
+  }, [clearLocalSession]);
 
   const logout = useCallback(async () => {
     if (externalAuth?.logout) {

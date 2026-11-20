@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Button,
   ConfirmDialog,
@@ -31,25 +31,42 @@ export default function AdminDocumentVerifyPage() {
   const [formError, setFormError] = useState('');
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const lookupSeqRef = useRef(0);
+
+  const resetVerifyForm = () => {
+    setDecision('VERIFIED');
+    setVerifiedBirthDate('');
+    setExpiresOn('');
+    setFormError('');
+    setConfirmOpen(false);
+  };
 
   const handleLookup = async () => {
     const id = docIdInput.trim();
+    const seq = lookupSeqRef.current + 1;
+    lookupSeqRef.current = seq;
+    setSensitiveDoc(null);
+    setVerifiedDoc(null);
+    resetVerifyForm();
+
     if (!isPositiveIdString(id)) {
+      setLookupLoading(false);
       setLookupError({ code: 'VALIDATION_ERROR', message: 'ID giấy tờ phải là số nguyên dương.' });
       return;
     }
     setLookupLoading(true);
     setLookupError(null);
-    setSensitiveDoc(null);
-    setVerifiedDoc(null);
-    setFormError('');
     try {
       const res = await getDocumentSensitive(id);
+      if (lookupSeqRef.current !== seq) return;
       setSensitiveDoc(res.data);
     } catch (err) {
+      if (lookupSeqRef.current !== seq) return;
       setLookupError(err);
     } finally {
-      setLookupLoading(false);
+      if (lookupSeqRef.current === seq) {
+        setLookupLoading(false);
+      }
     }
   };
 
@@ -79,6 +96,7 @@ export default function AdminDocumentVerifyPage() {
     try {
       const res = await verifyDocument(sensitiveDoc.id, payload);
       setVerifiedDoc(res.data);
+      resetVerifyForm();
       toast.success(`Đã cập nhật trạng thái giấy tờ #${sensitiveDoc.id} thành ${res.data.verified_status}.`);
     } catch (err) {
       setFormError(getApiErrorMessage(err));
@@ -113,11 +131,13 @@ export default function AdminDocumentVerifyPage() {
       <FilterBar
         onSubmit={handleLookup}
         onReset={() => {
+          lookupSeqRef.current += 1;
+          setLookupLoading(false);
           setDocIdInput('');
           setSensitiveDoc(null);
           setVerifiedDoc(null);
           setLookupError(null);
-          setFormError('');
+          resetVerifyForm();
         }}
       >
         <TextField

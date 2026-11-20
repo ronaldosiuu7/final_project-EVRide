@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   Button,
@@ -26,6 +26,12 @@ export default function UserDetailPage() {
   const [nextWalletStatus, setNextWalletStatus] = useState('');
   const [confirmWalletOpen, setConfirmWalletOpen] = useState(false);
   const [walletSaving, setWalletSaving] = useState(false);
+
+  useEffect(() => {
+    setEditing(false);
+    setNextWalletStatus('');
+    setConfirmWalletOpen(false);
+  }, [userId]);
 
   const userQuery = useApiQuery(() => getUser(userId), [userId]);
   const walletQuery = useApiQuery(

@@ -15,18 +15,22 @@ export default function Modal({
 }) {
   const titleId = useId();
   const cardRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+  const closeDisabledRef = useRef(closeDisabled);
+  onCloseRef.current = onClose;
+  closeDisabledRef.current = closeDisabled;
 
   useEffect(() => {
     if (!open) return undefined;
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape' && !closeDisabled) {
-        onClose?.();
+      if (event.key === 'Escape' && !closeDisabledRef.current) {
+        onCloseRef.current?.();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     cardRef.current?.focus();
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [open, closeDisabled, onClose]);
+  }, [open]);
 
   if (!open) return null;
 

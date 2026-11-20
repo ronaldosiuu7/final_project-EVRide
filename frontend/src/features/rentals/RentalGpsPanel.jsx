@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Button,
   DataTable,
@@ -25,6 +25,12 @@ export default function RentalGpsPanel({ rental }) {
   const [longitude, setLongitude] = useState('105.854200');
   const [recordedAt, setRecordedAt] = useState(nowLocalInput());
   const [coordError, setCoordError] = useState('');
+
+  useEffect(() => {
+    setPage(1);
+    setCoordError('');
+    setRecordedAt(nowLocalInput());
+  }, [rental.id]);
 
   const latestQuery = useApiQuery(() => getLatestRentalGps(rental.id), [rental.id]);
   const historyQuery = useApiQuery(

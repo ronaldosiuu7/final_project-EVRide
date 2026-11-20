@@ -52,12 +52,21 @@ export default function TicketDetailPage() {
   const [confirmAction, setConfirmAction] = useState(null);
 
   const [selectedFile, setSelectedFile] = useState(null);
+  const [fileInputKey, setFileInputKey] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
 
   const attachMutation = useIdempotentMutation(({ payload, idempotencyKey }) =>
     attachFileToTicket(payload.file_id, ticketId, idempotencyKey)
   );
+
+  useEffect(() => {
+    setSelectedFile(null);
+    setFileInputKey((k) => k + 1);
+    setUploadError('');
+    setUpdateError('');
+    setConfirmAction(null);
+  }, [ticketId]);
 
   useEffect(() => {
     if (ticketQuery.data) {
@@ -107,6 +116,7 @@ export default function TicketDetailPage() {
       });
       toast.success(`Đã tải lên và gắn ảnh bằng chứng #${uploaded.file_id} vào ticket.`);
       setSelectedFile(null);
+      setFileInputKey((k) => k + 1);
       attachmentsQuery.reload();
     } catch (err) {
       setUploadError(getApiErrorMessage(err));
@@ -263,6 +273,7 @@ export default function TicketDetailPage() {
 
         <form onSubmit={handleUploadEvidence} className="row-wrap">
           <input
+            key={fileInputKey}
             type="file"
             accept="image/jpeg,image/png,image/webp"
             aria-label="Chọn ảnh bằng chứng (JPEG, PNG, WebP tối đa 10 MiB)"

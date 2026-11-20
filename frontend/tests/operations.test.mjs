@@ -18,7 +18,12 @@ import {
   validateOperatingHours,
 } from '../src/utils/validation.js';
 import { getApiErrorMessage } from '../src/utils/errorMessages.js';
-import { buildQuery } from '../src/integrations/apiClient.js';
+import {
+  apiRequest,
+  buildQuery,
+  configurePlatformApi,
+  getAccessToken,
+} from '../src/integrations/apiClient.js';
 import {
   getIdleTimeAnalytics,
   getInactiveCustomersAnalytics,
@@ -192,4 +197,40 @@ test('extended analytics fixtures and service adapters respect contract invarian
     () => getInactiveCustomersAnalytics({ days: 7 }),
     (err) => err.status === 422 && err.code === 'VALIDATION_ERROR'
   );
+});
+
+test('apiClient reads synchronously configured Bearer token immediately without waiting for effects', async () => {
+  const tokenRef = { current: null };
+  let authInvalidCount = 0;
+  configurePlatformApi({
+    getAccessToken: () => tokenRef.current,
+    customRequest: null,
+    onAuthInvalid: () => {
+      authInvalidCount += 1;
+    },
+  });
+
+  // Simulate synchronous token assignment right before mounting child queries
+  tokenRef.current = 'jwt_demo_sync_token';
+  assert.equal(getAccessToken(), 'jwt_demo_sync_token');
+
+  const originalFetch = globalThis.fetch;
+  let capturedAuthHeader = null;
+  globalThis.fetch = async (_url, options) => {
+    capturedAuthHeader = options?.headers?.Authorization || null;
+    return new Response(JSON.stringify({ data: { ok: true }, meta: null }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  };
+
+  try {
+    const res = await apiRequest('/analytics/financial-summary');
+    assert.equal(capturedAuthHeader, 'Bearer jwt_demo_sync_token');
+    assert.deepEqual(res.data, { ok: true });
+    assert.equal(authInvalidCount, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+    configurePlatformApi({ getAccessToken: () => null, customRequest: null, onAuthInvalid: null });
+  }
 });

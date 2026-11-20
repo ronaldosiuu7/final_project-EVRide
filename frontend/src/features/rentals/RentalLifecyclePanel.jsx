@@ -53,11 +53,23 @@ export default function RentalLifecyclePanel({ rental, stations = [], onUpdated 
 
   useEffect(() => {
     setPickupStationId(rental.pickup_station_id || '');
+    setPickupBattery('85');
+    setPickupNote('');
+    setPickupConfirm(false);
+    setCancelReason('VEHICLE_FAULT');
+    setCancelNote('');
+    setCancelConfirm(false);
     setReturnStationId(
       rental.actual_return_station_id || rental.pickup_station_id || activeStations[0]?.id || ''
     );
+    setReturnBattery('70');
+    setVehicleCondition('OK');
+    setReturnNote('');
+    setInitiateConfirm(false);
+    setPromoCode('');
     setQuote(null);
     setQuoteError(null);
+    setSettleConfirm(false);
   }, [rental.id, rental.status, rental.pickup_station_id, rental.actual_return_station_id]);
 
   useEffect(() => {

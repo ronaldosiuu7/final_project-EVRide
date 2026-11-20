@@ -46,6 +46,9 @@ export default function useApiQuery(fetcher, deps = [], { enabled = true } = {})
 
   useEffect(() => {
     run();
+    return () => {
+      latestCall.current += 1;
+    };
   }, [run]);
 
   return { ...state, reload: run };
