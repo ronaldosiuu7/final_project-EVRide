@@ -50,7 +50,7 @@ from app.models import (
     Wallet,
 )
 
-EXPECTED_HEAD = "b18f7e4c2a91"
+EXPECTED_HEAD = "f4c2a1b8e901"
 UTC = timezone.utc
 
 
@@ -69,17 +69,34 @@ def _put_by_id(
     identity_fields: dict[str, Any],
 ) -> Any:
     row = session.get(model, identifier)
+    if row is None and model is not Rental:
+        row = session.scalar(
+            select(model).filter_by(**identity_fields).with_for_update()
+        )
+        if row is not None:
+            for field, value in values.items():
+                setattr(row, field, value)
+            return row
+
     if row is None:
-        row = model(id=identifier, **values)
-        session.add(row)
+        columns = ["id", *values.keys()]
+        parameters = {"id": identifier, **values}
+        placeholders = ", ".join(f":{column}" for column in columns)
+        column_names = ", ".join(columns)
+        session.execute(
+            text(
+                f"INSERT INTO {model.__tablename__} ({column_names}) "
+                f"OVERRIDING SYSTEM VALUE VALUES ({placeholders})"
+            ),
+            parameters,
+        )
+        row = session.get(model, identifier)
+        if row is None:
+            raise RuntimeError(
+                f"Demo seed could not load inserted {model.__tablename__}.id={identifier}."
+            )
         return row
 
-    for field, expected in identity_fields.items():
-        if getattr(row, field) != expected:
-            raise RuntimeError(
-                f"Demo seed ID collision in {model.__tablename__}.id={identifier}; "
-                f"expected {field}={expected!r}."
-            )
     for field, value in values.items():
         setattr(row, field, value)
     return row
@@ -312,14 +329,21 @@ def _seed_promotions(session: Session) -> dict[str, int]:
                 .with_for_update()
             )
         if row is None:
-            row = Promotion(id=fixture["id"], code=fixture["code"], **values)
-            session.add(row)
+            row = _put_by_id(
+                session,
+                Promotion,
+                fixture["id"],
+                {"code": fixture["code"], **values},
+                {"code": fixture["code"]},
+            )
         else:
             if row.code != fixture["code"]:
                 raise RuntimeError(
                     f"Demo seed ID collision in promotions.id={fixture['id']}."
                 )
             for field, value in values.items():
+                if field == "used_count":
+                    continue
                 setattr(row, field, value)
         result[fixture["code"]] = row.id
     session.flush()
