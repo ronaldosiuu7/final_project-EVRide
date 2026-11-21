@@ -16,10 +16,11 @@ config = context.config
 if config.config_file_name:
     fileConfig(config.config_file_name)
 
-config.set_main_option(
-    "sqlalchemy.url",
-    database_url.render_as_string(hide_password=False).replace("%", "%%"),
-)
+if not config.get_main_option("sqlalchemy.url"):
+    config.set_main_option(
+        "sqlalchemy.url",
+        database_url.render_as_string(hide_password=False).replace("%", "%%"),
+    )
 target_metadata = Base.metadata
 
 

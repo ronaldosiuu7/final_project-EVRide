@@ -30,11 +30,17 @@ def upgrade() -> None:
         ),
     )
 
-    op.drop_constraint(
-        "ck_rental_incidents_investigation_assignee",
-        "rental_incidents",
-        type_="check",
-    )
+    bind = op.get_bind()
+    incident_checks = {
+        constraint["name"]
+        for constraint in sa.inspect(bind).get_check_constraints("rental_incidents")
+    }
+    if "ck_rental_incidents_investigation_assignee" in incident_checks:
+        op.drop_constraint(
+            "ck_rental_incidents_investigation_assignee",
+            "rental_incidents",
+            type_="check",
+        )
 
     op.add_column(
         "maintenance_orders",
