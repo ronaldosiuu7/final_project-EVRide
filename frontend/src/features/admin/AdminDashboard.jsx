@@ -21,13 +21,25 @@ export default function AdminDashboard() {
   const [range, setRange] = useState({});
 
   const summaryQuery = useApiQuery(
-    () => getFinancialSummary(range),
+    ({ signal }) => getFinancialSummary(range, { signal }),
     [range.from_date, range.to_date]
   );
-  const stationsQuery = useApiQuery(() => listAdminStations({ page: 1, page_size: 100 }), []);
-  const vehiclesQuery = useApiQuery(() => listVehicles({ page: 1, page_size: 100 }), []);
-  const ticketsQuery = useApiQuery(() => listTickets({ page: 1, page_size: 5 }), []);
-  const checkInsQuery = useApiQuery(() => listDueCheckIns({ page: 1, page_size: 10 }), []);
+  const stationsQuery = useApiQuery(
+    ({ signal }) => listAdminStations({ page: 1, page_size: 100 }, { signal }),
+    []
+  );
+  const vehiclesQuery = useApiQuery(
+    ({ signal }) => listVehicles({ page: 1, page_size: 100 }, { signal }),
+    []
+  );
+  const ticketsQuery = useApiQuery(
+    ({ signal }) => listTickets({ page: 1, page_size: 5 }, { signal }),
+    []
+  );
+  const checkInsQuery = useApiQuery(
+    ({ signal }) => listDueCheckIns({ page: 1, page_size: 10 }, { signal }),
+    []
+  );
 
   const summary = summaryQuery.data;
   const stations = stationsQuery.data || [];

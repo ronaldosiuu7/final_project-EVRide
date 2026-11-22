@@ -9,6 +9,7 @@ import {
   TextField,
 } from '../../components/ui';
 import useApiQuery from '../../hooks/useApiQuery';
+import useDebouncedValue from '../../hooks/useDebouncedValue';
 import { useAuth } from '../../integrations/authBridge';
 import { listUsers } from '../../services/accountsApi';
 import { formatDateTimeVN } from '../../utils/format';
@@ -22,21 +23,25 @@ export default function AdminUserList() {
   const [role, setRole] = useState('');
   const [status, setStatus] = useState('');
   const [query, setQuery] = useState('');
+  const debouncedQuery = useDebouncedValue(query, 300);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [creatingStaff, setCreatingStaff] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
 
   const { data, meta, loading, error, reload } = useApiQuery(
-    () =>
-      listUsers({
-        role: role || undefined,
-        status: status || undefined,
-        q: query.trim() || undefined,
-        page,
-        page_size: pageSize,
-      }),
-    [role, status, query, page, pageSize]
+    ({ signal }) =>
+      listUsers(
+        {
+          role: role || undefined,
+          status: status || undefined,
+          q: debouncedQuery.trim() || undefined,
+          page,
+          page_size: pageSize,
+        },
+        { signal }
+      ),
+    [role, status, debouncedQuery, page, pageSize]
   );
 
   const resetFilters = () => {

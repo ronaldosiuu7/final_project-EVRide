@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Button, Modal, SelectField, TextField, TextareaField, useToast } from '../../components/ui';
 import useApiQuery from '../../hooks/useApiQuery';
 import useIdempotentMutation from '../../hooks/useIdempotentMutation';
-import { listUsers } from '../../services/accountsApi';
+import { listActiveEmployees } from '../../services/accountsApi';
 import { createMaintenanceOrder } from '../../services/operationsApi';
 import { getApiErrorMessage } from '../../utils/errorMessages';
 import { isPositiveIdString } from '../../utils/validation';
@@ -21,9 +21,8 @@ export default function MaintenanceCreateModal({
   const [description, setDescription] = useState('');
   const [fieldError, setFieldError] = useState('');
 
-  const staffQuery = useApiQuery(() => listUsers({ role: 'STAFF', status: 'ACTIVE', page: 1, page_size: 100 }), []);
-  const managersQuery = useApiQuery(() => listUsers({ role: 'MANAGER', status: 'ACTIVE', page: 1, page_size: 100 }), []);
-  const employees = [...(staffQuery.data || []), ...(managersQuery.data || [])];
+  const employeesQuery = useApiQuery(({ signal }) => listActiveEmployees({ signal }), []);
+  const employees = employeesQuery.data || [];
 
   const mutation = useIdempotentMutation(({ payload, idempotencyKey }) =>
     createMaintenanceOrder(payload, idempotencyKey)

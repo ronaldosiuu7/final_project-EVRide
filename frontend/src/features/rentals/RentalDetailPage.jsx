@@ -30,23 +30,41 @@ export default function RentalDetailPage() {
   const [ticketModalOpen, setTicketModalOpen] = useState(false);
   const [incidentModalOpen, setIncidentModalOpen] = useState(false);
 
-  const rentalQuery = useApiQuery(() => getRental(rentalId), [rentalId]);
-  const stationsQuery = useApiQuery(() => listAdminStations({ page: 1, page_size: 100 }), []);
+  const rentalQuery = useApiQuery(({ signal }) => getRental(rentalId, { signal }), [rentalId]);
+  const rental = rentalQuery.data;
+  const canHaveInvoice = Boolean(
+    rental && ['COMPLETED', 'STOLEN', 'INCIDENT_PENDING', 'CLOSED_INCIDENT'].includes(rental.status)
+  );
+  const canHaveReview = rental?.status === 'COMPLETED';
+
+  const stationsQuery = useApiQuery(
+    ({ signal }) => listAdminStations({ page: 1, page_size: 100 }, { signal }),
+    []
+  );
   const handoversQuery = useApiQuery(
-    () => listRentalHandovers(rentalId, { page: 1, page_size: 20 }),
-    [rentalId]
+    ({ signal }) => listRentalHandovers(rentalId, { page: 1, page_size: 20 }, { signal }),
+    [rentalId],
+    { enabled: Boolean(rentalId && activeTab === 'handovers') }
   );
   const txQuery = useApiQuery(
-    () => listRentalTransactions(rentalId, { page: 1, page_size: 50 }),
-    [rentalId]
+    ({ signal }) => listRentalTransactions(rentalId, { page: 1, page_size: 50 }, { signal }),
+    [rentalId],
+    { enabled: Boolean(rentalId && activeTab === 'handovers') }
   );
-  const invoiceQuery = useApiQuery(() => getRentalInvoice(rentalId), [rentalId]);
-  const reviewQuery = useApiQuery(() => getRentalReview(rentalId), [rentalId]);
+  const invoiceQuery = useApiQuery(
+    ({ signal }) => getRentalInvoice(rentalId, { signal }),
+    [rentalId],
+    { enabled: Boolean(rentalId && activeTab === 'handovers' && canHaveInvoice) }
+  );
+  const reviewQuery = useApiQuery(
+    ({ signal }) => getRentalReview(rentalId, { signal }),
+    [rentalId],
+    { enabled: Boolean(rentalId && activeTab === 'review' && canHaveReview) }
+  );
 
   if (rentalQuery.loading) return <LoadingState />;
   if (rentalQuery.error) return <ErrorState error={rentalQuery.error} onRetry={rentalQuery.reload} />;
 
-  const rental = rentalQuery.data;
   if (!rental) return null;
 
   const stations = stationsQuery.data || [];
@@ -235,7 +253,11 @@ export default function RentalDetailPage() {
           <div className="stack-lg">
             <div className="card stack-sm">
               <h3>Hóa đơn chuyến thuê</h3>
-              {invoiceQuery.loading ? (
+              {!canHaveInvoice ? (
+                <p className="muted">
+                  Chuyến đang ở trạng thái <code>{rental.status}</code> nên chưa phát hành hóa đơn.
+                </p>
+              ) : invoiceQuery.loading ? (
                 <LoadingState message="Đang kiểm tra hóa đơn..." />
               ) : invoiceQuery.error?.status === 404 ? (
                 <p className="muted">Chuyến thuê chưa phát hành hóa đơn.</p>
@@ -301,7 +323,9 @@ export default function RentalDetailPage() {
             <p className="muted">
               Theo quy định V1, đánh giá chuyến chỉ phục vụ xem theo quyền API; không công khai thông tin cá nhân và nhân viên không được chỉnh sửa đánh giá.
             </p>
-            {reviewQuery.loading ? (
+            {!canHaveReview ? (
+              <p className="muted">Chỉ chuyến thuê đã hoàn tất (<code>COMPLETED</code>) mới có đánh giá từ khách hàng.</p>
+            ) : reviewQuery.loading ? (
               <LoadingState />
             ) : reviewQuery.error?.status === 404 ? (
               <p className="muted">Chuyến này chưa có đánh giá từ khách hàng.</p>

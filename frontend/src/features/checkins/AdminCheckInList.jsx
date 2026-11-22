@@ -9,6 +9,7 @@ import {
   TextField,
 } from '../../components/ui';
 import useApiQuery from '../../hooks/useApiQuery';
+import useDebouncedValue from '../../hooks/useDebouncedValue';
 import { listAdminStations } from '../../services/fleetApi';
 import { listDueCheckIns } from '../../services/rentalsApi';
 import { formatDateTimeVN } from '../../utils/format';
@@ -17,22 +18,29 @@ import CheckInActionModal from './CheckInActionModal';
 
 export default function AdminCheckInList() {
   const [rentalId, setRentalId] = useState('');
+  const debouncedRentalId = useDebouncedValue(rentalId, 300);
   const [stationId, setStationId] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [selectedItem, setSelectedItem] = useState(null);
   const [lastEscalatedIncident, setLastEscalatedIncident] = useState(null);
 
-  const stationsQuery = useApiQuery(() => listAdminStations({ page: 1, page_size: 100 }), []);
+  const stationsQuery = useApiQuery(
+    ({ signal }) => listAdminStations({ page: 1, page_size: 100 }, { signal }),
+    []
+  );
   const checkInsQuery = useApiQuery(
-    () =>
-      listDueCheckIns({
-        rental_id: isPositiveIdString(rentalId) ? rentalId.trim() : undefined,
-        station_id: stationId || undefined,
-        page,
-        page_size: pageSize,
-      }),
-    [rentalId, stationId, page, pageSize]
+    ({ signal }) =>
+      listDueCheckIns(
+        {
+          rental_id: isPositiveIdString(debouncedRentalId) ? debouncedRentalId.trim() : undefined,
+          station_id: stationId || undefined,
+          page,
+          page_size: pageSize,
+        },
+        { signal }
+      ),
+    [debouncedRentalId, stationId, page, pageSize]
   );
 
   const stations = stationsQuery.data || [];

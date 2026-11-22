@@ -10,21 +10,24 @@ import { validateDateRange } from '../utils/validation.js';
 
 // ===== 1. Ba API phân tích doanh thu & tài chính THẬT từ backend =====
 
-export function getRevenueReport({ from_date, to_date } = {}) {
+export function getRevenueReport({ from_date, to_date } = {}, { signal } = {}) {
   return apiRequest('/analytics/revenue', {
     query: { from_date, to_date },
+    signal,
   });
 }
 
-export function getFinancialSummary({ from_date, to_date } = {}) {
+export function getFinancialSummary({ from_date, to_date } = {}, { signal } = {}) {
   return apiRequest('/analytics/financial-summary', {
     query: { from_date, to_date },
+    signal,
   });
 }
 
-export function getRevenueDetails({ from_date, to_date, page = 1, page_size = 20 } = {}) {
+export function getRevenueDetails({ from_date, to_date, page = 1, page_size = 20 } = {}, { signal } = {}) {
   return apiRequest('/analytics/revenue-details', {
     query: { from_date, to_date, page, page_size },
+    signal,
   });
 }
 

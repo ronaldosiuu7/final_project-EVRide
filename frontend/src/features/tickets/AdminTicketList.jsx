@@ -9,6 +9,7 @@ import {
   TextField,
 } from '../../components/ui';
 import useApiQuery from '../../hooks/useApiQuery';
+import useDebouncedValue from '../../hooks/useDebouncedValue';
 import { listTickets } from '../../services/operationsApi';
 import { formatDateTimeVN } from '../../utils/format';
 import { isPositiveIdString } from '../../utils/validation';
@@ -19,20 +20,27 @@ export default function AdminTicketList() {
   const [status, setStatus] = useState(searchParams.get('status') || '');
   const [rentalId, setRentalId] = useState(searchParams.get('rental_id') || '');
   const [assignedTo, setAssignedTo] = useState('');
+  const debouncedRentalId = useDebouncedValue(rentalId, 300);
+  const debouncedAssignedTo = useDebouncedValue(assignedTo, 300);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [creating, setCreating] = useState(false);
 
   const { data, meta, loading, error, reload } = useApiQuery(
-    () =>
-      listTickets({
-        status: status || undefined,
-        rental_id: isPositiveIdString(rentalId) ? rentalId.trim() : undefined,
-        assigned_to: isPositiveIdString(assignedTo) ? assignedTo.trim() : undefined,
-        page,
-        page_size: pageSize,
-      }),
-    [status, rentalId, assignedTo, page, pageSize]
+    ({ signal }) =>
+      listTickets(
+        {
+          status: status || undefined,
+          rental_id: isPositiveIdString(debouncedRentalId) ? debouncedRentalId.trim() : undefined,
+          assigned_to: isPositiveIdString(debouncedAssignedTo)
+            ? debouncedAssignedTo.trim()
+            : undefined,
+          page,
+          page_size: pageSize,
+        },
+        { signal }
+      ),
+    [status, debouncedRentalId, debouncedAssignedTo, page, pageSize]
   );
 
   const resetFilters = () => {

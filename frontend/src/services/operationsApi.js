@@ -1,12 +1,12 @@
 import { apiRequest } from '../integrations/apiClient';
 
 // --- Support Tickets ---
-export function listTickets(params = {}) {
-  return apiRequest('/support-tickets', { query: params });
+export function listTickets(params = {}, { signal } = {}) {
+  return apiRequest('/support-tickets', { query: params, signal });
 }
 
-export function getTicket(ticketId) {
-  return apiRequest(`/support-tickets/${ticketId}`);
+export function getTicket(ticketId, { signal } = {}) {
+  return apiRequest(`/support-tickets/${ticketId}`, { signal });
 }
 
 export function createTicket(rentalId, payload) {
@@ -23,13 +23,14 @@ export function updateTicket(ticketId, payload) {
   });
 }
 
-export function listTicketAttachments(ticketId, params = {}) {
+export function listTicketAttachments(ticketId, params = {}, { signal } = {}) {
   return apiRequest('/files/attachments', {
     query: {
       owner_type: 'SUPPORT_TICKET',
       owner_id: ticketId,
       ...params,
     },
+    signal,
   });
 }
 
@@ -45,12 +46,12 @@ export function attachFileToTicket(fileId, supportTicketId, idempotencyKey) {
 }
 
 // --- Maintenance Orders ---
-export function listMaintenanceOrders(params = {}) {
-  return apiRequest('/maintenance-orders', { query: params });
+export function listMaintenanceOrders(params = {}, { signal } = {}) {
+  return apiRequest('/maintenance-orders', { query: params, signal });
 }
 
-export function getMaintenanceOrder(orderId) {
-  return apiRequest(`/maintenance-orders/${orderId}`);
+export function getMaintenanceOrder(orderId, { signal } = {}) {
+  return apiRequest(`/maintenance-orders/${orderId}`, { signal });
 }
 
 export function createMaintenanceOrder(payload, idempotencyKey) {

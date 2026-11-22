@@ -47,7 +47,7 @@ export default function IncidentDetailPage() {
     setReleasedAtOverride(null);
   }, [incidentId]);
 
-  const incidentQuery = useApiQuery(() => getIncident(incidentId), [incidentId]);
+  const incidentQuery = useApiQuery(({ signal }) => getIncident(incidentId, { signal }), [incidentId]);
   const incident = incidentQuery.data;
 
   const rentalId = incident?.rental_id;
@@ -55,34 +55,53 @@ export default function IncidentDetailPage() {
     incident && ['CONFIRMED', 'CLOSED'].includes(incident.status) &&
     ['LOSS_THEFT', 'ABANDONMENT'].includes(incident.verified_outcome);
 
-  const rentalQuery = useApiQuery(() => getRental(rentalId), [rentalId], { enabled: Boolean(rentalId) });
+  const rentalQuery = useApiQuery(
+    ({ signal }) => getRental(rentalId, { signal }),
+    [rentalId],
+    { enabled: Boolean(rentalId) }
+  );
   const ticketsQuery = useApiQuery(
-    () => listTickets({ rental_id: rentalId, page: 1, page_size: 100 }),
+    ({ signal }) => listTickets({ rental_id: rentalId, page: 1, page_size: 100 }, { signal }),
     [rentalId],
     { enabled: Boolean(rentalId) }
   );
   const maintQuery = useApiQuery(
-    () => listMaintenanceOrders({ incident_id: incidentId, page: 1, page_size: 50 }),
+    ({ signal }) => listMaintenanceOrders({ incident_id: incidentId, page: 1, page_size: 50 }, { signal }),
     [incidentId],
     { enabled: Boolean(incidentId) }
   );
-  const stationsQuery = useApiQuery(() => listAdminStations({ page: 1, page_size: 100 }), []);
+  const stationsQuery = useApiQuery(
+    ({ signal }) => listAdminStations({ page: 1, page_size: 100 }, { signal }),
+    []
+  );
   const eventsQuery = useApiQuery(
-    () => listIncidentEvents(incidentId, { page: eventsPage, page_size: 20 }),
+    ({ signal }) => listIncidentEvents(incidentId, { page: eventsPage, page_size: 20 }, { signal }),
     [incidentId, eventsPage]
   );
-  const allEventsQuery = useApiQuery(
-    () => listIncidentEvents(incidentId, { page: 1, page_size: 100 }),
-    [incidentId]
+
+  // Chỉ tải thêm tối đa 100 sự kiện để tra dấu vết giải phóng xe khi xe đã về trạm và trang sự kiện hiện tại chưa có đủ toàn bộ lịch sử.
+  const hasReleaseInCurrentPage = (eventsQuery.data || []).some(
+    (e) => e.action === 'RENTAL_INCIDENT_VEHICLE_RELEASED'
+  );
+  const needExtendedReleaseLookup = Boolean(
+    incident?.arrived_station_at &&
+      !releasedAtOverride &&
+      !hasReleaseInCurrentPage &&
+      (eventsPage > 1 || (eventsQuery.meta?.total ?? 0) > 20)
+  );
+  const releaseLookupQuery = useApiQuery(
+    ({ signal }) => listIncidentEvents(incidentId, { page: 1, page_size: 100 }, { signal }),
+    [incidentId],
+    { enabled: needExtendedReleaseLookup }
   );
 
   const rentPreviewQuery = useApiQuery(
-    () => getIncidentRentPreview(incidentId),
+    ({ signal }) => getIncidentRentPreview(incidentId, { signal }),
     [incidentId],
     { enabled: Boolean(isConfirmedOrClosed) }
   );
   const financeQuery = useApiQuery(
-    () => getIncidentFinanceSummary(incidentId),
+    ({ signal }) => getIncidentFinanceSummary(incidentId, { signal }),
     [incidentId],
     { enabled: Boolean(isConfirmedOrClosed) }
   );
@@ -111,7 +130,9 @@ export default function IncidentDetailPage() {
     ticketsQuery.reload();
     maintQuery.reload();
     eventsQuery.reload();
-    allEventsQuery.reload();
+    if (needExtendedReleaseLookup) {
+      releaseLookupQuery.reload();
+    }
     if (isConfirmedOrClosed) {
       rentPreviewQuery.reload();
       financeQuery.reload();
@@ -119,7 +140,7 @@ export default function IncidentDetailPage() {
   };
 
   // GET /rentals/{id} không trả về vehicle_released_at; đọc từ audit log RENTAL_INCIDENT_VEHICLE_RELEASED hoặc kết quả release gần nhất.
-  const releaseEvent = [...(allEventsQuery.data || []), ...(eventsQuery.data || [])].find(
+  const releaseEvent = [...(eventsQuery.data || []), ...(releaseLookupQuery.data || [])].find(
     (e) => e.action === 'RENTAL_INCIDENT_VEHICLE_RELEASED'
   );
   const vehicleReleasedAt =

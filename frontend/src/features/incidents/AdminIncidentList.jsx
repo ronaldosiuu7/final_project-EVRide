@@ -9,6 +9,7 @@ import {
   TextField,
 } from '../../components/ui';
 import useApiQuery from '../../hooks/useApiQuery';
+import useDebouncedValue from '../../hooks/useDebouncedValue';
 import { listIncidents } from '../../services/incidentsApi';
 import { formatDateTimeVN, formatVnd } from '../../utils/format';
 import { isPositiveIdString } from '../../utils/validation';
@@ -19,19 +20,23 @@ export default function AdminIncidentList() {
   const [searchParams] = useSearchParams();
   const [status, setStatus] = useState('');
   const [rentalId, setRentalId] = useState(searchParams.get('rental_id') || '');
+  const debouncedRentalId = useDebouncedValue(rentalId, 300);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [intakeOpen, setIntakeOpen] = useState(false);
 
   const { data, meta, loading, error, reload } = useApiQuery(
-    () =>
-      listIncidents({
-        status: status || undefined,
-        rental_id: isPositiveIdString(rentalId) ? rentalId.trim() : undefined,
-        page,
-        page_size: pageSize,
-      }),
-    [status, rentalId, page, pageSize]
+    ({ signal }) =>
+      listIncidents(
+        {
+          status: status || undefined,
+          rental_id: isPositiveIdString(debouncedRentalId) ? debouncedRentalId.trim() : undefined,
+          page,
+          page_size: pageSize,
+        },
+        { signal }
+      ),
+    [status, debouncedRentalId, page, pageSize]
   );
 
   const resetFilters = () => {

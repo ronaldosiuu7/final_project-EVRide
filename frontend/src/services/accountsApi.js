@@ -1,4 +1,4 @@
-import { apiRequest } from '../integrations/apiClient';
+import { apiRequest } from '../integrations/apiClient.js';
 
 export function updateMyProfile(payload) {
   return apiRequest('/users/me', {
@@ -19,30 +19,55 @@ export function changeMyPassword(payload) {
   });
 }
 
-export function listUsers(params = {}) {
-  return apiRequest('/users', { query: params });
+const EMPLOYEES_CACHE_TTL_MS = 60 * 1000;
+let activeEmployeesCache = null;
+
+export function invalidateActiveEmployeesCache() {
+  activeEmployeesCache = null;
 }
 
-export function getUser(userId) {
-  return apiRequest(`/users/${userId}`);
+export function listUsers(params = {}, { signal } = {}) {
+  return apiRequest('/users', { query: params, signal });
 }
 
-export function createStaffUser(payload) {
-  return apiRequest('/users', {
+export async function listActiveEmployees({ signal, force = false } = {}) {
+  const now = Date.now();
+  if (!force && activeEmployeesCache && now - activeEmployeesCache.fetchedAt < EMPLOYEES_CACHE_TTL_MS) {
+    return { data: activeEmployeesCache.items, meta: null };
+  }
+  const [staffRes, managerRes] = await Promise.all([
+    listUsers({ role: 'STAFF', status: 'ACTIVE', page: 1, page_size: 100 }, { signal }),
+    listUsers({ role: 'MANAGER', status: 'ACTIVE', page: 1, page_size: 100 }, { signal }),
+  ]);
+  const items = [...(staffRes.data || []), ...(managerRes.data || [])];
+  activeEmployeesCache = { items, fetchedAt: Date.now() };
+  return { data: items, meta: null };
+}
+
+export function getUser(userId, { signal } = {}) {
+  return apiRequest(`/users/${userId}`, { signal });
+}
+
+export async function createStaffUser(payload) {
+  const res = await apiRequest('/users', {
     method: 'POST',
     body: payload,
   });
+  invalidateActiveEmployeesCache();
+  return res;
 }
 
-export function updateUser(userId, payload) {
-  return apiRequest(`/users/${userId}`, {
+export async function updateUser(userId, payload) {
+  const res = await apiRequest(`/users/${userId}`, {
     method: 'PATCH',
     body: payload,
   });
+  invalidateActiveEmployeesCache();
+  return res;
 }
 
-export function getUserWallet(userId) {
-  return apiRequest(`/users/${userId}/wallet`);
+export function getUserWallet(userId, { signal } = {}) {
+  return apiRequest(`/users/${userId}/wallet`, { signal });
 }
 
 export function updateWalletStatus(walletId, payload) {
@@ -52,8 +77,8 @@ export function updateWalletStatus(walletId, payload) {
   });
 }
 
-export function getDocumentSensitive(docId) {
-  return apiRequest(`/user-documents/${docId}/sensitive`);
+export function getDocumentSensitive(docId, { signal } = {}) {
+  return apiRequest(`/user-documents/${docId}/sensitive`, { signal });
 }
 
 export function verifyDocument(docId, payload) {
@@ -63,8 +88,8 @@ export function verifyDocument(docId, payload) {
   });
 }
 
-export function listPromotions(params = {}) {
-  return apiRequest('/promotions', { query: params });
+export function listPromotions(params = {}, { signal } = {}) {
+  return apiRequest('/promotions', { query: params, signal });
 }
 
 export function createPromotion(payload) {

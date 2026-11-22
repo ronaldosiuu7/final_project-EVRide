@@ -9,7 +9,7 @@ import {
 } from '../../components/ui';
 import useApiQuery from '../../hooks/useApiQuery';
 import useIdempotentMutation from '../../hooks/useIdempotentMutation';
-import { listUsers } from '../../services/accountsApi';
+import { listActiveEmployees } from '../../services/accountsApi';
 import {
   cancelMaintenanceOrder,
   completeMaintenanceOrder,
@@ -23,17 +23,12 @@ export default function MaintenanceActionModal({ order, actionType, onClose, onS
   const [textValue, setTextValue] = useState('');
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  const staffQuery = useApiQuery(
-    () => listUsers({ role: 'STAFF', status: 'ACTIVE', page: 1, page_size: 100 }),
+  const employeesQuery = useApiQuery(
+    ({ signal }) => listActiveEmployees({ signal }),
     [],
     { enabled: actionType === 'start' }
   );
-  const managersQuery = useApiQuery(
-    () => listUsers({ role: 'MANAGER', status: 'ACTIVE', page: 1, page_size: 100 }),
-    [],
-    { enabled: actionType === 'start' }
-  );
-  const employees = [...(staffQuery.data || []), ...(managersQuery.data || [])];
+  const employees = employeesQuery.data || [];
 
   const mutation = useIdempotentMutation(({ payload, idempotencyKey }) => {
     if (actionType === 'start') return startMaintenanceOrder(order.id, payload, idempotencyKey);

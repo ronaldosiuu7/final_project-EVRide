@@ -9,6 +9,7 @@ import {
   TextField,
 } from '../../components/ui';
 import useApiQuery from '../../hooks/useApiQuery';
+import useDebouncedValue from '../../hooks/useDebouncedValue';
 import { useAuth } from '../../integrations/authBridge';
 import { listAdminStations, listVehicles } from '../../services/fleetApi';
 import { formatVnd } from '../../utils/format';
@@ -33,6 +34,7 @@ export default function AdminVehicleList() {
   const [stationId, setStationId] = useState(searchParams.get('station_id') || '');
   const [status, setStatus] = useState('');
   const [model, setModel] = useState('');
+  const debouncedModel = useDebouncedValue(model, 300);
   const [nameSearch, setNameSearch] = useState('');
   const [lookupId, setLookupId] = useState('');
   const [page, setPage] = useState(1);
@@ -44,17 +46,23 @@ export default function AdminVehicleList() {
   const [movingVehicle, setMovingVehicle] = useState(null);
   const [statusVehicle, setStatusVehicle] = useState(null);
 
-  const stationsQuery = useApiQuery(() => listAdminStations({ page: 1, page_size: 100 }), []);
+  const stationsQuery = useApiQuery(
+    ({ signal }) => listAdminStations({ page: 1, page_size: 100 }, { signal }),
+    []
+  );
   const vehiclesQuery = useApiQuery(
-    () =>
-      listVehicles({
-        station_id: stationId || undefined,
-        status: status || undefined,
-        model: model.trim() || undefined,
-        page,
-        page_size: pageSize,
-      }),
-    [stationId, status, model, page, pageSize]
+    ({ signal }) =>
+      listVehicles(
+        {
+          station_id: stationId || undefined,
+          status: status || undefined,
+          model: debouncedModel.trim() || undefined,
+          page,
+          page_size: pageSize,
+        },
+        { signal }
+      ),
+    [stationId, status, debouncedModel, page, pageSize]
   );
 
   const stations = stationsQuery.data || [];

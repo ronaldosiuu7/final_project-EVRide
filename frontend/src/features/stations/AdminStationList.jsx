@@ -9,6 +9,7 @@ import {
   TextField,
 } from '../../components/ui';
 import useApiQuery from '../../hooks/useApiQuery';
+import useDebouncedValue from '../../hooks/useDebouncedValue';
 import { useAuth } from '../../integrations/authBridge';
 import { listAdminStations } from '../../services/fleetApi';
 import StationFormModal from './StationFormModal';
@@ -24,20 +25,24 @@ export default function AdminStationList() {
 
   const [status, setStatus] = useState('');
   const [query, setQuery] = useState('');
+  const debouncedQuery = useDebouncedValue(query, 300);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [editingStation, setEditingStation] = useState(null);
   const [creating, setCreating] = useState(false);
 
   const { data, meta, loading, error, reload } = useApiQuery(
-    () =>
-      listAdminStations({
-        status: status || undefined,
-        q: query.trim() || undefined,
-        page,
-        page_size: pageSize,
-      }),
-    [status, query, page, pageSize]
+    ({ signal }) =>
+      listAdminStations(
+        {
+          status: status || undefined,
+          q: debouncedQuery.trim() || undefined,
+          page,
+          page_size: pageSize,
+        },
+        { signal }
+      ),
+    [status, debouncedQuery, page, pageSize]
   );
 
   const resetFilters = () => {

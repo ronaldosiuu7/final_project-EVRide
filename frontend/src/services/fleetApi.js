@@ -1,7 +1,7 @@
 import { apiRequest } from '../integrations/apiClient';
 
-export function listAdminStations(params = {}) {
-  return apiRequest('/admin/stations', { query: params });
+export function listAdminStations(params = {}, { signal } = {}) {
+  return apiRequest('/admin/stations', { query: params, signal });
 }
 
 export function createStation(payload) {
@@ -18,12 +18,12 @@ export function updateStation(stationId, payload) {
   });
 }
 
-export function listVehicles(params = {}) {
-  return apiRequest('/vehicles', { query: params });
+export function listVehicles(params = {}, { signal } = {}) {
+  return apiRequest('/vehicles', { query: params, signal });
 }
 
-export function getVehicle(vehicleId) {
-  return apiRequest(`/vehicles/${vehicleId}`);
+export function getVehicle(vehicleId, { signal } = {}) {
+  return apiRequest(`/vehicles/${vehicleId}`, { signal });
 }
 
 export function createVehicle(payload) {
@@ -63,16 +63,16 @@ export function moveVehicle(vehicleId, payload, idempotencyKey) {
   });
 }
 
-export function listVehicleMoveHistory(vehicleId, params = {}) {
-  return apiRequest(`/vehicles/${vehicleId}/move-history`, { query: params });
+export function listVehicleMoveHistory(vehicleId, params = {}, { signal } = {}) {
+  return apiRequest(`/vehicles/${vehicleId}/move-history`, { query: params, signal });
 }
 
-export function listPrices(params = {}) {
-  return apiRequest('/prices', { query: params });
+export function listPrices(params = {}, { signal } = {}) {
+  return apiRequest('/prices', { query: params, signal });
 }
 
-export function getPrice(priceId) {
-  return apiRequest(`/prices/${priceId}`);
+export function getPrice(priceId, { signal } = {}) {
+  return apiRequest(`/prices/${priceId}`, { signal });
 }
 
 export function createPriceVersion(payload, idempotencyKey) {

@@ -15,7 +15,7 @@ import useApiQuery from '../../hooks/useApiQuery';
 import useIdempotentMutation from '../../hooks/useIdempotentMutation';
 import { useAuth } from '../../integrations/authBridge';
 import { uploadEvidenceFile, validateEvidenceFile } from '../../integrations/fileBridge';
-import { listUsers } from '../../services/accountsApi';
+import { listActiveEmployees } from '../../services/accountsApi';
 import {
   attachFileToTicket,
   getTicket,
@@ -37,11 +37,10 @@ export default function TicketDetailPage() {
   const toast = useToast();
   const { user } = useAuth();
 
-  const ticketQuery = useApiQuery(() => getTicket(ticketId), [ticketId]);
-  const staffQuery = useApiQuery(() => listUsers({ role: 'STAFF', status: 'ACTIVE', page: 1, page_size: 100 }), []);
-  const managersQuery = useApiQuery(() => listUsers({ role: 'MANAGER', status: 'ACTIVE', page: 1, page_size: 100 }), []);
+  const ticketQuery = useApiQuery(({ signal }) => getTicket(ticketId, { signal }), [ticketId]);
+  const employeesQuery = useApiQuery(({ signal }) => listActiveEmployees({ signal }), []);
   const attachmentsQuery = useApiQuery(
-    () => listTicketAttachments(ticketId, { page: 1, page_size: 50 }),
+    ({ signal }) => listTicketAttachments(ticketId, { page: 1, page_size: 50 }, { signal }),
     [ticketId]
   );
 
@@ -81,7 +80,7 @@ export default function TicketDetailPage() {
   const ticket = ticketQuery.data;
   if (!ticket) return null;
 
-  const employees = [...(staffQuery.data || []), ...(managersQuery.data || [])];
+  const employees = employeesQuery.data || [];
   const nextStatus = NEXT_STATUS[ticket.status];
   const isSystemAlert = ticket.check_cycle !== null && ticket.check_cycle !== undefined;
 

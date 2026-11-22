@@ -87,6 +87,7 @@ export async function apiRequest(
     idempotencyKey,
     credentials = 'include',
     skipAuthCallback = false,
+    signal,
   } = {}
 ) {
   if (platformHandlers.customRequest) {
@@ -98,6 +99,7 @@ export async function apiRequest(
       idempotencyKey,
       credentials,
       skipAuthCallback,
+      signal,
     });
   }
 
@@ -130,8 +132,12 @@ export async function apiRequest(
       headers: requestHeaders,
       body: requestBody,
       credentials,
+      signal,
     });
   } catch (networkErr) {
+    if (networkErr?.name === 'AbortError') {
+      throw networkErr;
+    }
     throw new ApiError(0, 'DEPENDENCY_UNAVAILABLE', 'Không thể kết nối tới máy chủ API EVRide.', {
       details: { cause: networkErr?.message || 'Network error' },
     });

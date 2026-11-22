@@ -1,11 +1,11 @@
 import { apiRequest } from '../integrations/apiClient';
 
-export function listRentals(params = {}) {
-  return apiRequest('/rentals', { query: params });
+export function listRentals(params = {}, { signal } = {}) {
+  return apiRequest('/rentals', { query: params, signal });
 }
 
-export function getRental(rentalId) {
-  return apiRequest(`/rentals/${rentalId}`);
+export function getRental(rentalId, { signal } = {}) {
+  return apiRequest(`/rentals/${rentalId}`, { signal });
 }
 
 export function pickupRental(rentalId, payload, idempotencyKey) {
@@ -47,24 +47,24 @@ export function settleReturn(rentalId, payload, idempotencyKey) {
   });
 }
 
-export function listRentalHandovers(rentalId, params = {}) {
-  return apiRequest(`/rentals/${rentalId}/handovers`, { query: params });
+export function listRentalHandovers(rentalId, params = {}, { signal } = {}) {
+  return apiRequest(`/rentals/${rentalId}/handovers`, { query: params, signal });
 }
 
-export function getRentalInvoice(rentalId) {
-  return apiRequest(`/rentals/${rentalId}/invoice`);
+export function getRentalInvoice(rentalId, { signal } = {}) {
+  return apiRequest(`/rentals/${rentalId}/invoice`, { signal });
 }
 
-export function listRentalTransactions(rentalId, params = {}) {
-  return apiRequest(`/rentals/${rentalId}/transactions`, { query: params });
+export function listRentalTransactions(rentalId, params = {}, { signal } = {}) {
+  return apiRequest(`/rentals/${rentalId}/transactions`, { query: params, signal });
 }
 
-export function getLatestRentalGps(rentalId) {
-  return apiRequest(`/rentals/${rentalId}/gps/latest`);
+export function getLatestRentalGps(rentalId, { signal } = {}) {
+  return apiRequest(`/rentals/${rentalId}/gps/latest`, { signal });
 }
 
-export function listRentalGpsHistory(rentalId, params = {}) {
-  return apiRequest(`/rentals/${rentalId}/gps`, { query: params });
+export function listRentalGpsHistory(rentalId, params = {}, { signal } = {}) {
+  return apiRequest(`/rentals/${rentalId}/gps`, { query: params, signal });
 }
 
 export function postDemoRentalGps(rentalId, payload, idempotencyKey) {
@@ -75,12 +75,12 @@ export function postDemoRentalGps(rentalId, payload, idempotencyKey) {
   });
 }
 
-export function getRentalReview(rentalId) {
-  return apiRequest(`/rentals/${rentalId}/review`);
+export function getRentalReview(rentalId, { signal } = {}) {
+  return apiRequest(`/rentals/${rentalId}/review`, { signal });
 }
 
-export function listDueCheckIns(params = {}) {
-  return apiRequest('/rental-check-ins', { query: params });
+export function listDueCheckIns(params = {}, { signal } = {}) {
+  return apiRequest('/rental-check-ins', { query: params, signal });
 }
 
 export function recordCheckIn(rentalId, payload, idempotencyKey) {

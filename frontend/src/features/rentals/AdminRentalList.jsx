@@ -9,6 +9,7 @@ import {
   TextField,
 } from '../../components/ui';
 import useApiQuery from '../../hooks/useApiQuery';
+import useDebouncedValue from '../../hooks/useDebouncedValue';
 import { listAdminStations } from '../../services/fleetApi';
 import { listRentals } from '../../services/rentalsApi';
 import { formatDateTimeVN, formatDurationSeconds, formatVnd, toIsoWithVietnamOffset } from '../../utils/format';
@@ -25,29 +26,50 @@ export default function AdminRentalList() {
   const [status, setStatus] = useState(searchParams.get('status') || '');
   const [customerId, setCustomerId] = useState(searchParams.get('customer_id') || '');
   const [vehicleId, setVehicleId] = useState(searchParams.get('vehicle_id') || '');
+  const debouncedCustomerId = useDebouncedValue(customerId, 300);
+  const debouncedVehicleId = useDebouncedValue(vehicleId, 300);
   const [pickupStationId, setPickupStationId] = useState('');
   const [createdFrom, setCreatedFrom] = useState('');
   const [createdTo, setCreatedTo] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
 
-  const stationsQuery = useApiQuery(() => listAdminStations({ page: 1, page_size: 100 }), []);
+  const stationsQuery = useApiQuery(
+    ({ signal }) => listAdminStations({ page: 1, page_size: 100 }, { signal }),
+    []
+  );
   const stations = stationsQuery.data || [];
   const stationMap = new Map(stations.map((s) => [s.id, s]));
 
   const rentalsQuery = useApiQuery(
-    () =>
-      listRentals({
-        status: status || undefined,
-        customer_id: isPositiveIdString(customerId) ? customerId.trim() : undefined,
-        vehicle_id: isPositiveIdString(vehicleId) ? vehicleId.trim() : undefined,
-        pickup_station_id: pickupStationId || undefined,
-        created_from: createdFrom ? `${createdFrom}T00:00:00+07:00` : undefined,
-        created_to: createdTo ? toIsoWithVietnamOffset(`${createdTo}T23:59:59`) : undefined,
-        page,
-        page_size: pageSize,
-      }),
-    [status, customerId, vehicleId, pickupStationId, createdFrom, createdTo, page, pageSize]
+    ({ signal }) =>
+      listRentals(
+        {
+          status: status || undefined,
+          customer_id: isPositiveIdString(debouncedCustomerId)
+            ? debouncedCustomerId.trim()
+            : undefined,
+          vehicle_id: isPositiveIdString(debouncedVehicleId)
+            ? debouncedVehicleId.trim()
+            : undefined,
+          pickup_station_id: pickupStationId || undefined,
+          created_from: createdFrom ? `${createdFrom}T00:00:00+07:00` : undefined,
+          created_to: createdTo ? toIsoWithVietnamOffset(`${createdTo}T23:59:59`) : undefined,
+          page,
+          page_size: pageSize,
+        },
+        { signal }
+      ),
+    [
+      status,
+      debouncedCustomerId,
+      debouncedVehicleId,
+      pickupStationId,
+      createdFrom,
+      createdTo,
+      page,
+      pageSize,
+    ]
   );
 
   const resetFilters = () => {

@@ -23,20 +23,23 @@ export default function RevenueReportPage() {
   const [detailsPageSize, setDetailsPageSize] = useState(20);
 
   const summaryQuery = useApiQuery(
-    () => getFinancialSummary(range),
+    ({ signal }) => getFinancialSummary(range, { signal }),
     [range.from_date, range.to_date]
   );
   const revenueQuery = useApiQuery(
-    () => getRevenueReport(range),
+    ({ signal }) => getRevenueReport(range, { signal }),
     [range.from_date, range.to_date]
   );
   const detailsQuery = useApiQuery(
-    () =>
-      getRevenueDetails({
-        ...range,
-        page: detailsPage,
-        page_size: detailsPageSize,
-      }),
+    ({ signal }) =>
+      getRevenueDetails(
+        {
+          ...range,
+          page: detailsPage,
+          page_size: detailsPageSize,
+        },
+        { signal }
+      ),
     [range.from_date, range.to_date, detailsPage, detailsPageSize]
   );
 

@@ -8,16 +8,16 @@ export function intakeIncident(rentalId, payload, idempotencyKey) {
   });
 }
 
-export function listIncidents(params = {}) {
-  return apiRequest('/rental-incidents', { query: params });
+export function listIncidents(params = {}, { signal } = {}) {
+  return apiRequest('/rental-incidents', { query: params, signal });
 }
 
-export function getIncident(incidentId) {
-  return apiRequest(`/rental-incidents/${incidentId}`);
+export function getIncident(incidentId, { signal } = {}) {
+  return apiRequest(`/rental-incidents/${incidentId}`, { signal });
 }
 
-export function listIncidentEvents(incidentId, params = {}) {
-  return apiRequest(`/rental-incidents/${incidentId}/events`, { query: params });
+export function listIncidentEvents(incidentId, params = {}, { signal } = {}) {
+  return apiRequest(`/rental-incidents/${incidentId}/events`, { query: params, signal });
 }
 
 export function createIncidentEvidenceTicket(incidentId, payload, idempotencyKey) {
@@ -60,8 +60,8 @@ export function releaseIncidentVehicle(incidentId, payload, idempotencyKey) {
   });
 }
 
-export function getIncidentRentPreview(incidentId) {
-  return apiRequest(`/rental-incidents/${incidentId}/rent-preview`);
+export function getIncidentRentPreview(incidentId, { signal } = {}) {
+  return apiRequest(`/rental-incidents/${incidentId}/rent-preview`, { signal });
 }
 
 export function settleIncidentRent(incidentId, payload, idempotencyKey) {
@@ -80,8 +80,8 @@ export function settleExternalCompensation(incidentId, payload, idempotencyKey) 
   });
 }
 
-export function getIncidentFinanceSummary(incidentId) {
-  return apiRequest(`/rental-incidents/${incidentId}/finance-summary`);
+export function getIncidentFinanceSummary(incidentId, { signal } = {}) {
+  return apiRequest(`/rental-incidents/${incidentId}/finance-summary`, { signal });
 }
 
 export function refundIncidentDeposit(incidentId, payload, idempotencyKey) {

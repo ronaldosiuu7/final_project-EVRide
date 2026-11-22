@@ -25,6 +25,10 @@ import {
   getAccessToken,
 } from '../src/integrations/apiClient.js';
 import {
+  invalidateActiveEmployeesCache,
+  listActiveEmployees,
+} from '../src/services/accountsApi.js';
+import {
   getIdleTimeAnalytics,
   getInactiveCustomersAnalytics,
   getPeakHoursAnalytics,
@@ -232,5 +236,51 @@ test('apiClient reads synchronously configured Bearer token immediately without 
   } finally {
     globalThis.fetch = originalFetch;
     configurePlatformApi({ getAccessToken: () => null, customRequest: null, onAuthInvalid: null });
+  }
+});
+
+test('apiRequest propagates AbortError without wrapping and listActiveEmployees caches merged staff/managers', async () => {
+  const originalFetch = globalThis.fetch;
+  let fetchCount = 0;
+
+  globalThis.fetch = async (url, options) => {
+    fetchCount += 1;
+    if (options?.signal?.aborted) {
+      const abortErr = new Error('The operation was aborted.');
+      abortErr.name = 'AbortError';
+      throw abortErr;
+    }
+    const role = String(url).includes('role=STAFF') ? 'STAFF' : 'MANAGER';
+    return new Response(
+      JSON.stringify({ data: [{ id: role === 'STAFF' ? '1' : '2', role, name: role }], meta: null }),
+      { status: 200, headers: { 'content-type': 'application/json' } }
+    );
+  };
+
+  try {
+    const controller = new AbortController();
+    controller.abort();
+    await assert.rejects(
+      () => apiRequest('/vehicles', { signal: controller.signal }),
+      (err) => err?.name === 'AbortError'
+    );
+
+    invalidateActiveEmployeesCache();
+    fetchCount = 0;
+    const first = await listActiveEmployees();
+    assert.equal(first.data.length, 2);
+    assert.equal(fetchCount, 2);
+
+    const second = await listActiveEmployees();
+    assert.equal(second.data.length, 2);
+    assert.equal(fetchCount, 2); // served from TTL cache
+
+    invalidateActiveEmployeesCache();
+    const third = await listActiveEmployees();
+    assert.equal(third.data.length, 2);
+    assert.equal(fetchCount, 4);
+  } finally {
+    invalidateActiveEmployeesCache();
+    globalThis.fetch = originalFetch;
   }
 });

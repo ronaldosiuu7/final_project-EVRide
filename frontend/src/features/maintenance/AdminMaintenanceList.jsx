@@ -9,6 +9,7 @@ import {
   TextField,
 } from '../../components/ui';
 import useApiQuery from '../../hooks/useApiQuery';
+import useDebouncedValue from '../../hooks/useDebouncedValue';
 import { listMaintenanceOrders } from '../../services/operationsApi';
 import { formatDateTimeVN } from '../../utils/format';
 import { isPositiveIdString } from '../../utils/validation';
@@ -21,22 +22,34 @@ export default function AdminMaintenanceList() {
   const [incidentId, setIncidentId] = useState(searchParams.get('incident_id') || '');
   const [status, setStatus] = useState('');
   const [assignedTo, setAssignedTo] = useState('');
+  const debouncedVehicleId = useDebouncedValue(vehicleId, 300);
+  const debouncedIncidentId = useDebouncedValue(incidentId, 300);
+  const debouncedAssignedTo = useDebouncedValue(assignedTo, 300);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [creating, setCreating] = useState(false);
   const [actionModal, setActionModal] = useState(null);
 
   const { data, meta, loading, error, reload } = useApiQuery(
-    () =>
-      listMaintenanceOrders({
-        vehicle_id: isPositiveIdString(vehicleId) ? vehicleId.trim() : undefined,
-        incident_id: isPositiveIdString(incidentId) ? incidentId.trim() : undefined,
-        status: status || undefined,
-        assigned_to: isPositiveIdString(assignedTo) ? assignedTo.trim() : undefined,
-        page,
-        page_size: pageSize,
-      }),
-    [vehicleId, incidentId, status, assignedTo, page, pageSize]
+    ({ signal }) =>
+      listMaintenanceOrders(
+        {
+          vehicle_id: isPositiveIdString(debouncedVehicleId)
+            ? debouncedVehicleId.trim()
+            : undefined,
+          incident_id: isPositiveIdString(debouncedIncidentId)
+            ? debouncedIncidentId.trim()
+            : undefined,
+          status: status || undefined,
+          assigned_to: isPositiveIdString(debouncedAssignedTo)
+            ? debouncedAssignedTo.trim()
+            : undefined,
+          page,
+          page_size: pageSize,
+        },
+        { signal }
+      ),
+    [debouncedVehicleId, debouncedIncidentId, status, debouncedAssignedTo, page, pageSize]
   );
 
   const resetFilters = () => {
