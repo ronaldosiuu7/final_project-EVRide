@@ -1,6 +1,6 @@
 """Deterministic, fictional records shared by the demo seeder and tests."""
 
-DEMO_PASSWORD = "EVRide-Demo-Only-2026!"
+DEMO_PASSWORD = "123456"
 FIRST_30_MINUTES_PRICE = "10000.00"
 EXTRA_MINUTE_PRICE = "350.00"
 DEPOSIT_AMOUNT = "100000.00"
