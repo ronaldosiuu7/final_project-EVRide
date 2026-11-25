@@ -1,10 +1,10 @@
 # EVRide – Thiết kế Cơ sở Dữ liệu PostgreSQL
-> **Cập nhật:** 13/11/2026
-> **Nguồn chuẩn hiện hành:** SQLAlchemy ORM tại `backend/app/models.py` (27 bảng) và lịch sử Alembic migration tại `backend/database/migrations/` (revision mới nhất trong mã nguồn: `f4c2a1b8e901`).
+> **Cập nhật:** 25/11/2026
+> **Nguồn chuẩn hiện hành:** SQLAlchemy ORM tại `backend/app/models.py` (28 bảng) và lịch sử Alembic migration tại `backend/database/migrations/` (revision mới nhất trong mã nguồn: `d7e4b2c9a105`).
 
 Tài liệu này mô tả cấu trúc cơ sở dữ liệu hiện hành trong mã nguồn. Lưu ý phân biệt với các bản xuất tham khảo lịch sử:
-- `docs/ER_diagram.pdf` và `backend/database/stored_database/database.sql` là các bản thiết kế/xuất tham khảo từ giai đoạn 15–18 bảng ban đầu, không bao gồm các bảng bổ sung ở các revision sau (`user_sessions`, `refresh_tokens`, `rental_incidents`, v.v.).
-- Môi trường kiểm thử `evride_test` đã kiểm chứng `alembic upgrade head` (`f4c2a1b8e901`); database phát triển `evride_db` cần được chạy `python -m alembic upgrade head` khi cập nhật backend.
+- `docs/ER_diagram.pdf` và `backend/database/stored_database/database.sql` là các bản thiết kế/xuất tham khảo từ giai đoạn 15–18 bảng ban đầu, không bao gồm các bảng bổ sung ở các revision sau (`user_sessions`, `refresh_tokens`, `rental_incidents`, `wallet_topup_requests`, v.v.).
+- Môi trường kiểm thử `evride_test` đã kiểm chứng `alembic upgrade head` (`d7e4b2c9a105`); database phát triển `evride_db` cần được chạy `python -m alembic upgrade head` khi cập nhật backend.
 
 ---
 
@@ -253,11 +253,37 @@ Biến động số dư ví cá nhân.
 | `transaction_id` | `bigint` | **FK** -> `transactions.id`, UNIQUE, NULL |
 | `idempotency_record_id` | `bigint` | **FK** -> `idempotency_records.id`, NULL |
 | `amount` | `numeric(12,2)`| NOT NULL |
-| `type` | `varchar(30)` | NOT NULL (`TOPUP`, `WITHDRAW`, `RENTAL_PAYMENT`, `RENTAL_DEPOSIT`, `RENTAL_REFUND`) |
+| `type` | `varchar(30)` | NOT NULL (`TOPUP`, `WITHDRAW`, `RENTAL_PAYMENT`, `RENTAL_DEPOSIT`, `RENTAL_REFUND`, `COMPENSATION_PAYMENT`, `COMPENSATION_REFUND`) |
 | `balance_before` | `numeric(12,2)`| NOT NULL |
 | `balance_after` | `numeric(12,2)`| NOT NULL |
 | `status` | `varchar(20)` | NOT NULL (`PENDING`, `SUCCESS`, `FAILED`) |
 | `created_at` | `timestamptz` | NOT NULL |
+
+- **Constraints bổ sung:** `uq_wallet_transactions_id_wallet` UNIQUE (`id`, `wallet_id`) để ràng buộc đồng nhất ví khi liên kết từ `wallet_topup_requests`. Các bản ghi `TOPUP SUCCESS` lịch sử trước revision `d7e4b2c9a105` được giữ nguyên, không cần bản ghi `wallet_topup_requests` tương ứng.
+
+#### Bảng `wallet_topup_requests`
+Lưu yêu cầu nạp tiền mô phỏng của khách hàng và kết quả xác nhận của `STAFF`/`MANAGER`, tách khỏi sổ biến động số dư `wallet_transactions`. Không lưu `balance_before`/`balance_after` trên yêu cầu chờ duyệt.
+
+| Cột (Column) | Kiểu Dữ Liệu | Ràng Buộc / Mô Tả |
+| :--- | :--- | :--- |
+| `id` | `bigint` | **PK** |
+| `wallet_id` | `bigint` | **FK** -> `wallets.id` (`ON DELETE RESTRICT`), NOT NULL |
+| `requested_by` | `bigint` | **FK** -> `users.id` (`ON DELETE RESTRICT`), NOT NULL |
+| `amount` | `numeric(12,2)` | NOT NULL (`CHECK > 0 AND <= 9999999999.99 AND <> 'NaN'`) |
+| `status` | `varchar(20)` | NOT NULL, Default `'PENDING'` (`PENDING`, `APPROVED`, `REJECTED`) |
+| `reviewed_by` | `bigint` | **FK** -> `users.id` (`ON DELETE RESTRICT`), NULL |
+| `reviewed_at` | `timestamptz` | NULL |
+| `rejection_reason` | `text` | NULL |
+| `wallet_transaction_id` | `bigint` | **FK** -> `wallet_transactions.id` (`ON DELETE RESTRICT`), UNIQUE, NULL |
+| `idempotency_record_id` | `bigint` | **FK** -> `idempotency_records.id` (`ON DELETE SET NULL`), UNIQUE, NULL |
+| `created_at` | `timestamptz` | NOT NULL |
+
+- **Constraints & Indexes:**
+  - `ck_wallet_topup_requests_state_details`: `PENDING` chưa có `reviewed_by`/`reviewed_at`/`rejection_reason`/`wallet_transaction_id`; `APPROVED` bắt buộc có `reviewed_by`, `reviewed_at`, `wallet_transaction_id` và `rejection_reason IS NULL`; `REJECTED` bắt buộc có `reviewed_by`, `reviewed_at`, `btrim(rejection_reason)` khác rỗng và `wallet_transaction_id IS NULL`.
+  - `ck_wallet_topup_requests_review_time_order`: `reviewed_at IS NULL OR reviewed_at >= created_at`.
+  - `ck_wallet_topup_requests_reviewer_not_requester`: `reviewed_by IS NULL OR reviewed_by <> requested_by`.
+  - `fk_wallet_topup_requests_tx_wallet`: Composite **FK** `(wallet_transaction_id, wallet_id)` -> `wallet_transactions(id, wallet_id)` (`ON DELETE RESTRICT`).
+  - Indexes: `ix_wallet_topup_requests_status_created` (`status`, `created_at`, `id`), `ix_wallet_topup_requests_wallet_created` (`wallet_id`, `created_at`, `id`), `ix_wallet_topup_requests_requested_by_created` (`requested_by`, `created_at`, `id`).
 
 #### Bảng `promotions` & `user_promotions`
 Chương trình khuyến mãi và ví voucher của người dùng.
@@ -348,10 +374,13 @@ vehicles (1) <---> (N) vehicle_pricing_history / maintenance_orders / vehicle_mo
 stored_files (1) <---> (0..1) file_attachments
 
 wallets (1) <---> (N) wallet_transactions
+wallets (1) <---> (N) wallet_topup_requests
+wallet_transactions (0..1) <---> (0..1) wallet_topup_requests
+users (1) <---> (N) wallet_topup_requests (as requester/reviewer)
 promotions (1) <---> (N) user_promotions
 rentals (1) <---> (1) rental_pricing_snapshots
 transactions (1) <---> (0..1) wallet_transactions
-idempotency_records (1) <---> (N) transactions / wallet_transactions
+idempotency_records (1) <---> (N) transactions / wallet_transactions / wallet_topup_requests
 users (1) <---> (N) audit_logs / vehicle_move_audits
 ```
 
@@ -375,6 +404,8 @@ Revision `de606e75dbc8` (cha `b18f7e4c2a91`) bổ sung dữ liệu xử lý tick
 Revision `e8a412c9f603` bổ sung bảng `rental_incidents`, trạng thái `INCIDENT_PENDING`/`CLOSED_INCIDENT`, dấu giải phóng xe trên `rentals`, và liên kết `transactions.incident_id`.
 
 Revision `f4c2a1b8e901` (cha `e8a412c9f603`) thu gọn phân hệ sự cố & kiểm tra 24 giờ: thêm `rentals.next_check_at` + partial index `ix_rentals_in_rent_check`, thêm `maintenance_orders.incident_id` + index `ix_maintenance_orders_incident`, bỏ ràng buộc bắt buộc `rental_incidents.assigned_to`, và bỏ ràng buộc cảnh báo thừa. Đã kiểm chứng upgrade/downgrade/`alembic check` trên `evride_test`; `evride_db` cần chạy `alembic upgrade head` khi triển khai.
+
+Revision `d7e4b2c9a105` (cha `f4c2a1b8e901`) bổ sung bảng `wallet_topup_requests` cùng unique `uq_wallet_transactions_id_wallet` để tách yêu cầu nạp tiền chờ xác nhận (`PENDING`/`APPROVED`/`REJECTED`) khỏi sổ giao dịch `wallet_transactions`, bảo toàn toàn bộ giao dịch `TOPUP SUCCESS` lịch sử. Đã kiểm chứng migration trên `evride_test`; `evride_db` cần chạy `alembic upgrade head` khi triển khai.
 
 ### 4.1. Xử lý Thời gian & Hết hạn giữ xe
 * **Múi giờ:** Luôn lưu dưới dạng `timestamptz` (thống nhất chuẩn UTC trong CSDL).

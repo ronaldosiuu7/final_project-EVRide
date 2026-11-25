@@ -69,7 +69,7 @@ Tạo file `backend/.env` từ `backend/.env.example` (xem lệnh ở phần Cà
 | `REFRESH_GRACE_SECONDS` | Thời gian ân hạn (1..60 giây) cho phép replay kết quả refresh khi mất gói tin mạng. | `15` |
 | `AUTH_ORIGINS` | Danh sách Origin được phép gọi auth và CORS (phân tách dấu phẩy, không dùng `*`). | Local: `http://localhost:5173`; Production: `https://thuexedien.me`. |
 | `AUTH_COOKIE_SECURE` | Cờ `Secure` cho refresh cookie (`true` hoặc `false`). | Local HTTP: `false`; Production HTTPS: `true`. |
-| `DEMO_PAYMENTS_ENABLED` | Bật nạp ví mô phỏng; không kết nối cổng thanh toán thật. | Mặc định `false`; chỉ bật cho môi trường demo được kiểm soát. |
+| `DEMO_PAYMENTS_ENABLED` | Bật tạo và duyệt yêu cầu nạp ví mô phỏng; không kết nối cổng thanh toán thật. | Mặc định `false`; chỉ bật cho môi trường demo được kiểm soát (tra cứu và từ chối không cần cờ này). |
 
 `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER` và `DB_PASSWORD` được dùng để tạo kết nối trong `app/database.py`; khi thiếu biến bắt buộc, module này báo lỗi. Health endpoint hiện tại chỉ kiểm tra ứng dụng hoạt động, không kiểm tra kết nối database. Prefix `/api/v1` được khai báo tại `app/api/v1/router.py`; `/docs` và `/openapi.json` nằm ngoài prefix này.
 
@@ -125,14 +125,14 @@ Seed tạo CUSTOMER có CCCD `PENDING`, đã `VERIFIED` và chưa nộp giấy t
 | Luồng | Endpoint chính |
 | --- | --- |
 | Trạm/xe/bảng giá/điều chuyển | `/stations`, `/vehicles`, `/prices` |
-| Ví và khuyến mãi | `/wallets`, `/promotions`, `/users/me/promotions` |
+| Ví và khuyến mãi | `/wallets` (`me`, `me/transactions`, `me/topups`), `/wallet-topup-requests*`, `/promotions`, `/users/me/promotions` |
 | Giữ xe và vòng đời thuê | `/rentals`, pickup, initiate-return, return-quote, return |
 | Ticket, ảnh và bảo trì | `/support-tickets`, `/files`, `/maintenance-orders` (hỗ trợ `incident_id` cho sự cố); upload intent/URL ký trong contract chưa đầy đủ |
 | GPS, review và FAQ | `/rentals/{id}/gps`, `/rentals/{id}/review`, `/faq`, `/faq/sources/{source_id}`, `/chatbot/messages` |
 | Kiểm tra 24 giờ & sự cố | `/rental-check-ins*`, `/rentals/{id}/incident/intake`, `/rental-incidents*` (verify, recovery/arrival/release-vehicle, settle-rent, deposit/refund, `compensation/external-settlement`, close); xem [contract](../docs/api-contract.md) |
 | Báo cáo thống kê | `/analytics/revenue`, `/analytics/financial-summary`, `/analytics/revenue-details` |
 
-Mọi thay đổi tài chính được xử lý trong transaction PostgreSQL; các endpoint ghi được contract gắn `I` yêu cầu `Idempotency-Key`. Top-up chỉ là mô phỏng và trả `503 FEATURE_NOT_ENABLED` nếu `DEMO_PAYMENTS_ENABLED` không bật.
+Mọi thay đổi tài chính được xử lý trong transaction PostgreSQL; các endpoint ghi được contract gắn `I` yêu cầu `Idempotency-Key`. Nạp tiền ví dùng tiền mô phỏng và qua quy trình phê duyệt (`POST /wallets/me/topups` tạo yêu cầu `PENDING`, `STAFF`/`MANAGER` duyệt hoặc từ chối qua `/wallet-topup-requests/{id}/approve|reject`); tạo và duyệt trả `503 FEATURE_NOT_ENABLED` nếu `DEMO_PAYMENTS_ENABLED` không bật. Xem chi tiết tại [tài liệu bàn giao nạp ví](../docs/topup-approval-handover.md).
 
 GPS demo chỉ ghi khi DEMO_GPS_ENABLED bật và APP_ENV thuộc development/test/demo; code đánh dấu
 dữ liệu cũ khi quá 60 giây hoặc chưa có điểm. Đây không phải ngưỡng cảnh báo

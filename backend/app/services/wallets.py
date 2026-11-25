@@ -15,9 +15,41 @@ from app.models import (
     User,
     UserPromotion,
     Wallet,
+    WalletTopupRequest,
     WalletTransaction,
 )
 from app.services.errors import ServiceError
+
+ZERO = Decimal("0.00")
+MAX_WALLET_MONEY = Decimal("9999999999.99")
+TOPUP_REQUEST_STATUSES = ("PENDING", "APPROVED", "REJECTED")
+REVIEWER_ROLES = ("STAFF", "MANAGER")
+
+
+def _require_demo_payments_enabled() -> None:
+    if os.getenv("DEMO_PAYMENTS_ENABLED", "").strip().lower() not in ("1", "true", "yes"):
+        raise ServiceError(503, "FEATURE_NOT_ENABLED", "Nạp tiền mô phỏng chưa được bật.")
+
+
+def _clock(session: Session) -> datetime:
+    now = session.scalar(select(func.clock_timestamp()))
+    if now is None:
+        raise RuntimeError("The database did not return clock_timestamp().")
+    if now.tzinfo is None:
+        return now.replace(tzinfo=timezone.utc)
+    return now.astimezone(timezone.utc)
+
+
+def _validate_positive_amount(amount: Decimal) -> Decimal:
+    if (
+        not isinstance(amount, Decimal)
+        or not amount.is_finite()
+        or amount <= ZERO
+        or amount > MAX_WALLET_MONEY
+        or amount.as_tuple().exponent < -2
+    ):
+        raise ServiceError(422, "INVALID_AMOUNT", "Số tiền nạp phải lớn hơn 0 và hợp lệ.")
+    return amount.quantize(Decimal("0.01"))
 
 
 def get_wallet_for_user(session: Session, user_id: int) -> Wallet:
@@ -27,42 +59,338 @@ def get_wallet_for_user(session: Session, user_id: int) -> Wallet:
     return wallet
 
 
-def top_up_demo(
+def create_topup_request(
     session: Session,
     *,
     user_id: int,
     amount: Decimal,
-    idempotency_record_id: int,
-) -> tuple[Wallet, WalletTransaction]:
-    if os.getenv("DEMO_PAYMENTS_ENABLED", "").strip().lower() not in ("1", "true", "yes"):
-        raise ServiceError(503, "FEATURE_NOT_ENABLED", "Nạp tiền mô phỏng chưa được bật.")
-    user = session.scalar(select(User).where(User.id == user_id).with_for_update())
+    idempotency_record_id: int | None,
+) -> WalletTopupRequest:
+    _require_demo_payments_enabled()
+    normalized_amount = _validate_positive_amount(amount)
+
+    # Thứ tự khóa toàn cục: customer (users) -> wallet.
+    user = session.scalar(
+        select(User)
+        .where(User.id == user_id)
+        .execution_options(populate_existing=True)
+        .with_for_update()
+    )
     if user is None:
         raise ServiceError(404, "NOT_FOUND", "Người dùng không tồn tại.")
+    if user.role != "CUSTOMER":
+        raise ServiceError(403, "FORBIDDEN", "Chỉ khách hàng mới được gửi yêu cầu nạp tiền.")
+    if user.status != "ACTIVE":
+        raise ServiceError(403, "ACCOUNT_DISABLED", "Tài khoản khách không hoạt động.")
+
     wallet = session.scalar(
-        select(Wallet).where(Wallet.user_id == user_id).with_for_update()
+        select(Wallet)
+        .where(Wallet.user_id == user_id)
+        .execution_options(populate_existing=True)
+        .with_for_update()
     )
     if wallet is None:
         raise ServiceError(404, "NOT_FOUND", "Ví không tồn tại.")
     if wallet.status != "ACTIVE":
         raise ServiceError(409, "WALLET_UNAVAILABLE", "Ví không ở trạng thái ACTIVE.")
-    if amount <= 0:
-        raise ServiceError(422, "INVALID_AMOUNT", "Số tiền nạp phải lớn hơn 0.")
+
+    now = _clock(session)
+    topup_request = WalletTopupRequest(
+        wallet_id=wallet.id,
+        requested_by=user.id,
+        amount=normalized_amount,
+        status="PENDING",
+        idempotency_record_id=idempotency_record_id,
+        created_at=now,
+    )
+    session.add(topup_request)
+    session.flush()
+
+    session.add(
+        AuditLog(
+            actor_id=user.id,
+            action="WALLET_TOPUP_REQUESTED",
+            resource_type="wallet_topup_requests",
+            resource_id=str(topup_request.id),
+            before_data=None,
+            after_data={
+                "status": "PENDING",
+                "wallet_id": str(wallet.id),
+                "requested_by": str(user.id),
+                "amount": f"{normalized_amount:.2f}",
+                "payment_mode": "DEMO",
+            },
+            created_at=now,
+        )
+    )
+    session.flush()
+    return topup_request
+
+
+def list_topup_requests(
+    session: Session,
+    *,
+    wallet_id: int | None = None,
+    customer_id: int | None = None,
+    status_filter: str | None = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> tuple[list[WalletTopupRequest], int]:
+    predicates = []
+    if wallet_id is not None:
+        predicates.append(WalletTopupRequest.wallet_id == wallet_id)
+    if customer_id is not None:
+        predicates.append(WalletTopupRequest.requested_by == customer_id)
+    if status_filter is not None:
+        normalized_status = status_filter.upper()
+        if normalized_status not in TOPUP_REQUEST_STATUSES:
+            raise ServiceError(422, "VALIDATION_ERROR", "Trạng thái yêu cầu nạp tiền không hợp lệ.")
+        predicates.append(WalletTopupRequest.status == normalized_status)
+
+    count_query = select(func.count()).select_from(WalletTopupRequest)
+    data_query = select(WalletTopupRequest)
+    if predicates:
+        count_query = count_query.where(*predicates)
+        data_query = data_query.where(*predicates)
+
+    rows = session.scalars(
+        data_query.order_by(
+            WalletTopupRequest.created_at.desc(),
+            WalletTopupRequest.id.desc(),
+        )
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    ).all()
+    total = session.scalar(count_query) or 0
+    return rows, total
+
+
+def get_topup_request(
+    session: Session,
+    *,
+    request_id: int,
+    actor: User,
+) -> WalletTopupRequest:
+    topup_request = session.get(WalletTopupRequest, request_id)
+    if topup_request is None:
+        raise ServiceError(404, "NOT_FOUND", "Yêu cầu nạp tiền không tồn tại.")
+    if actor.role not in REVIEWER_ROLES and topup_request.requested_by != actor.id:
+        raise ServiceError(404, "NOT_FOUND", "Yêu cầu nạp tiền không tồn tại.")
+    return topup_request
+
+
+def _lock_topup_request_context(
+    session: Session,
+    *,
+    request_id: int,
+    actor_id: int,
+) -> tuple[User, User, Wallet, WalletTopupRequest]:
+    actor = session.scalar(
+        select(User)
+        .where(User.id == actor_id)
+        .execution_options(populate_existing=True)
+    )
+    if actor is None or actor.status != "ACTIVE":
+        raise ServiceError(403, "ACCOUNT_DISABLED", "Tài khoản người xử lý không hoạt động.")
+    if actor.role not in REVIEWER_ROLES:
+        raise ServiceError(403, "FORBIDDEN", "Chỉ STAFF hoặc MANAGER mới được xử lý yêu cầu nạp tiền.")
+
+    preliminary = session.execute(
+        select(
+            WalletTopupRequest.requested_by,
+            WalletTopupRequest.wallet_id,
+        ).where(WalletTopupRequest.id == request_id)
+    ).one_or_none()
+    if preliminary is None:
+        raise ServiceError(404, "NOT_FOUND", "Yêu cầu nạp tiền không tồn tại.")
+
+    if preliminary.requested_by == actor.id:
+        raise ServiceError(403, "FORBIDDEN", "Không được tự xử lý yêu cầu nạp tiền của chính mình.")
+
+    # Thứ tự khóa toàn cục: customer (users) -> wallet -> wallet_topup_requests.
+    customer = session.scalar(
+        select(User)
+        .where(User.id == preliminary.requested_by)
+        .execution_options(populate_existing=True)
+        .with_for_update()
+    )
+    wallet = session.scalar(
+        select(Wallet)
+        .where(Wallet.id == preliminary.wallet_id)
+        .execution_options(populate_existing=True)
+        .with_for_update()
+    )
+    topup_request = session.scalar(
+        select(WalletTopupRequest)
+        .where(WalletTopupRequest.id == request_id)
+        .execution_options(populate_existing=True)
+        .with_for_update()
+    )
+    if topup_request is None or customer is None or wallet is None:
+        raise ServiceError(404, "NOT_FOUND", "Yêu cầu nạp tiền không tồn tại.")
+    if (
+        topup_request.requested_by != customer.id
+        or topup_request.wallet_id != wallet.id
+        or wallet.user_id != customer.id
+    ):
+        raise ServiceError(409, "INVALID_STATE_TRANSITION", "Dữ liệu yêu cầu và ví không khớp.")
+    if wallet.user_id == actor.id:
+        raise ServiceError(403, "FORBIDDEN", "Không được tự xử lý yêu cầu nạp tiền của chính mình.")
+    return actor, customer, wallet, topup_request
+
+
+def approve_topup_request(
+    session: Session,
+    *,
+    request_id: int,
+    actor_id: int,
+    idempotency_record_id: int | None,
+) -> tuple[WalletTopupRequest, WalletTransaction, Wallet]:
+    _require_demo_payments_enabled()
+    actor, customer, wallet, topup_request = _lock_topup_request_context(
+        session,
+        request_id=request_id,
+        actor_id=actor_id,
+    )
+
+    if topup_request.status != "PENDING" or topup_request.wallet_transaction_id is not None:
+        raise ServiceError(
+            409,
+            "INVALID_STATE_TRANSITION",
+            f"Yêu cầu nạp tiền đang ở trạng thái {topup_request.status}, không thể duyệt.",
+        )
+
+    if customer.role != "CUSTOMER" or customer.status != "ACTIVE":
+        raise ServiceError(403, "ACCOUNT_DISABLED", "Tài khoản khách không hoạt động.")
+
+    if wallet.status != "ACTIVE":
+        raise ServiceError(409, "WALLET_UNAVAILABLE", "Ví không ở trạng thái ACTIVE.")
+
+    amount = _validate_positive_amount(topup_request.amount)
     before = wallet.balance
-    wallet.balance = before + amount
-    wallet.updated_at = datetime.now(timezone.utc)
+    if not before.is_finite() or before < ZERO:
+        raise ServiceError(409, "INVALID_FINANCIAL_DATA", "Số dư ví hiện tại không hợp lệ.")
+    after = before + amount
+    if after > MAX_WALLET_MONEY:
+        raise ServiceError(
+            409,
+            "WALLET_LIMIT_EXCEEDED",
+            "Số dư ví sau khi nạp vượt giới hạn cho phép.",
+        )
+
+    now = _clock(session)
+    if now < topup_request.created_at:
+        raise ServiceError(
+            409,
+            "INVALID_STATE_TRANSITION",
+            "Thời điểm xử lý không hợp lệ so với thời điểm tạo yêu cầu.",
+        )
+
     entry = WalletTransaction(
         wallet_id=wallet.id,
         idempotency_record_id=idempotency_record_id,
         amount=amount,
         type="TOPUP",
         balance_before=before,
-        balance_after=wallet.balance,
+        balance_after=after,
         status="SUCCESS",
+        created_at=now,
     )
+    wallet.balance = after
+    wallet.updated_at = now
     session.add(entry)
     session.flush()
-    return wallet, entry
+
+    topup_request.status = "APPROVED"
+    topup_request.reviewed_by = actor.id
+    topup_request.reviewed_at = now
+    topup_request.rejection_reason = None
+    topup_request.wallet_transaction_id = entry.id
+
+    session.add(
+        AuditLog(
+            actor_id=actor.id,
+            action="WALLET_TOPUP_APPROVED",
+            resource_type="wallet_topup_requests",
+            resource_id=str(topup_request.id),
+            before_data={
+                "status": "PENDING",
+                "wallet_balance": f"{before:.2f}",
+            },
+            after_data={
+                "status": "APPROVED",
+                "wallet_id": str(wallet.id),
+                "requested_by": str(customer.id),
+                "amount": f"{amount:.2f}",
+                "wallet_transaction_id": str(entry.id),
+                "balance_before": f"{before:.2f}",
+                "balance_after": f"{after:.2f}",
+            },
+            created_at=now,
+        )
+    )
+    session.flush()
+    return topup_request, entry, wallet
+
+
+def reject_topup_request(
+    session: Session,
+    *,
+    request_id: int,
+    actor_id: int,
+    reason: str,
+) -> WalletTopupRequest:
+    normalized_reason = reason.strip()
+    if not normalized_reason:
+        raise ServiceError(422, "VALIDATION_ERROR", "Lý do từ chối không được để trống.")
+
+    # Từ chối không yêu cầu bật DEMO_PAYMENTS_ENABLED và được phép dù ví/tài khoản khách đã bị khóa.
+    actor, customer, wallet, topup_request = _lock_topup_request_context(
+        session,
+        request_id=request_id,
+        actor_id=actor_id,
+    )
+
+    if topup_request.status != "PENDING" or topup_request.wallet_transaction_id is not None:
+        raise ServiceError(
+            409,
+            "INVALID_STATE_TRANSITION",
+            f"Yêu cầu nạp tiền đang ở trạng thái {topup_request.status}, không thể từ chối.",
+        )
+
+    now = _clock(session)
+    if now < topup_request.created_at:
+        raise ServiceError(
+            409,
+            "INVALID_STATE_TRANSITION",
+            "Thời điểm xử lý không hợp lệ so với thời điểm tạo yêu cầu.",
+        )
+
+    topup_request.status = "REJECTED"
+    topup_request.reviewed_by = actor.id
+    topup_request.reviewed_at = now
+    topup_request.rejection_reason = normalized_reason
+    topup_request.wallet_transaction_id = None
+
+    session.add(
+        AuditLog(
+            actor_id=actor.id,
+            action="WALLET_TOPUP_REJECTED",
+            resource_type="wallet_topup_requests",
+            resource_id=str(topup_request.id),
+            before_data={"status": "PENDING"},
+            after_data={
+                "status": "REJECTED",
+                "wallet_id": str(wallet.id),
+                "requested_by": str(customer.id),
+                "amount": f"{topup_request.amount:.2f}",
+                "rejection_reason": normalized_reason,
+            },
+            created_at=now,
+        )
+    )
+    session.flush()
+    return topup_request
 
 
 def update_wallet_status(

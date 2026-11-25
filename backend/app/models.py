@@ -698,6 +698,7 @@ class WalletTransaction(Base):
             name="ck_wallet_transactions_status",
         ),
         UniqueConstraint("transaction_id", name="uq_wallet_transactions_transaction"),
+        UniqueConstraint("id", "wallet_id", name="uq_wallet_transactions_id_wallet"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
@@ -724,6 +725,121 @@ class WalletTransaction(Base):
     )
     idempotency_record: Mapped[IdempotencyRecord | None] = relationship(
         back_populates="wallet_transactions"
+    )
+
+
+class WalletTopupRequest(Base):
+    __tablename__ = "wallet_topup_requests"
+    __table_args__ = (
+        CheckConstraint(
+            "amount > 0 AND amount <= 9999999999.99 AND amount <> 'NaN'::numeric",
+            name="ck_wallet_topup_requests_amount_positive",
+        ),
+        CheckConstraint(
+            "status IN ('PENDING', 'APPROVED', 'REJECTED')",
+            name="ck_wallet_topup_requests_status",
+        ),
+        CheckConstraint(
+            """
+            (
+                status = 'PENDING'
+                AND reviewed_by IS NULL
+                AND reviewed_at IS NULL
+                AND rejection_reason IS NULL
+                AND wallet_transaction_id IS NULL
+            )
+            OR
+            (
+                status = 'APPROVED'
+                AND reviewed_by IS NOT NULL
+                AND reviewed_at IS NOT NULL
+                AND rejection_reason IS NULL
+                AND wallet_transaction_id IS NOT NULL
+            )
+            OR
+            (
+                status = 'REJECTED'
+                AND reviewed_by IS NOT NULL
+                AND reviewed_at IS NOT NULL
+                AND rejection_reason IS NOT NULL
+                AND length(btrim(rejection_reason)) > 0
+                AND wallet_transaction_id IS NULL
+            )
+            """,
+            name="ck_wallet_topup_requests_state_details",
+        ),
+        CheckConstraint(
+            "reviewed_at IS NULL OR reviewed_at >= created_at",
+            name="ck_wallet_topup_requests_review_time_order",
+        ),
+        CheckConstraint(
+            "reviewed_by IS NULL OR reviewed_by <> requested_by",
+            name="ck_wallet_topup_requests_reviewer_not_requester",
+        ),
+        UniqueConstraint(
+            "wallet_transaction_id",
+            name="uq_wallet_topup_requests_wallet_transaction",
+        ),
+        UniqueConstraint(
+            "idempotency_record_id",
+            name="uq_wallet_topup_requests_idempotency_record",
+        ),
+        ForeignKeyConstraint(
+            ["wallet_transaction_id", "wallet_id"],
+            ["wallet_transactions.id", "wallet_transactions.wallet_id"],
+            name="fk_wallet_topup_requests_tx_wallet",
+            ondelete="RESTRICT",
+        ),
+        Index(
+            "ix_wallet_topup_requests_status_created",
+            "status",
+            "created_at",
+            "id",
+        ),
+        Index(
+            "ix_wallet_topup_requests_wallet_created",
+            "wallet_id",
+            "created_at",
+            "id",
+        ),
+        Index(
+            "ix_wallet_topup_requests_requested_by_created",
+            "requested_by",
+            "created_at",
+            "id",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    wallet_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("wallets.id", ondelete="RESTRICT"), nullable=False
+    )
+    requested_by: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default=text("'PENDING'")
+    )
+    reviewed_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    wallet_transaction_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("wallet_transactions.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    idempotency_record_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("idempotency_records.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.current_timestamp()
     )
 
 

@@ -1,10 +1,14 @@
 """Wallet and promotion API schemas."""
 
-from datetime import datetime
+import re
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+MONEY_PATTERN = re.compile(r"^[0-9]{1,10}(?:\.[0-9]{1,2})?$")
 
 
 class StrictRequest(BaseModel):
@@ -19,7 +23,31 @@ class TopUpRequest(StrictRequest):
     def require_money_string(cls, value):
         if not isinstance(value, str):
             raise ValueError("Số tiền phải được gửi dưới dạng chuỗi.")
-        return value
+        stripped = value.strip()
+        if not MONEY_PATTERN.fullmatch(stripped):
+            raise ValueError(
+                "Số tiền phải là chuỗi thập phân dương, tối đa 10 chữ số nguyên và 2 chữ số lẻ."
+            )
+        parsed = Decimal(stripped).quantize(Decimal("0.01"))
+        if parsed <= 0:
+            raise ValueError("Số tiền nạp phải lớn hơn 0.")
+        return parsed
+
+
+class TopUpApproveRequest(StrictRequest):
+    pass
+
+
+class TopUpRejectRequest(StrictRequest):
+    reason: str = Field(min_length=1, max_length=2000)
+
+    @field_validator("reason")
+    @classmethod
+    def normalize_reason(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Lý do từ chối không được để trống.")
+        return normalized
 
 
 class WalletStatusUpdate(StrictRequest):
@@ -95,14 +123,42 @@ class PromotionStatusUpdate(StrictRequest):
     status: Literal["ACTIVE", "DISABLED"]
 
 
+def _utc_datetime(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def topup_request_out(row) -> dict:
+    return {
+        "id": str(row.id),
+        "wallet_id": str(row.wallet_id),
+        "requested_by": str(row.requested_by),
+        "amount": f"{row.amount:.2f}",
+        "status": row.status,
+        "payment_mode": "DEMO",
+        "created_at": _utc_datetime(row.created_at),
+        "reviewed_by": str(row.reviewed_by) if row.reviewed_by is not None else None,
+        "reviewed_at": _utc_datetime(row.reviewed_at),
+        "rejection_reason": row.rejection_reason,
+        "wallet_transaction_id": (
+            str(row.wallet_transaction_id)
+            if row.wallet_transaction_id is not None
+            else None
+        ),
+    }
+
+
 def wallet_out(wallet) -> dict:
     return {
         "id": str(wallet.id),
         "user_id": str(wallet.user_id),
         "balance": f"{wallet.balance:.2f}",
         "status": wallet.status,
-        "created_at": wallet.created_at,
-        "updated_at": wallet.updated_at,
+        "created_at": _utc_datetime(wallet.created_at),
+        "updated_at": _utc_datetime(wallet.updated_at),
     }
 
 
@@ -122,7 +178,7 @@ def wallet_transaction_out(row) -> dict:
         "balance_before": f"{row.balance_before:.2f}",
         "balance_after": f"{row.balance_after:.2f}",
         "status": row.status,
-        "created_at": row.created_at,
+        "created_at": _utc_datetime(row.created_at),
     }
 
 

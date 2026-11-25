@@ -50,7 +50,7 @@ from app.models import (
     Wallet,
 )
 
-EXPECTED_HEAD = "f4c2a1b8e901"
+EXPECTED_HEAD = "d7e4b2c9a105"
 UTC = timezone.utc
 
 

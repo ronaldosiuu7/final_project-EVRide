@@ -102,7 +102,7 @@ FAQS = [
         "id": "demo_money",
         "question": "Ví có dùng tiền thật không?",
         "aliases": ["tiền thật", "tiền mô phỏng", "thanh toán thật"],
-        "answer": "V1 dùng tiền mô phỏng. Nạp demo chỉ hoạt động khi tính năng này được bật.",
+        "answer": "V1 dùng tiền mô phỏng. Yêu cầu nạp demo cần nhân viên xác nhận và chỉ hoạt động khi tính năng này được bật.",
         "source": "decisions",
         "source_title": "EVRide V1 – Mục 9: Thanh toán",
     },

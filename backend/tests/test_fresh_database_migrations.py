@@ -32,7 +32,7 @@ os.environ.update({
 from app.models import Base, RentalIncident
 
 
-ALEMBIC_HEAD = "f4c2a1b8e901"
+ALEMBIC_HEAD = "d7e4b2c9a105"
 
 
 def _make_schema():
@@ -221,3 +221,96 @@ def test_migration_accepts_existing_empty_rental_incidents_table(migration_conte
         ).scalar_one()
     assert revision == ALEMBIC_HEAD
     assert incident_count == 0
+
+
+def test_topup_migration_preserves_legacy_topups_and_guards_downgrade(migration_context):
+    engine, config = migration_context
+
+    command.upgrade(config, "f4c2a1b8e901")
+
+    with engine.begin() as connection:
+        customer_id = connection.execute(
+            text(
+                "INSERT INTO users (name, email, password, role, status) "
+                "VALUES ('Legacy', 'legacy@test.vn', 'hash', 'CUSTOMER', 'ACTIVE') "
+                "RETURNING id"
+            )
+        ).scalar_one()
+        staff_id = connection.execute(
+            text(
+                "INSERT INTO users (name, email, password, role, status) "
+                "VALUES ('Staff', 'staff@test.vn', 'hash', 'STAFF', 'ACTIVE') "
+                "RETURNING id"
+            )
+        ).scalar_one()
+        wallet_id = connection.execute(
+            text(
+                "INSERT INTO wallets (user_id, balance, status) "
+                "VALUES (:uid, 250000.00, 'ACTIVE') RETURNING id"
+            ),
+            {"uid": customer_id},
+        ).scalar_one()
+        connection.execute(
+            text(
+                "INSERT INTO wallet_transactions "
+                "(wallet_id, amount, type, balance_before, balance_after, status) "
+                "VALUES (:wid, 250000.00, 'TOPUP', 0.00, 250000.00, 'SUCCESS')"
+            ),
+            {"wid": wallet_id},
+        )
+
+    command.upgrade(config, "head")
+
+    inspector = inspect(engine)
+    assert "wallet_topup_requests" in set(inspector.get_table_names())
+    topup_cols = {col["name"] for col in inspector.get_columns("wallet_topup_requests")}
+    assert {
+        "id",
+        "wallet_id",
+        "requested_by",
+        "amount",
+        "status",
+        "reviewed_by",
+        "reviewed_at",
+        "rejection_reason",
+        "wallet_transaction_id",
+        "idempotency_record_id",
+        "created_at",
+    }.issubset(topup_cols)
+    wt_uniques = {u["name"] for u in inspector.get_unique_constraints("wallet_transactions")}
+    assert "uq_wallet_transactions_id_wallet" in wt_uniques
+
+    with engine.connect() as connection:
+        legacy_row = connection.execute(
+            text(
+                "SELECT type, status, amount, balance_before, balance_after "
+                "FROM wallet_transactions WHERE wallet_id = :wid"
+            ),
+            {"wid": wallet_id},
+        ).mappings().one()
+        request_count = connection.execute(
+            text("SELECT count(*) FROM wallet_topup_requests")
+        ).scalar_one()
+
+    assert legacy_row["type"] == "TOPUP"
+    assert legacy_row["status"] == "SUCCESS"
+    assert str(legacy_row["amount"]) == "250000.00"
+    assert request_count == 0
+
+    # Downgrade khi bảng mới còn rỗng phải thành công và upgrade lại sạch.
+    command.downgrade(config, "f4c2a1b8e901")
+    command.upgrade(config, "head")
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO wallet_topup_requests (wallet_id, requested_by, amount, status) "
+                "VALUES (:wid, :uid, 50000.00, 'PENDING')"
+            ),
+            {"wid": wallet_id, "uid": customer_id},
+        )
+        # Kiểm tra cột và constraint mới có mặt.
+        assert staff_id > 0
+
+    with pytest.raises(RuntimeError):
+        command.downgrade(config, "f4c2a1b8e901")

@@ -23,7 +23,8 @@ Mã nguồn backend hiện tổ chức tại `backend/app/api/v1/`, `backend/app
   **`station → customer(users) → wallet → vehicle → rental → incident`** (khóa nhiều dòng cùng nhóm theo `id` tăng dần; chỉ khóa các tài nguyên thực sự cần cho thao tác). Sau khi giành khóa phải đọc lại dữ liệu và dùng giờ thực tế của PostgreSQL (`clock_timestamp()`) để xét hạn giữ chỗ/báo giá.
 - Mỗi thao tác nguyên tử có một chủ sở hữu transaction. Lỗi trước khi commit sẽ rollback toàn bộ thay đổi của thao tác; tiếp nhận xe trả (`initiate-return`) và quyết toán trả xe (`return`) là hai transaction độc lập theo hợp đồng API.
 - Các endpoint ghi có gắn `I` sử dụng chung bảng `idempotency_records`: gửi lại cùng `Idempotency-Key` và cùng request body sẽ replay nguyên HTTP status/payload; cùng key nhưng khác body trả `409 IDEMPOTENCY_CONFLICT`.
-- Các service `fleet.py`, `operations.py`, `promotions.py`, `files.py` chỉ sửa tài nguyên thuộc phạm vi của mình; điều chuyển xe ghi `vehicle_move_audits` trong cùng transaction với cập nhật vị trí xe.
+- Các service `fleet.py`, `operations.py`, `promotions.py`, `files.py`, `wallets.py` chỉ sửa tài nguyên thuộc phạm vi của mình; điều chuyển xe ghi `vehicle_move_audits` trong cùng transaction với cập nhật vị trí xe.
+- Luồng phê duyệt nạp ví (`wallets.py`) khóa theo thứ tự `customer (users) → wallet → wallet_topup_requests`, bảo toàn tính nguyên tử giữa cập nhật `wallets.balance`, tạo `WalletTransaction TOPUP SUCCESS`, chuyển trạng thái `APPROVED` và ghi `AuditLog`.
 
 ## 2. Ranh giới phân hệ sự cố và kiểm tra 24 giờ
 

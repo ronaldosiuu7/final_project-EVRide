@@ -24,7 +24,7 @@ Các giá trị dưới đây bao gồm quy ước từ hợp đồng API và ph
 | Ghi GPS demo | Dữ liệu không được trước lúc nhận xe hoặc quá giờ server hơn 30 giây | Chỉ demo; endpoint phải tắt khi chạy thật nếu chưa có tích hợp thiết bị được duyệt. |
 | Dữ liệu GPS cũ | Code demo đánh dấu stale khi quá 60 giây hoặc không có điểm | Hiển thị thời điểm cập nhật; không dùng stale để kết luận mất xe. |
 | Chuyến dài ngày | Kiểm tra lần đầu sau 24 giờ từ actual_start_time | Đã thu gọn 13/11/2026: danh sách động `/rental-check-ins` (`next_check_at`), không dùng worker cảnh báo riêng, xem mục 12.1. |
-| Thanh toán demo | Chỉ bật rõ ràng qua `DEMO_PAYMENTS_ENABLED` | Chưa có giá trị mặc định quy định trong hợp đồng. Không dùng luồng demo để nhận tiền thật. |
+| Thanh toán demo | Chỉ bật rõ ràng qua `DEMO_PAYMENTS_ENABLED` cho tạo và duyệt yêu cầu nạp | Khách gửi yêu cầu (`PENDING`); `STAFF`/`MANAGER` duyệt mới cộng ví. Không dùng luồng demo để nhận tiền thật. |
 
 ## 2. Bảng trạng thái quyết định V1
 
@@ -50,7 +50,7 @@ phân bổ cọc, tách điều kiện chặn khách/chặn xe, khuyến mãi v�
 | 6. Số chuyến & Giới hạn hủy | **Đã chốt R2, bổ sung theo mục 12 ngày 12/11/2026:** Mỗi khách tối đa một lượt giữ/chuyến chưa giải quyết. Mỗi xe tối đa một rental đang giữ quyền sử dụng; xe sự cố được giải phóng hợp lệ có thể cho thuê lại dù khách cũ chưa quyết toán. Tách điều kiện chặn khách và chặn xe. Giữ giới hạn 3 lượt hủy/hết hạn/ngày, Lazy Expiration và thứ tự khóa station → customer → wallet → vehicle → rental. | Nguyễn Đức Anh — 02/11/2026; bổ sung theo quyết định người dùng — 12/11/2026 |
 | 7. Trả xe khi thiếu tiền / ví khóa | **Đã duyệt (R2):** Đóng băng cước tại `return_initiated_at` khi nhân viên kiểm tra nhận xe thực tế (`POST /rentals/{id}/initiate-return`); trạng thái `RETURN_PENDING`, quote hiệu lực 10 phút. Chờ thanh toán không tính thêm cước và không cho thuê lại xe đang chờ. | Nguyễn Đức Anh  — 02/11/2026 |
 | 8. Khuyến mãi | **Yêu cầu đã xác định (08/11/2026):** `PERCENTAGE`/`FIXED_AMOUNT`; scope tùy chọn theo mẫu xe (không lọc `vehicle_type` vì chỉ dùng xe điện); mã mới có `usage_limit` dương; chỉ tăng `used_count` và đánh dấu claim đã dùng cùng transaction thanh toán thành công. Tiền giảm không vượt rental_fee; tổng sau giảm làm tròn 1 VND `HALF_UP` theo R2. `min_rental_amount` và `max_discount_amount` tiếp tục tùy chọn. Ngoại lệ đã chốt ngày 12/11/2026: không áp dụng hoặc tiêu thụ mã khi quyết toán sự cố; xem mục 12.7. | Yêu cầu người dùng — 08/11/2026; bổ sung ngoại lệ — 12/11/2026 |
-| 9. Thanh toán thật | Đã duyệt về phạm vi V1: Chỉ sử dụng tiền mô phỏng qua DEMO_PAYMENTS_ENABLED; không triển khai hoặc bật thanh toán thật. Provider, webhook xác nhận từ server và đối soát nằm ngoài phạm vi V1; chưa chốt phương án tích hợp production. | Nguyễn Đức Anh — 02/11/2026 |
+| 9. Thanh toán thật & nạp ví demo | Đã duyệt về phạm vi V1: Chỉ sử dụng tiền mô phỏng qua `DEMO_PAYMENTS_ENABLED`, không triển khai thanh toán thật/ngân hàng/QR/webhook. **Cập nhật 25/11/2026:** Thay luồng nạp cộng ngay bằng quy trình khách tạo yêu cầu (`PENDING`) và `STAFF`/`MANAGER` xác nhận (`APPROVED`/`REJECTED`) mới cộng ví. | Nguyễn Đức Anh — 02/11/2026; bổ sung phê duyệt nạp ví — 25/11/2026 |
 | 10. GPS và upload giấy tờ | GPS demo/upload cục bộ đã có code; GPS thật, kho ảnh production và hợp đồng tích hợp thật còn cần duyệt. | Chưa xác định |
 | 11. Phạm vi quyền nhân viên | Đã duyệt: STAFF được thực hiện pickup/return/move tại bất kỳ trạm nào, tuân thủ điều kiện nghiệp vụ của từng thao tác. MANAGER quản trị toàn hệ thống. Phân công và giới hạn quyền theo trạm nằm ngoài phạm vi V1. | Nguyễn Đức Anh — 02/11/2026 |
 | 12. Mất/trộm/bỏ xe và thu hồi | **Đã triển khai & thu gọn ngày 13/11/2026 (thay thế phần định giá/tranh chấp/hoàn bồi thường qua ví ngày 12/11/2026).** Danh sách cần kiểm tra 24 giờ qua `/rental-check-ins`; bỏ bước gán `assign` và endpoint `/inspection` tách rời; dùng chung `/maintenance-orders` (`incident_id`); tiền cọc chỉ cấn tiền thuê (`settle-rent`) và hoàn dư về ví (`deposit/refund`); định giá, thương lượng và thanh toán/hoàn trả bồi thường diễn ra **ngoài hệ thống** và ghi nhận qua một bước `POST /compensation/external-settlement`; đóng rental bằng `CLOSED_INCIDENT`. | Người dùng — 12/11/2026 (thu gọn 13/11/2026) |
@@ -282,7 +282,7 @@ Schema cần bổ sung ngày sinh đã xác minh, hạn CCCD, thông tin ngườ
 
 **`station → customer → wallet → vehicle → rental`**. `customer` là dòng trong bảng `users` có vai trò CUSTOMER. Trong cùng một nhóm, khóa theo ID tăng dần; chỉ bỏ qua nhóm không cần dùng, tuyệt đối không khóa ngược thứ tự.
 
-- Chọn **customer làm khóa điều phối bắt buộc** cho mọi thao tác của khách có thay đổi giữ xe, chuyến, ví, cọc hoặc hạn mức, kể cả nạp tiền và MANAGER đổi trạng thái ví. Vì customer–wallet là 1–1, đọc ví dưới khóa customer không cần thêm SELECT FOR UPDATE ví chỉ để tuần tự hóa. Không được tùy luồng chọn customer hoặc wallet làm khóa thay thế.
+- Chọn **customer làm khóa điều phối bắt buộc** cho mọi thao tác của khách có thay đổi giữ xe, chuyến, ví, cọc hoặc hạn mức, kể cả tạo/duyệt/từ chối yêu cầu nạp tiền (`customer -> wallet -> wallet_topup_requests`) và MANAGER đổi trạng thái ví. Vì customer–wallet là 1–1, đọc ví dưới khóa customer không cần thêm SELECT FOR UPDATE ví chỉ để tuần tự hóa. Không được tùy luồng chọn customer hoặc wallet làm khóa thay thế.
 - UPDATE ví vẫn tạo khóa dòng thực tế. Nếu luồng sẽ cập nhật ví sau khi đã khóa vehicle/rental, phải khóa wallet trước vehicle/rental theo thứ tự trên (hoặc thực hiện cập nhật ví đúng thứ tự). Không được hiểu quan hệ 1–1 là loại bỏ mọi nhu cầu khóa ví. Khóa ẩn do UPDATE/FK cũng cần được review.
 - Khóa tất cả trạm liên quan (điều chuyển: cả trạm nguồn/đích), sau đó tất cả customer liên quan, wallet cần ghi, vehicle và rental. Bản ghi quote/promotion/idempotency dùng thêm phải có thứ tự ổn định sau các nhóm trên; không giữ khóa phụ rồi quay lại khóa station/customer.
 - Lazy Expiration có thể chạm xe khác của cùng khách hoặc khách khác đang giữ xe được chọn. Đọc sơ bộ để thu thập đầy đủ tập trạm/customer/xe/rental, khóa theo thứ tự, rồi đọc lại xác minh. Nếu phát hiện thêm tài nguyên hoặc quan hệ thay đổi, rollback và retry với tập đầy đủ; không khóa bổ sung một nhóm đứng trước khi đã giữ nhóm sau.
@@ -308,7 +308,7 @@ trạng thái xe đang phục vụ một chuyến mới.
 - Return quyết toán chỉ thành công khi rental RETURN_PENDING, xe vẫn ở trạm đã ghi nhận, ví ACTIVE, quote hợp lệ và đủ phần thu thêm. Không kiểm tra "còn một chỗ trống" thêm lần nữa: xe đã chiếm chỗ khi initiate-return, tránh từ chối sai khi chính nó làm trạm đầy.
 - Thiếu tiền: trả INSUFFICIENT_BALANCE, giữ rental/xe RETURN_PENDING và biên bản RETURN đã ghi; không phát hành hóa đơn PAID, không tiêu thụ mã, không trừ thêm/cấn trừ cọc dở. Không rollback lần tiếp nhận vật lý đã commit trước đó và không khởi động lại đồng hồ phí.
 - Ví FROZEN/LOCKED: từ chối quyết toán với lỗi ví theo contract, kể cả cọc đủ; MANAGER xử lý trạng thái ví trước khi thử lại. Không ngăn tiếp nhận xe thực tế/đóng băng cước chỉ vì ví khóa hoặc thiếu tiền.
-- Khách nạp bổ sung qua luồng demo được bật riêng. Nếu quote còn hiệu lực thì dùng lại, nếu hết hạn thì lấy mới; phí thuê vẫn theo mốc cố định.
+- Khách gửi yêu cầu nạp bổ sung qua luồng demo được bật riêng và chờ `STAFF`/`MANAGER` xác nhận trước khi số dư ví tăng. Nếu quote còn hiệu lực thì dùng lại, nếu hết hạn thì lấy mới; phí thuê vẫn theo mốc cố định.
 - Khi quyết toán thành công, ghi hóa đơn PAID, bút toán cấn trừ/hoàn cọc/thu thêm, tiêu thụ mã, rental COMPLETED, settled_at và xe AVAILABLE/MAINTENANCE theo tình trạng trong cùng transaction. Không tạo biên bản RETURN thứ hai; xe AVAILABLE pin thấp vẫn bị bộ lọc thuê loại. Retry không ghi sổ hai lần; lỗi giữa transaction quyết toán rollback phần quyết toán, giữ nguyên phiên tiếp nhận đã commit.
 
 Ví dụ: nhân viên tiếp nhận sau 5 giờ 30 phút, phí cố định 115.000đ; cọc 100.000đ, ví còn 10.000đ thì cần thu thêm 15.000đ, thiếu 5.000đ. Xe ở trạm và rental RETURN_PENDING. Khách nạp thêm 5.000đ sau 12 phút: quote đầu đã hết hạn, lấy quote mới vẫn có phí thuê 115.000đ nếu không thay khuyến mãi; quyết toán xong ví còn 0đ. Không cộng 12 phút chờ vào cước.
@@ -353,13 +353,16 @@ Mọi mở rộng ngoài phạm vi trên cần quyết định riêng; không l�
   đã sử dụng, sửa hóa đơn hoặc mở thêm nghĩa vụ tài chính
   sự cố theo mục 12.8.
 
-## 9. Thanh toán thật
+## 9. Thanh toán thật và phê duyệt nạp ví demo
 
 **Đã chốt về phạm vi:** V1 là đồ án demo, chỉ sử dụng tiền mô phỏng. Không triển khai thanh toán thật và không chốt nhà cung cấp hoặc cấu hình production trong lần cập nhật này.
 
-- Luồng nạp tiền demo chỉ hoạt động khi được bật rõ ràng qua `DEMO_PAYMENTS_ENABLED`.
-- Giao diện ví, nạp tiền và thanh toán phải có nhãn **“Tiền mô phỏng”** để tránh nhầm với giao dịch tiền thật.
-- Không sử dụng luồng demo để nhận tiền thật. Không coi dữ liệu xác nhận do client tự gửi là bằng chứng đã thanh toán thật.
+- **Quy trình nạp ví qua phê duyệt (`25/11/2026`):** Thay thế luồng nạp cộng ngay trước đây. `CUSTOMER` gửi yêu cầu nạp tiền ở trạng thái `PENDING` (chưa thay đổi số dư, chưa tạo `WalletTransaction TOPUP SUCCESS`). `STAFF` hoặc `MANAGER` kiểm tra và xác nhận (`APPROVED`: cộng đúng số tiền vào ví và ghi một `WalletTransaction TOPUP SUCCESS` nguyên tử) hoặc từ chối (`REJECTED` kèm lý do bắt buộc, không cộng tiền).
+- Số tiền yêu cầu là bất biến; không tự duyệt yêu cầu của mình; yêu cầu đã xử lý không thể mở lại hoặc đổi trạng thái. Tài khoản khách và ví phải ở trạng thái `ACTIVE` tại cả thời điểm tạo và thời điểm duyệt; vẫn cho phép từ chối yêu cầu `PENDING` khi ví đã bị khóa.
+- Luồng tạo và duyệt yêu cầu nạp tiền demo chỉ hoạt động khi được bật rõ ràng qua `DEMO_PAYMENTS_ENABLED`. Tra cứu danh sách/chi tiết và thao tác từ chối yêu cầu không yêu cầu bật cờ này.
+- Các giao dịch `TOPUP SUCCESS` lịch sử của luồng cũ trong `wallet_transactions` được giữ nguyên và đọc bình thường, không chuyển thành `PENDING` hoặc tạo người duyệt giả.
+- Giao diện ví, yêu cầu nạp tiền, phê duyệt và thanh toán phải có nhãn **“Tiền mô phỏng”** để tránh nhầm với giao dịch tiền thật. Thao tác nhân viên xác nhận trong demo không phải là xác nhận thanh toán từ ngân hàng.
+- Không tích hợp ngân hàng, QR chuyển tiền, webhook thật hoặc sử dụng luồng demo để nhận tiền thật. Không coi dữ liệu xác nhận do client tự gửi là bằng chứng đã thanh toán thật.
 - Tài liệu đồ án phải ghi rõ: thanh toán thật cần tích hợp nhà cung cấp như VNPay/MoMo/ZaloPay, xác minh webhook tại backend và cơ chế đối soát giao dịch (reconciliation). Toàn bộ phần tích hợp này nằm ngoài phạm vi V1.
 - Thiết kế thể hiện điểm mở rộng bằng interface `PaymentProvider`, tách xử lý thanh toán khỏi nghiệp vụ thuê xe. V1 chỉ sử dụng phần triển khai mô phỏng.
 - Khi trình bày với giám khảo, giải thích cách bổ sung nhà cung cấp thật qua interface này; không bật production hoặc sử dụng giao dịch tiền thật để minh họa.
