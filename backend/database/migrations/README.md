@@ -9,10 +9,14 @@ Lưu lịch sử thay đổi schema PostgreSQL.
 - Revision `888ad91e139e` yêu cầu xử lý tường minh dữ liệu legacy trước khi chạy; migration tự từ chối nếu phát hiện giá/ảnh/xác minh giấy tờ không thể chuyển đổi an toàn.
 - Tạo revision mới bằng `python -m alembic revision --autogenerate -m "description"` rồi review và chạy thử trước khi áp dụng; không chạy `upgrade head` ngoài môi trường đã được xác nhận.
 
-## Lịch sử revision sự cố và kiểm tra 24 giờ
+## Lịch sử revision sự cố, kiểm tra 24 giờ và phê duyệt nạp ví
 
-Head hiện tại trong mã nguồn: `f4c2a1b8e901` (cha `e8a412c9f603`, trước đó là `de606e75dbc8`).
+Head hiện tại trong mã nguồn: `d7e4b2c9a105` (cha `f4c2a1b8e901`, trước đó là `e8a412c9f603`, `de606e75dbc8`).
 Trước khi chạy migration trên môi trường bất kỳ, chạy `python -m alembic heads` và `python -m alembic current` từ `backend/`.
+
+Các thay đổi mới nhất trong `d7e4b2c9a105`:
+
+- Bảng `wallet_topup_requests` (`PENDING` / `APPROVED` / `REJECTED`), CHECK toàn vẹn trạng thái/thời gian/không tự duyệt, và unique `uq_wallet_transactions_id_wallet` trên `wallet_transactions` để liên kết ví đồng nhất khi duyệt, bảo toàn toàn bộ `TOPUP SUCCESS` lịch sử.
 
 Các thay đổi trong `e8a412c9f603` và `f4c2a1b8e901` (xem chi tiết tại [docs/database.md](../../../docs/database.md)):
 

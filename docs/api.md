@@ -1,6 +1,6 @@
 # EVRide — API bàn giao Frontend
 
-Cập nhật theo router backend ngày **13/11/2026**. Đây là bản tra cứu ngắn các API đã có trong mã nguồn, không gồm API dự kiến.
+Cập nhật theo router backend ngày **25/11/2026**. Đây là bản tra cứu ngắn các API đã có trong mã nguồn, không gồm API dự kiến. Xem thêm [bàn giao luồng phê duyệt nạp ví](topup-approval-handover.md).
 
 ## 1. Cách đọc và kết nối
 
@@ -80,13 +80,18 @@ Upload ảnh trước để lấy ID, sau đó dùng ID khi tạo giấy tờ ho
 
 ## 5. Ví và khuyến mãi
 
-Ví/nạp tiền là mô phỏng trong V1. Frontend lấy số dư và kết quả giao dịch từ backend.
+Ví/nạp tiền là mô phỏng trong V1. Khách tạo yêu cầu nạp ở trạng thái `PENDING` và cần `STAFF`/`MANAGER` xác nhận trước khi cộng số dư ví. Frontend tách danh sách yêu cầu nạp (`/wallets/me/topups`) khỏi lịch sử tiền đã vào ví (`/wallets/me/transactions`), và lấy số dư từ backend. Xem chi tiết tại [tài liệu bàn giao phê duyệt nạp tiền](topup-approval-handover.md).
 
 | Method | Endpoint | Quyền | Nội dung / dữ liệu chính |
 | --- | --- | --- | --- |
 | GET | `/wallets/me` | C | Số dư và trạng thái ví của mình. |
 | GET | `/wallets/me/transactions` | C | Lịch sử ví; lọc `type`, `status`, `from`, `to`. |
-| POST | `/wallets/me/topups` | C · K | Nạp demo: `amount`. |
+| GET | `/wallets/me/topups` | C | Danh sách yêu cầu nạp của mình; lọc `status` (`PENDING`\|`APPROVED`\|`REJECTED`), phân trang. |
+| POST | `/wallets/me/topups` | C · K | **Breaking change:** tạo yêu cầu nạp `PENDING` (`amount`), chưa cộng ví ngay. |
+| GET | `/wallet-topup-requests` | S/M | Danh sách yêu cầu nạp toàn hệ thống; lọc `status`, `customer_id`, phân trang. |
+| GET | `/wallet-topup-requests/{id}` | Chủ yêu cầu, S/M | Chi tiết một yêu cầu nạp; khách khác nhận `404`. |
+| POST | `/wallet-topup-requests/{id}/approve` | S/M · K | Duyệt `PENDING` → `APPROVED`, cộng ví và tạo `WalletTransaction TOPUP SUCCESS`. |
+| POST | `/wallet-topup-requests/{id}/reject` | S/M · K | Từ chối `PENDING` → `REJECTED`, bắt buộc `reason`; cho phép dù ví bị khóa. |
 | GET | `/users/{user_id}/wallet` | M | Xem ví khách. |
 | PATCH | `/wallets/{wallet_id}/status` | M | `status`: `ACTIVE`, `FROZEN` hoặc `LOCKED`. |
 | GET | `/promotions` | User | Danh sách mã khuyến mãi; lọc `status`, phạm vi theo vai trò. |

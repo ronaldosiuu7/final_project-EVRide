@@ -27,6 +27,8 @@ Tài liệu xác định phạm vi kiểm thử của hệ thống EVRide, công
   - `test_rental_flow.py`: Giữ xe 30 phút, tranh chấp đồng thời 2 khách đặt cùng 1 xe, kiểm tra số dư, idempotency, hết hạn/hủy giữ chỗ và thu cọc khi pickup trên PostgreSQL.
   - `test_incident_checkin_flow.py`: Danh sách kiểm tra 24 giờ (`/rental-check-ins`), `NO_ANSWER`, `ESCALATE` nguyên tử, `FALSE_ALARM`, vòng đời sự cố `LOSS_THEFT`, quyết toán thuê/hoàn cọc dư, bồi thường ngoài hệ thống, đóng hồ sơ, thu hồi sau đóng, bảo trì dùng chung (`incident_id`), `MANAGER` giải phóng xe và phân quyền HTTP trên PostgreSQL.
   - `test_external_compensation.py`: Kiểm thử schema, quy tắc nghiệp vụ, RBAC và idempotency cho luồng bồi thường ngoài hệ thống và hoàn tất sự cố.
+  - `test_wallet_topup_approval.py`: Kiểm thử tạo yêu cầu nạp ví `PENDING`, RBAC/cô lập dữ liệu khách, duyệt (`STAFF`/`MANAGER`) và từ chối (`reason`), điều kiện ví/tài khoản/`DEMO_PAYMENTS_ENABLED`/trần số dư, idempotency, rollback khi lỗi giữa quy trình, giữ nguyên `TOPUP` lịch sử, đồng thời 2 lần duyệt / duyệt-từ chối / duyệt đua với `pickup` và check constraints trên PostgreSQL.
+  - `test_fresh_database_migrations.py`: Kiểm thử nâng cấp Alembic từ DB rỗng lên head (`d7e4b2c9a105`), bảo toàn dữ liệu `TOPUP SUCCESS` lịch sử và từ chối downgrade khi đã có `wallet_topup_requests`.
   - `test_rental_pricing.py`, `test_promotions.py`, `test_business_schemas.py`, `test_demo_fixtures.py`: Unit test cho tính giá thuê/cọc, khuyến mãi, ràng buộc schema tiền tệ và dữ liệu seed demo.
 - Kiểm thử giao diện (thủ công): trình duyệt Chrome ở kích thước 1280px và 390px.
 
@@ -123,3 +125,18 @@ chối khi chưa có phương án bảo toàn, không drop mất lịch sử ti�
 | OPS-04 | GPS không điểm, tuổi điểm đúng 60 giây và quá 60 giây | Không điểm stale; code hiện dùng quá 60 giây; trả recorded_at/ngưỡng để UI hiển thị, không kết luận mất xe |
 | OPS-05 | Review owner COMPLETED, lần hai/đồng thời; trạng thái khác | Chỉ một review bằng unique; lần hai ALREADY_REVIEWED; không cho IN_RENT/CLOSED_INCIDENT hoặc khách khác |
 | OPS-06 | Ít nhất 10 FAQ chuẩn, link nguồn, câu mơ hồ/ngoài phạm vi | Hiện có 12 câu; mỗi đáp án khớp có nguồn truy cập được; không bịa khi không khớp/khớp nhiều; thiếu nguồn báo lỗi phụ thuộc |
+
+## 8. Ca kiểm thử phê duyệt nạp tiền ví (`test_wallet_topup_approval.py`)
+
+| Mã | Tình huống | Kết quả bắt buộc |
+| --- | --- | --- |
+| TOPUP-01 | Tạo yêu cầu (`POST /wallets/me/topups`) | Trả `201`, trạng thái `PENDING`, `wallets.balance` giữ nguyên, chưa tạo `WalletTransaction TOPUP SUCCESS`, ghi `AuditLog` |
+| TOPUP-02 | Số tiền âm/0/NaN/Infinity/vượt giới hạn hoặc extra field (`status`, `reviewed_by`, `wallet_transaction_id`) | `422 VALIDATION_ERROR` (kể cả trên `/approve`), không thay đổi DB |
+| TOPUP-03 | Khách khác xem chi tiết; khách tự duyệt/từ chối hoặc xem danh sách tổng | Khách khác nhận `404`; tự duyệt/xem danh sách tổng bị `403 FORBIDDEN` |
+| TOPUP-04 | `STAFF` hoặc `MANAGER` duyệt `PENDING` | Duyệt được, cộng ví một lần, tạo đúng 1 `WalletTransaction TOPUP SUCCESS`, ghi `before`/`after` và `AuditLog` |
+| TOPUP-05 | Từ chối kèm/thiếu `reason`; từ chối khi ví `LOCKED` và `DEMO_PAYMENTS_ENABLED=false` | Thiếu/rỗng `reason` trả `422`; có `reason` chuyển `REJECTED`, giữ nguyên số dư kể cả khi ví khóa hoặc cờ demo tắt |
+| TOPUP-06 | Đổi trạng thái yêu cầu đã `APPROVED`/`REJECTED` | `409 INVALID_STATE_TRANSITION`, không tạo giao dịch mới |
+| TOPUP-07 | Ví/tài khoản bị khóa, vượt trần `Numeric(12,2)` hoặc tắt `DEMO_PAYMENTS_ENABLED` trước khi duyệt | Trả lỗi tương ứng (`409`/`403`/`503`), giữ `PENDING`, không đổi số dư |
+| TOPUP-08 | Idempotency-Key cho tạo, duyệt, từ chối | Thiếu key `400`; replay cùng key/body trả nguyên kết quả; khác body `409 IDEMPOTENCY_CONFLICT` |
+| TOPUP-09 | Concurrency trên PostgreSQL: 2 duyệt đồng thời, duyệt vs từ chối, duyệt vs `pickup`, lỗi giữa transaction duyệt | Chỉ 1 thao tác thắng; không mất cập nhật số dư; lỗi giữa quy trình rollback hoàn toàn |
+| TOPUP-10 | Dữ liệu `TOPUP SUCCESS` lịch sử & luồng thuê/trả/hoàn cọc | Vẫn đọc đúng qua `/wallets/me/transactions`, migration bảo toàn lịch sử, thuê/trả/hoàn cọc hoạt động bình thường |

@@ -1,6 +1,6 @@
 # EVRide V1 — Hợp đồng API
 
-Ngày soạn: **21/10/2026**. Cập nhật đồng bộ backend: **13/11/2026** theo [v1-decisions.md](v1-decisions.md).
+Ngày soạn: **21/10/2026**. Cập nhật đồng bộ backend: **25/11/2026** theo [v1-decisions.md](v1-decisions.md).
 Base URL: `/api/v1` (`backend/app/api/v1/`). Định dạng: JSON, UTF-8.
 
 Tài liệu này là nguồn hợp đồng API chính của EVRide V1, đối chiếu cùng [Thiết kế database](database.md), [Phạm vi nghiệp vụ](requirements.md), [Kiến trúc hệ thống](architecture.md) và [Đặc tả báo cáo](dac_ta_quan_tri_bao_cao.md).
@@ -216,7 +216,8 @@ Các schema bên dưới liệt kê trường response. ID/tiền/thời gian th
 | `invoices` | Invoice: `id, rental_id, total_amount, status, created_at` | Owner/S/M |
 | `transactions` | Transaction: `id, rental_id, invoice_id?, actor_id, amount, kind, status, created_at` | Owner/S/M |
 | `wallets` | Wallet: `id, user_id, balance, status, created_at, updated_at` | Chủ ví/M |
-| `wallet_transactions` | WalletTransaction: `id, wallet_id, rental_id?, amount, type, balance_before, balance_after, status, created_at` | Chủ ví/M |
+| `wallet_transactions` | WalletTransaction: `id, wallet_id, rental_id?, transaction_id?, idempotency_record_id?, amount, type, balance_before, balance_after, status, created_at` | Chủ ví/M |
+| `wallet_topup_requests` | TopUpRequest: `id, wallet_id, requested_by, amount, status, payment_mode, created_at, reviewed_by?, reviewed_at?, rejection_reason?, wallet_transaction_id?` | Chủ yêu cầu/S/M |
 | `promotions` | Promotion: `id, code, description?, discount_type, discount_value, max_discount_amount?, min_rental_amount?, vehicle_model?, usage_limit?, used_count, start_date, end_date, status, created_at` | C xem mã đủ điều kiện; M xem tất cả |
 | `user_promotions` | UserPromotion: `id, user_id, promotion_id, is_used, used_at?, promotion` | Chủ sở hữu/M |
 | `support_tickets` | Ticket: `id, rental_id, created_by, assigned_to?, title, description, status, resolution_note?, resolved_at?, created_at, updated_at` | Owner/S/M |
@@ -612,7 +613,7 @@ trạng thái xe đang phục vụ một chuyến mới.
 - Return quyết toán chỉ thành công khi rental RETURN_PENDING, xe vẫn ở trạm đã ghi nhận, ví ACTIVE, quote hợp lệ và đủ phần thu thêm. Không kiểm tra "còn một chỗ trống" thêm lần nữa: xe đã chiếm chỗ khi initiate-return, tránh từ chối sai khi chính nó làm trạm đầy.
 - Thiếu tiền: trả INSUFFICIENT_BALANCE, giữ rental/xe RETURN_PENDING và biên bản RETURN đã ghi; không phát hành hóa đơn PAID, không tiêu thụ mã, không trừ thêm/cấn trừ cọc dở. Không rollback lần tiếp nhận vật lý đã commit trước đó và không khởi động lại đồng hồ phí.
 - Ví FROZEN/LOCKED: từ chối quyết toán với lỗi ví theo contract, kể cả cọc đủ; MANAGER xử lý trạng thái ví trước khi thử lại. Không ngăn tiếp nhận xe thực tế/đóng băng cước chỉ vì ví khóa hoặc thiếu tiền.
-- Khách nạp bổ sung qua luồng demo được bật riêng. Nếu quote còn hiệu lực thì dùng lại, nếu hết hạn thì lấy mới; phí thuê vẫn theo mốc cố định.
+- Khách gửi yêu cầu nạp bổ sung và chờ `STAFF`/`MANAGER` xác nhận qua luồng demo được bật riêng. Nếu quote còn hiệu lực thì dùng lại, nếu hết hạn thì lấy mới; phí thuê vẫn theo mốc cố định.
 - Khi quyết toán thành công, ghi hóa đơn PAID, bút toán cấn trừ/hoàn cọc/thu thêm, tiêu thụ mã, rental COMPLETED, settled_at và xe AVAILABLE/MAINTENANCE theo tình trạng trong cùng transaction. Không tạo biên bản RETURN thứ hai; xe AVAILABLE pin thấp vẫn bị bộ lọc thuê loại. Retry không ghi sổ hai lần; lỗi giữa transaction quyết toán rollback phần quyết toán, giữ nguyên phiên tiếp nhận đã commit.
 
 Ví dụ: nhân viên tiếp nhận sau 5 giờ 30 phút, phí cố định 115.000đ; cọc 100.000đ, ví còn 10.000đ thì cần thu thêm 15.000đ, thiếu 5.000đ. Xe ở trạm và rental RETURN_PENDING. Khách nạp thêm 5.000đ sau 12 phút: quote đầu đã hết hạn, lấy quote mới vẫn có phí thuê 115.000đ nếu không thay khuyến mãi; quyết toán xong ví còn 0đ. Không cộng 12 phút chờ vào cước.
@@ -678,13 +679,23 @@ Gọi initiate-return lần nữa với cùng dữ liệu trả phiên đã có,
 | --- | --- | --- | --- |
 | GET `/wallets/me` | C | — | Wallet |
 | GET `/wallets/me/transactions` | C | `type?, status?, from?, to?`, phân trang | WalletTransaction[] |
+| GET `/wallets/me/topups` | C | `status?` (`PENDING` \| `APPROVED` \| `REJECTED`), phân trang | TopUpRequest[] |
+| POST `/wallets/me/topups` | C, I | `{amount}` (chuỗi thập phân dương, `extra="forbid"`) | 201 TopUpRequest (`status: "PENDING"`, `payment_mode: "DEMO"`) — **Breaking change:** không cộng tiền ngay |
+| GET `/wallet-topup-requests` | S/M | `status?`, `customer_id?`, phân trang | TopUpRequest[] |
+| GET `/wallet-topup-requests/{id}` | Chủ yêu cầu/S/M | — | TopUpRequest (khách khác nhận `404`) |
+| POST `/wallet-topup-requests/{id}/approve` | S/M, I | `{}` (tùy chọn, `extra="forbid"`) | 200 `{...TopUpRequest, wallet_transaction: WalletTransaction, wallet: Wallet}` |
+| POST `/wallet-topup-requests/{id}/reject` | S/M, I | `{reason}` (khác rỗng, tối đa 2000 ký tự, `extra="forbid"`) | 200 TopUpRequest (`status: "REJECTED"`) |
 | GET `/users/{id}/wallet` | M | — | Wallet |
 | PATCH `/wallets/{id}/status` | M | `{status: "ACTIVE" hoặc "FROZEN" hoặc "LOCKED"}` | Wallet |
-| POST `/wallets/me/topups` | C, I | `{amount}` | 201 `{wallet_transaction: WalletTransaction, payment_mode: "DEMO", wallet: Wallet}` |
 | GET `/rentals/{id}/invoice` | Owner/S/M | — | Invoice; chưa phát hành trả 404 |
 | GET `/rentals/{id}/transactions` | Owner/S/M | `kind?, status?`, phân trang | Transaction[] |
 
-Topup ở đây là **luồng demo đã chốt về phạm vi**, chỉ bật khi cấu hình `DEMO_PAYMENTS_ENABLED` và giao diện hiện rõ tiền mô phỏng; amount > 0, ví ACTIVE, tạo TOPUP SUCCESS và tăng ví nguyên tử. Môi trường thanh toán thật phải tắt endpoint demo hoặc thay bằng contract provider đã duyệt; chưa có provider thì 503 `FEATURE_NOT_ENABLED`, không nhận tiền thật bằng cách cho client tự báo thành công.
+Quy trình nạp tiền mô phỏng gồm 2 bước (thay thế luồng cộng ngay trước đây):
+
+- **Tạo yêu cầu (`POST /wallets/me/topups`)**: chỉ bật khi cấu hình `DEMO_PAYMENTS_ENABLED` (`503 FEATURE_NOT_ENABLED` nếu tắt). Kiểm tra tài khoản khách `ACTIVE` (`403 ACCOUNT_DISABLED`), ví `ACTIVE` (`409 WALLET_UNAVAILABLE`), `amount > 0` hợp lệ với `Numeric(12,2)`. Tạo bản ghi `wallet_topup_requests` ở trạng thái `PENDING`; **không** thay đổi số dư ví và **không** tạo `WalletTransaction TOPUP SUCCESS`. Không cho khách truyền `status`, `reviewed_by`, `wallet_transaction_id` hoặc `wallet_id` (`422 VALIDATION_ERROR`).
+- **Phê duyệt (`POST /wallet-topup-requests/{id}/approve`)**: `STAFF` hoặc `MANAGER` xác nhận yêu cầu `PENDING`. Chỉ hoạt động khi `DEMO_PAYMENTS_ENABLED` bật (`503 FEATURE_NOT_ENABLED` nếu tắt). Dưới khóa `customer -> wallet -> wallet_topup_requests`, kiểm tra lại trạng thái `PENDING`, không tự duyệt (`403 FORBIDDEN`), tài khoản khách `ACTIVE` (`403 ACCOUNT_DISABLED`), ví `ACTIVE` (`409 WALLET_UNAVAILABLE`), số dư sau cộng không vượt `9999999999.99` (`409 WALLET_LIMIT_EXCEEDED`). Nếu đạt điều kiện, cộng đúng `amount` vào `wallets.balance`, tạo đúng một `WalletTransaction` (`type = "TOPUP"`, `status = "SUCCESS"`, ghi `balance_before`/`balance_after`), cập nhật yêu cầu sang `APPROVED` (`reviewed_by`, `reviewed_at`, `wallet_transaction_id`) và ghi `AuditLog` nguyên tử; lỗi ở bất kỳ bước nào sẽ giữ `PENDING` và rollback toàn bộ.
+- **Từ chối (`POST /wallet-topup-requests/{id}/reject`)**: `STAFF` hoặc `MANAGER` từ chối yêu cầu `PENDING` kèm `reason` không rỗng (`422 VALIDATION_ERROR` nếu thiếu/rỗng). Từ chối và các API tra cứu (`GET /wallets/me/topups`, `GET /wallet-topup-requests*`) **không** yêu cầu bật `DEMO_PAYMENTS_ENABLED`; cho phép từ chối yêu cầu `PENDING` ngay cả khi ví hoặc tài khoản khách đã bị khóa. Không thay đổi số dư hoặc tạo `WalletTransaction`.
+- **Tính bất biến & chống trùng**: Số tiền yêu cầu là bất biến; yêu cầu đã `APPROVED` hoặc `REJECTED` không thể mở lại hay chuyển trạng thái (`409 INVALID_STATE_TRANSITION`). Hai thao tác duyệt hoặc duyệt/từ chối đồng thời chỉ có tối đa một thao tác thành công. Retry cùng `Idempotency-Key` và body replay nguyên kết quả; cùng key khác body trả `409 IDEMPOTENCY_CONFLICT`. Các giao dịch `TOPUP SUCCESS` lịch sử trong `wallet_transactions` được giữ nguyên và vẫn đọc được qua `GET /wallets/me/transactions`.
 
 Ví FROZEN/LOCKED không được nạp/trừ tự động. Không có API sửa trực tiếp balance hoặc tạo Transaction SUCCESS từ request khách. `balance_after` phải đúng với hướng tác động: TOPUP/RENTAL_REFUND cộng; WITHDRAW/RENTAL_PAYMENT/RENTAL_DEPOSIT trừ. Amount luôn là độ lớn dương; khoản bằng 0 không cần tạo bút toán.
 
@@ -692,7 +703,7 @@ V1 chưa mở rút ví, hoàn tiền tùy ý hoặc webhook thật. Hoàn cọc 
 
 Pickup ghi DEPOSIT/RENTAL_DEPOSIT một lần. Luồng thường cấn cọc, thu thêm/hoàn dư theo mục 6.4. Luồng sự cố dùng cọc cho tiền thuê qua `settle-rent` và hoàn phần dư qua `deposit/refund`; không trừ ví lần hai khi cấn cọc, không cấn cọc vào bồi thường. Mỗi nghĩa vụ tiền thuê quyết toán toàn phần trong một transaction, không trả góp. Không tạo giao dịch tiền 0. Không dùng `return` thông thường quyết toán hồ sơ sự cố vì có thể sửa trạng thái xe ở chuyến mới. Xem mục 9.1.
 
-Không tích hợp hoặc bật thanh toán thật trong V1. Tài liệu thiết kế mô tả interface PaymentProvider với bản triển khai mô phỏng; provider thật (VNPay/MoMo/ZaloPay), xác minh webhook tại server và đối soát nằm ngoài phạm vi. Giao diện ví/nạp/thanh toán có nhãn “Tiền mô phỏng”. DEMO_PAYMENTS_ENABLED phải bật rõ ràng để nạp demo; tắt hoặc thiếu cấu hình thì FEATURE_NOT_ENABLED. Không có API nhận xác nhận thanh toán thật từ client.
+Không tích hợp hoặc bật thanh toán thật trong V1; không tích hợp ngân hàng, QR chuyển tiền hoặc webhook thật. Thao tác `STAFF`/`MANAGER` xác nhận nạp tiền trong demo chỉ là xác nhận mô phỏng trong đồ án, không đại diện cho xác nhận thanh toán từ ngân hàng. Tài liệu thiết kế mô tả interface PaymentProvider với bản triển khai mô phỏng; provider thật (VNPay/MoMo/ZaloPay), xác minh webhook tại server và đối soát nằm ngoài phạm vi. Giao diện ví/nạp/thanh toán có nhãn “Tiền mô phỏng”. Không có API nhận xác nhận thanh toán thật từ client.
 
 ## 8. Khuyến mãi
 
@@ -877,7 +888,7 @@ Các ca bắt buộc bổ sung theo R2:
 | Quote đúng hạn 10 phút | Hết hiệu lực; quote mới không tăng cước gốc |
 | Trạm đầy do chính xe RETURN_PENDING | Quyết toán vẫn được; không kiểm thêm một chỗ trống |
 | Quyết toán lỗi giữa transaction | Rollback tài chính, giữ tiếp nhận đã commit; không tiêu thụ mã |
-| Cọc thừa/thiếu và nạp ví đồng thời | Bút toán đúng, không ví âm, không trả một phần, không trừ cọc hai lần |
+| Cọc thừa/thiếu và duyệt nạp ví đồng thời | Bút toán đúng, không ví âm, không trả một phần, không trừ cọc hai lần, không mất cập nhật ví |
 | STAFF thao tác ở nhiều trạm / CUSTOMER gọi API vận hành | Cho phép khi đủ điều kiện / 403 |
 | STOLEN chưa giải quyết | Khách cũ bị chặn; xe thu hồi/kiểm tra/giải phóng hợp lệ được thuê lại; tiền hồ sơ cũ không sửa chuyến mới |
 | Bộ đếm trạm | Đếm động, không nhân đôi khi JOIN bảo trì; tính cả RETURN_PENDING |
@@ -886,7 +897,7 @@ Kiểm thử tranh chấp dùng PostgreSQL thật với các kết nối độc 
 
 ## 13. Đối chiếu DBML và yêu cầu lưu trữ
 
-Contract này phân biệt rõ: **15 bảng nghiệp vụ gốc** trong thiết kế ban đầu, **24 bảng ORM** sau khi bổ sung hạ tầng báo giá/bảo trì/file/idempotency/audit, **26 bảng ORM** sau khi thêm hai bảng xác thực (`user_sessions`, `refresh_tokens`), và **27 bảng ORM hiện hành** sau khi thêm `rental_incidents` (không tính `alembic_version`).
+Contract này phân biệt rõ: **15 bảng nghiệp vụ gốc** trong thiết kế ban đầu, **24 bảng ORM** sau khi bổ sung hạ tầng báo giá/bảo trì/file/idempotency/audit, **26 bảng ORM** sau khi thêm hai bảng xác thực (`user_sessions`, `refresh_tokens`), **27 bảng ORM** sau khi thêm `rental_incidents`, và **28 bảng ORM hiện hành** sau khi thêm `wallet_topup_requests` (không tính `alembic_version`).
 
 | Hạng mục | Yêu cầu |
 | --- | --- |
@@ -913,10 +924,10 @@ Migration phải bảo toàn nghĩa dữ liệu lịch sử. Nếu giá cũ chư
 
 ## 14. Tổng hợp phạm vi đã triển khai và phần mở rộng
 
-- **Đã triển khai ở Backend (`backend/app/`, migration tới `f4c2a1b8e901`):**
+- **Đã triển khai ở Backend (`backend/app/`, migration tới `d7e4b2c9a105`):**
   - Xác thực phiên (`user_sessions`, `refresh_tokens`, rotation + grace replay), người dùng và giấy tờ eKYC.
   - Trạm, xe, lịch sử giá theo xe (`vehicle_pricing_history`), điều chuyển xe (`vehicle_move_audits`).
-  - Ví mô phỏng, khuyến mãi, giữ xe 30 phút, nhận xe, tiếp nhận trả xe (`RETURN_PENDING`), báo giá 10 phút và quyết toán trả xe.
+  - Ví mô phỏng kèm quy trình phê duyệt nạp tiền (`wallet_topup_requests`: `PENDING` -> `APPROVED`/`REJECTED` bởi `STAFF`/`MANAGER`), khuyến mãi, giữ xe 30 phút, nhận xe, tiếp nhận trả xe (`RETURN_PENDING`), báo giá 10 phút và quyết toán trả xe.
   - Ticket hỗ trợ, upload/download file cục bộ, đính kèm bằng chứng ticket, bảo trì dùng chung (`/maintenance-orders` với `incident_id` tùy chọn), GPS demo, đánh giá chuyến và 12 câu FAQ có nguồn.
   - Danh sách cần kiểm tra 24 giờ (`/rental-check-ins`) và phân hệ sự cố thu gọn (`rental_incidents`, `INCIDENT_PENDING`, `CLOSED_INCIDENT`, giải phóng xe độc lập công nợ khách, quyết toán thuê/hoàn cọc dư, ghi nhận bồi thường ngoài hệ thống qua `POST /compensation/external-settlement`).
   - 3 API báo cáo doanh thu và tổng hợp tài chính (`/analytics/revenue`, `/analytics/financial-summary`, `/analytics/revenue-details`).

@@ -3,7 +3,12 @@ import unittest
 from pydantic import ValidationError
 
 from app.schemas.fleet import PriceCreate, VehicleCreate, vehicle_out
-from app.schemas.wallet import PromotionCreate, TopUpRequest
+from app.schemas.wallet import (
+    PromotionCreate,
+    TopUpApproveRequest,
+    TopUpRejectRequest,
+    TopUpRequest,
+)
 
 
 class BusinessSchemaTests(unittest.TestCase):
@@ -92,6 +97,21 @@ class BusinessSchemaTests(unittest.TestCase):
                 start_date="2026-11-01T00:00:00Z",
                 end_date="2026-12-01T00:00:00Z",
             )
+
+    def test_topup_schemas_enforce_strict_money_and_reasons(self):
+        for invalid in ("0", "0.00", "-100.00", "NaN", "Infinity", "1e4", "100.123", "10000000000.00", ""):
+            with self.assertRaises(ValidationError):
+                TopUpRequest(amount=invalid)
+        with self.assertRaises(ValidationError):
+            TopUpRequest(amount="10000.00", status="APPROVED")
+        with self.assertRaises(ValidationError):
+            TopUpApproveRequest(amount="10000.00")
+        self.assertEqual(TopUpApproveRequest().model_dump(), {})
+        with self.assertRaises(ValidationError):
+            TopUpRejectRequest(reason="   ")
+        with self.assertRaises(ValidationError):
+            TopUpRejectRequest(reason="Thiếu xác nhận", status="REJECTED")
+        self.assertEqual(TopUpRejectRequest(reason="  Chưa đối soát  ").reason, "Chưa đối soát")
 
 
 if __name__ == "__main__":

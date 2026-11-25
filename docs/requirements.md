@@ -2,7 +2,7 @@
 
 Phương tiện cho thuê trong EVRide là xe máy điện.
 
-Cập nhật 13/11/2026. Nguồn chính sách: [quyết định V1](v1-decisions.md).
+Cập nhật 25/11/2026. Nguồn chính sách: [quyết định V1](v1-decisions.md).
 Danh sách dưới là yêu cầu sản phẩm; backend đã triển khai các luồng thuê/trả
 thường, ví demo, khuyến mãi, ticket/ảnh, bảo trì dùng chung (`incident_id`),
 GPS demo, review, FAQ, danh sách kiểm tra 24 giờ (`/rental-check-ins`) và phân
@@ -16,10 +16,10 @@ hệ sự cố thu gọn với bồi thường xử lý ngoài hệ thống.
 - Xem trạm, danh sách xe, mức pin và giá thuê.
 - Đặt xe, xem trạng thái và hủy theo điều kiện cho phép.
 - Nhận/trả xe tại trạm và xem lịch sử chuyến đi.
-- Xem số dư ví, nạp tiền và xem lịch sử giao dịch.
+- Xem số dư ví, gửi yêu cầu nạp tiền (mô phỏng, chờ `STAFF`/`MANAGER` xác nhận trước khi cộng ví), theo dõi trạng thái yêu cầu nạp tách biệt với lịch sử giao dịch ví.
 - Báo sự cố kèm ảnh, xem tiến độ tiếp nhận/xử lý; báo cáo không tự dừng cước hoặc xác định trách nhiệm.
 - Xem tiền thuê, kết quả bồi thường ngoài hệ thống đã xác nhận (`0.00` hoặc số tiền & trạng thái giải quyết), cọc đã dùng cho tiền thuê/còn giữ/đã hoàn riêng; tiền đang xác minh hiển thị tạm tính.
-- Khách còn chuyến chưa giải quyết bị chặn thuê mới, vẫn được xem hồ sơ, trao đổi và nạp tiền theo điều kiện tài khoản/ví.
+- Khách còn chuyến chưa giải quyết bị chặn thuê mới, vẫn được xem hồ sơ, trao đổi và gửi yêu cầu nạp tiền theo điều kiện tài khoản/ví.
 - Xem GPS mô phỏng, thời điểm cập nhật và cảnh báo dữ liệu cũ; không coi vị trí cũ là vị trí hiện thời.
 - Chỉ đánh giá chuyến COMPLETED do mình sở hữu, mỗi chuyến một lần; CLOSED_INCIDENT không tự được coi là COMPLETED.
 - FAQ trả lời ít nhất 10 câu hỏi thường gặp có nguồn; code hiện có 12 câu và nguồn tài liệu nội bộ.
@@ -27,7 +27,7 @@ hệ sự cố thu gọn với bồi thường xử lý ngoài hệ thống.
 ## Nhân viên và quản trị
 
 - Quản lý trạm, xe, giá thuê và tài khoản.
-- Phê duyệt, xác thực thông tin khách hàng.
+- Phê duyệt, xác thực thông tin khách hàng; xem danh sách và duyệt/từ chối yêu cầu nạp tiền mô phỏng vào ví (`PENDING` → `APPROVED`/`REJECTED`).
 - Theo dõi lượt đặt xe và chuyến đi.
 - Ghi nhận lỗi xe, tạo/theo dõi phiếu bảo trì và đính kèm ảnh bằng chứng.
 - Xem lịch sử giá theo xe, áp dụng phiên bản giá mới; xem lịch sử điều chuyển xe.
