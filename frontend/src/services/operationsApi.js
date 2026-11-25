@@ -1,4 +1,4 @@
-import { apiRequest } from '../integrations/apiClient';
+import { apiRequest } from '../integrations/apiClient.js';
 
 // --- Support Tickets ---
 export function listTickets(params = {}, { signal } = {}) {
@@ -83,5 +83,39 @@ export function cancelMaintenanceOrder(orderId, payload, idempotencyKey) {
     method: 'POST',
     body: payload,
     idempotencyKey,
+  });
+}
+
+// --- Customer Reviews ---
+export function createRentalReview(rentalId, payload) {
+  return apiRequest(`/rentals/${encodeURIComponent(String(rentalId))}/review`, {
+    method: 'POST',
+    body: payload,
+  });
+}
+
+// --- Public FAQ & Customer FAQ Chatbot ---
+export function listFaqs({ signal } = {}) {
+  return apiRequest('/faq', { signal });
+}
+
+export function getFaqSourceText(sourceIdOrUrl, { signal } = {}) {
+  const raw = String(sourceIdOrUrl || '').trim();
+  const match = raw.match(/\/faq\/sources\/([a-z0-9_-]+)(?:$|\?)/i);
+  const path = match
+    ? `/faq/sources/${encodeURIComponent(match[1])}`
+    : `/faq/sources/${encodeURIComponent(raw)}`;
+
+  return apiRequest(path, {
+    method: 'GET',
+    responseType: 'text',
+    signal,
+  });
+}
+
+export function postFaqChatbotMessage(message) {
+  return apiRequest('/chatbot/messages', {
+    method: 'POST',
+    body: { message: String(message || '').trim() },
   });
 }

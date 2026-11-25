@@ -21,16 +21,16 @@ export function EmptyState({ title = 'Chưa có dữ liệu', hint, action }) {
   );
 }
 
-export function ErrorState({ error, onRetry, title }) {
+export function ErrorState({ error, onRetry, title, hideCode = false }) {
   const isForbidden = error?.status === 403 || error?.code === 'FORBIDDEN' || error?.code === 'MANAGER_REQUIRED';
-  const heading = title || (isForbidden ? 'Không đủ quyền truy cập (403)' : 'Không tải được dữ liệu');
+  const heading = title || (isForbidden ? 'Không đủ quyền truy cập' : 'Không tải được dữ liệu');
 
   return (
     <div className="state-box state-error" role="alert">
       <p className="state-title">{heading}</p>
       <p className="state-hint">
         {getApiErrorMessage(error)}
-        {error?.code && <code className="error-code">{error.code}</code>}
+        {!hideCode && error?.code && <code className="error-code">{error.code}</code>}
       </p>
       {onRetry && !isForbidden && (
         <div className="state-action">

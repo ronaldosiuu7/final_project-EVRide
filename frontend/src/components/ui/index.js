@@ -12,3 +12,4 @@ export { default as ConfirmDialog } from './ConfirmDialog';
 export { ToastProvider, useToast } from './ToastProvider';
 export { default as Tabs } from './Tabs';
 export { default as PrivateImage } from './PrivateImage';
+export { default as ImageUploadField } from './ImageUploadField';

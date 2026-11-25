@@ -1,4 +1,4 @@
-import { apiRequest } from '../integrations/apiClient';
+import { apiRequest } from '../integrations/apiClient.js';
 
 export function intakeIncident(rentalId, payload, idempotencyKey) {
   return apiRequest(`/rentals/${rentalId}/incident/intake`, {

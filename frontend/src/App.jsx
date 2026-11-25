@@ -1,10 +1,31 @@
 import React, { Suspense, lazy } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
-import { RequireRole } from './integrations/authBridge';
-import { LoadingState } from './components/ui';
-import AdminLayout from './layouts/AdminLayout';
+import { Route, Routes } from 'react-router-dom';
+import { GuestOnlyRoute, RequireRole } from './integrations/authBridge.jsx';
+import { LoadingState } from './components/ui/index.js';
+import AdminLayout from './layouts/AdminLayout.jsx';
+import CustomerLayout from './layouts/CustomerLayout.jsx';
+import ForbiddenPage from './features/auth/ForbiddenPage.jsx';
+import NotFoundPage from './features/auth/NotFoundPage.jsx';
 
-// Tách bundle theo từng màn hình (route-level code splitting) để giảm kích thước tải ban đầu.
+const LoginPage = lazy(() => import('./features/auth/LoginPage.jsx'));
+const RegisterPage = lazy(() => import('./features/auth/RegisterPage.jsx'));
+
+// Khu vực khách hàng (#15 — tách bundle theo từng màn hình).
+const CustomerHomePage = lazy(() => import('./features/customer/CustomerHomePage.jsx'));
+const CustomerStationListPage = lazy(() => import('./features/stations/CustomerStationListPage.jsx'));
+const CustomerStationDetailPage = lazy(() => import('./features/stations/CustomerStationDetailPage.jsx'));
+const CustomerVehicleListPage = lazy(() => import('./features/vehicles/CustomerVehicleListPage.jsx'));
+const CustomerVehicleDetailPage = lazy(() => import('./features/vehicles/CustomerVehicleDetailPage.jsx'));
+const CustomerProfilePage = lazy(() => import('./features/profile/CustomerProfilePage.jsx'));
+const CustomerRentalListPage = lazy(() => import('./features/rentals/CustomerRentalListPage.jsx'));
+const CustomerRentalDetailPage = lazy(() => import('./features/rentals/CustomerRentalDetailPage.jsx'));
+const CustomerWalletPage = lazy(() => import('./features/wallet/CustomerWalletPage.jsx'));
+const CustomerPromotionsPage = lazy(() => import('./features/promotions/CustomerPromotionsPage.jsx'));
+const CustomerTicketListPage = lazy(() => import('./features/tickets/CustomerTicketListPage.jsx'));
+const CustomerTicketDetailPage = lazy(() => import('./features/tickets/CustomerTicketDetailPage.jsx'));
+const CustomerFaqPage = lazy(() => import('./features/faq/CustomerFaqPage.jsx'));
+
+// Tách bundle theo từng màn hình khu vực vận hành (#16 — giữ nguyên toàn bộ route).
 const AdminDashboard = lazy(() => import('./features/admin/AdminDashboard'));
 const RevenueReportPage = lazy(() => import('./features/analytics/RevenueReportPage'));
 const OperationalAnalyticsPage = lazy(() => import('./features/analytics/OperationalAnalyticsPage'));
@@ -32,7 +53,113 @@ function LazyRoute({ children }) {
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<Navigate to="/admin" replace />} />
+      {/* Trang xác thực công khai */}
+      <Route
+        path="/login"
+        element={
+          <GuestOnlyRoute>
+            <LazyRoute>
+              <LoginPage />
+            </LazyRoute>
+          </GuestOnlyRoute>
+        }
+      />
+      <Route
+        path="/register"
+        element={
+          <GuestOnlyRoute>
+            <LazyRoute>
+              <RegisterPage />
+            </LazyRoute>
+          </GuestOnlyRoute>
+        }
+      />
+
+      {/* Trang thông báo quyền truy cập & đường dẫn */}
+      <Route path="/403" element={<ForbiddenPage />} />
+      <Route path="/404" element={<NotFoundPage />} />
+
+      {/* Khu vực khách hàng (#15) */}
+      <Route path="/" element={<CustomerLayout />}>
+        <Route index element={<LazyRoute><CustomerHomePage /></LazyRoute>} />
+        <Route path="stations" element={<LazyRoute><CustomerStationListPage /></LazyRoute>} />
+        <Route path="stations/:stationId" element={<LazyRoute><CustomerStationDetailPage /></LazyRoute>} />
+        <Route path="vehicles" element={<LazyRoute><CustomerVehicleListPage /></LazyRoute>} />
+        <Route path="vehicles/:vehicleId" element={<LazyRoute><CustomerVehicleDetailPage /></LazyRoute>} />
+        <Route
+          path="rentals"
+          element={
+            <RequireRole allowedRoles={['CUSTOMER']}>
+              <LazyRoute>
+                <CustomerRentalListPage />
+              </LazyRoute>
+            </RequireRole>
+          }
+        />
+        <Route
+          path="rentals/:rentalId"
+          element={
+            <RequireRole allowedRoles={['CUSTOMER']}>
+              <LazyRoute>
+                <CustomerRentalDetailPage />
+              </LazyRoute>
+            </RequireRole>
+          }
+        />
+        <Route
+          path="wallet"
+          element={
+            <RequireRole allowedRoles={['CUSTOMER']}>
+              <LazyRoute>
+                <CustomerWalletPage />
+              </LazyRoute>
+            </RequireRole>
+          }
+        />
+        <Route
+          path="promotions"
+          element={
+            <RequireRole allowedRoles={['CUSTOMER']}>
+              <LazyRoute>
+                <CustomerPromotionsPage />
+              </LazyRoute>
+            </RequireRole>
+          }
+        />
+        <Route
+          path="support"
+          element={
+            <RequireRole allowedRoles={['CUSTOMER']}>
+              <LazyRoute>
+                <CustomerTicketListPage />
+              </LazyRoute>
+            </RequireRole>
+          }
+        />
+        <Route
+          path="support/tickets/:ticketId"
+          element={
+            <RequireRole allowedRoles={['CUSTOMER']}>
+              <LazyRoute>
+                <CustomerTicketDetailPage />
+              </LazyRoute>
+            </RequireRole>
+          }
+        />
+        <Route path="faq" element={<LazyRoute><CustomerFaqPage /></LazyRoute>} />
+        <Route
+          path="profile"
+          element={
+            <RequireRole allowedRoles={['CUSTOMER', 'STAFF', 'MANAGER']}>
+              <LazyRoute>
+                <CustomerProfilePage />
+              </LazyRoute>
+            </RequireRole>
+          }
+        />
+      </Route>
+
+      {/* Khu vực vận hành STAFF/MANAGER (#16 — giữ nguyên toàn bộ cấu trúc định tuyến) */}
       <Route
         path="/admin"
         element={
@@ -69,8 +196,10 @@ export default function App() {
             </RequireRole>
           }
         />
+        <Route path="*" element={<NotFoundPage />} />
       </Route>
-      <Route path="*" element={<Navigate to="/admin" replace />} />
+
+      <Route path="*" element={<NotFoundPage />} />
     </Routes>
   );
 }

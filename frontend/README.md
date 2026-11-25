@@ -13,20 +13,20 @@ Giao diện người dùng của hệ thống cho thuê xe máy điện theo tr�
 - [Node.js](https://nodejs.org/) LTS (khuyến nghị Node 20+ / 24+) và `npm`
 - Backend FastAPI chạy tại `http://localhost:8000` (cấu hình trong `frontend/.env` dựa theo `.env.example`: `VITE_API_BASE_URL=http://localhost:8000/api/v1`)
 
-> **Lưu ý trên Windows PowerShell:** Nếu gặp lỗi `npm.ps1 cannot be loaded because running scripts is disabled`, hãy dùng `npm.cmd` thay cho `npm` (ví dụ `npm.cmd install`, `npm.cmd run dev`, `npm.cmd test`, `npm.cmd run build`).
+> **Lưu ý trên Windows PowerShell:** Nếu gặp lỗi `npm.ps1 cannot be loaded because running scripts is disabled`, hãy dùng `npm.cmd` thay cho `npm` (ví dụ `npm.cmd ci`, `npm.cmd run dev`, `npm.cmd test`, `npm.cmd run build`).
 
 ## 3. Cài đặt, chạy thử và kiểm thử
 
 ```bash
 cd frontend
 cp .env.example .env
-npm.cmd install
+npm.cmd ci
 npm.cmd test
 npm.cmd run build
 npm.cmd run dev
 ```
 
-Mở trình duyệt tại **http://localhost:5173/admin** (tài khoản demo vận hành trên backend: `staff@evride.test` / `manager@evride.test`).
+Mở **http://localhost:5173/** cho khách hàng; **http://localhost:5173/admin** cho vận hành (tài khoản demo vận hành trên backend: `staff@evride.test` / `manager@evride.test`).
 
 ---
 
@@ -69,11 +69,20 @@ Hệ thống chỉ dùng 3 vai trò theo API: `CUSTOMER`, `STAFF`, `MANAGER` (kh
 - `Pagination`, `FilterBar`, `DateRangeFilter`, `DataTable`, `Modal`, `ConfirmDialog`, `ToastProvider` (`useToast`), `Tabs`, `PrivateImage`
 - Tiện ích: `src/utils/format.js` (`formatVnd`, `formatDateTimeVN`, `formatDateVN`, `formatDurationSeconds`, `toIsoWithVietnamOffset`, `generateIdempotencyKey`), `src/utils/validation.js`, `src/hooks/useApiQuery.js`, `src/hooks/useIdempotentMutation.js`.
 
-### 5.2. Lớp cầu nối cần ghép khi #15 hoàn thành (`src/integrations/`)
-#16 cô lập 3 phần thuộc phạm vi #15 sau đúng 3 file adapter để có thể thay thế không cần sửa các màn hình vận hành:
-1. `src/integrations/apiClient.js`: dùng `configurePlatformApi({ getAccessToken, customRequest, onAuthInvalid })` để cắm wrapper tự động refresh khi gặp `401 TOKEN_EXPIRED` từ #15.
-2. `src/integrations/authBridge.jsx`: giữ `accessToken` trong bộ nhớ React; hỗ trợ truyền prop `externalAuth` vào `<AuthProvider>` để thay bằng cơ chế Rolling Session / Web Locks / BroadcastChannel và trang `/login` chung của #15.
-3. `src/integrations/fileBridge.js`: đóng gói `uploadEvidenceFile` (`POST /files/upload`) và `downloadPrivateFileBlob` (`GET /files/{id}/download`).
+### 5.2. Hướng dẫn tích hợp Nền tảng Auth, API Client & Upload dùng chung (#15 ↔ #16)
+Nền tảng xác thực Rolling Session, API client và upload/download của #15 đã được ghép trực tiếp vào 3 adapter trong `src/integrations/`, nên toàn bộ 18 màn hình vận hành `/admin/*` của #16 hoạt động ngay không cần sửa lại:
+
+1. **Gọi API (`src/integrations/apiClient.js`):**
+   - Dùng `apiRequest(path, { method, query, body, idempotencyKey, responseType, timeoutMs, signal })`.
+   - `AuthProvider` đã tự động cấu hình `getAccessToken`, `onTokenExpired` (chỉ refresh & retry tối đa 1 lần khi gặp `401 TOKEN_EXPIRED`, giữ nguyên `Idempotency-Key`) và `onAuthInvalid` (xóa phiên ngay khi `SESSION_REVOKED`, `REFRESH_REUSED`, `ACCOUNT_DISABLED`...).
+   - Với các thao tác ghi có đánh dấu `I` (như duyệt/từ chối nạp tiền ở PR #40), dùng hook `useIdempotentMutation` để giữ nguyên key khi retry lỗi mạng/timeout và tự xoay key mới khi đổi nội dung hoặc sau khi hoàn tất.
+2. **Xác thực, Phân quyền & Phối hợp liên tab (`src/integrations/authBridge.jsx` & `authSession.js`):**
+   - `<AuthProvider>` khởi chạy `bootstrap()` khôi phục phiên sau khi F5/reload, đồng bộ giữa các tab bằng Web Locks (`evride-auth`) + `BroadcastChannel('evride-auth')`, chỉ giữ `access_token` trong RAM và chỉ lưu `{ session_id, epoch, logging_out }` trong `localStorage`.
+   - Dùng `useAuth()` để đọc `{ user, isAuthenticated, isBootstrapping, login, register, logout, changePassword, updateSessionUser, hasRole }`.
+   - Dùng `<RequireRole allowedRoles={['STAFF', 'MANAGER']}>` hoặc `<RequireRole allowedRoles={['MANAGER']}>` để bảo vệ route: tự chuyển hướng khách chưa đăng nhập sang `/login` (kèm `state.from` để quay lại đúng trang `/admin/*` sau đăng nhập) và hiển thị trang `403` cho tài khoản sai vai trò.
+   - Nếu module của #16 có bộ nhớ đệm dữ liệu nội bộ trong RAM, đăng ký hàm xóa qua `registerPrivateCacheCleaner(clearFn)` từ `src/integrations/authSession.js` (đã đăng ký sẵn cho `invalidateActiveEmployeesCache` trong `accountsApi.js`).
+3. **Upload & Tải tệp bảo mật (`src/integrations/fileBridge.js`):**
+   - Dùng `uploadEvidenceFile(file, { signal })` và `downloadPrivateFileBlob(fileIdOrPath, { signal })` (hoặc `<PrivateImage />`) — đã đi qua pipeline silent refresh của `apiClient`.
 
 ---
 
@@ -129,3 +138,15 @@ Hệ thống chỉ dùng 3 vai trò theo API: `CUSTOMER`, `STAFF`, `MANAGER` (kh
 ---
 
 **EVRide Frontend** — Giao diện quản lý hệ thống cho thuê xe máy điện theo trạm.
+
+
+## Review nhiệm vụ 9 — 25/11/2026
+
+Chưa đóng issue #15. [Ma trận nghiệm thu và checklist tự test demo](docs/issue-15-review.md) là trạng thái review hiện tại; các ghi chú hoàn thành trước đó chỉ mô tả code đã triển khai.
+
+- `npm test`: 49/49 pass, gồm test component bằng React Test Renderer và mock API; không thay thế test backend thật.
+- `npm run build`: chạy lại sau review (xem kết quả trong báo cáo review).
+- PR backend #40 đã merge vào develop (`b52ef8f`); backend local của nhánh FE còn ở nền cũ. Chạy backend đã cập nhật develop và migration `d7e4b2c9a105` trên DB demo trước khi thử nạp tiền. Không chạy endpoint cộng tiền ngay cũ.
+- Dùng cùng hostname `localhost` cho frontend/backend khi thử auth cookie; backend phải cho phép Origin `http://localhost:5173`. Không ghi đè `.env` đã có; chỉ sao chép `.env.example` nếu chưa cấu hình.
+- [API map](docs/issue-15-api-map.md), [tiến độ](docs/issue-15-progress.md), [interface/handoff #16](docs/issue-15-review.md#ban-giao-16).
+- Bộ test JSX dùng `react-test-renderer` cùng phiên bản React và `esbuild`; chỉ là devDependencies. npm báo 4 advisory (3 moderate, 1 high) trong dependency tree hiện tại; chưa nâng major toolchain trong review này.

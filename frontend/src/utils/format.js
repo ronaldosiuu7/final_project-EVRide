@@ -1,10 +1,13 @@
-// Các hàm định dạng dùng chung cho EVRide (tiền VND, ngày giờ Asia/Ho_Chi_Minh, thời lượng, idempotency).
+// Các hàm định dạng dùng chung cho EVRide (tiền VND, ngày giờ Asia/Ho_Chi_Minh, thời lượng, đồng bộ server_time, idempotency).
 
 const VN_TIME_ZONE = 'Asia/Ho_Chi_Minh';
+const MONEY_PARSE_PATTERN = /^(-)?([0-9]+)(?:\.([0-9]{1,2}))?$/;
+
+let serverTimeOffsetMs = 0;
 
 /**
  * Định dạng chuỗi tiền thập phân ("10000.00", "1234567.50") thành "10.000đ" hoặc "1.234.567,50đ".
- * Xử lý bằng chuỗi để tránh sai số dấu phẩy động với số tiền lớn.
+ * Xử lý thuần bằng chuỗi để tránh sai số dấu phẩy động với số tiền lớn.
  */
 export function formatVnd(decimalString) {
   if (decimalString === null || decimalString === undefined || decimalString === '') {
@@ -23,6 +26,76 @@ export function formatVnd(decimalString) {
     return `${sign}${groupedInt}đ`;
   }
   return `${sign}${groupedInt},${fracRaw}đ`;
+}
+
+/**
+ * Chuyển chuỗi tiền thập phân sang đơn vị xu (BigInt * 100) để so sánh/cộng/trừ chính xác,
+ * tránh hoàn toàn sai số Number float. Trả về null nếu không hợp lệ.
+ */
+export function parseMoneyToCents(decimalString) {
+  if (decimalString === null || decimalString === undefined || typeof decimalString === 'number') {
+    return null;
+  }
+  const raw = String(decimalString).trim();
+  const match = raw.match(MONEY_PARSE_PATTERN);
+  if (!match) return null;
+  const sign = match[1] ? -1n : 1n;
+  const whole = BigInt(match[2]);
+  const frac = BigInt((match[3] || '').padEnd(2, '0'));
+  return sign * (whole * 100n + frac);
+}
+
+/**
+ * Chuyển đơn vị xu (BigInt * 100) về lại chuỗi tiền chuẩn contract ("150000.00").
+ */
+export function formatCentsToMoneyString(cents) {
+  const big = typeof cents === 'bigint' ? cents : BigInt(cents);
+  const sign = big < 0n ? '-' : '';
+  const abs = big < 0n ? -big : big;
+  const whole = abs / 100n;
+  const frac = String(abs % 100n).padStart(2, '0');
+  return `${sign}${whole.toString()}.${frac}`;
+}
+
+/**
+ * So sánh hai chuỗi tiền thập phân: trả về -1 nếu a < b, 0 nếu bằng nhau, 1 nếu a > b.
+ */
+export function compareMoneyStrings(a, b) {
+  const centsA = parseMoneyToCents(a);
+  const centsB = parseMoneyToCents(b);
+  if (centsA === null || centsB === null) {
+    throw new Error('Giá trị tiền tệ không hợp lệ để so sánh.');
+  }
+  if (centsA < centsB) return -1;
+  if (centsA > centsB) return 1;
+  return 0;
+}
+
+/**
+ * Cộng nhiều chuỗi tiền thập phân bằng BigInt và trả về chuỗi "0.00".
+ */
+export function addMoneyStrings(...values) {
+  let sum = 0n;
+  for (const val of values) {
+    const cents = parseMoneyToCents(val);
+    if (cents === null) {
+      throw new Error('Giá trị tiền tệ không hợp lệ để cộng.');
+    }
+    sum += cents;
+  }
+  return formatCentsToMoneyString(sum);
+}
+
+/**
+ * Trừ hai chuỗi tiền thập phân (a - b) bằng BigInt và trả về chuỗi "0.00".
+ */
+export function subtractMoneyStrings(a, b) {
+  const centsA = parseMoneyToCents(a);
+  const centsB = parseMoneyToCents(b);
+  if (centsA === null || centsB === null) {
+    throw new Error('Giá trị tiền tệ không hợp lệ để trừ.');
+  }
+  return formatCentsToMoneyString(centsA - centsB);
 }
 
 /**
@@ -56,6 +129,26 @@ export function formatDateVN(dateStr) {
 }
 
 /**
+ * Định dạng khung giờ hoạt động của trạm ("06:00:00", "22:00:00") sang tiếng Việt.
+ */
+export function formatTimeRangeVN(opensAt, closesAt) {
+  if (!opensAt && !closesAt) {
+    return 'Mở cửa 24/7';
+  }
+  const shortTime = (val) => {
+    const trimmed = String(val || '').trim();
+    const match = trimmed.match(/^(\d{2}):(\d{2})(?::\d{2})?$/);
+    return match ? `${match[1]}:${match[2]}` : trimmed;
+  };
+  const openStr = shortTime(opensAt);
+  const closeStr = shortTime(closesAt);
+  if (openStr && closeStr && openStr > closeStr) {
+    return `${openStr} – ${closeStr} (qua đêm)`;
+  }
+  return `${openStr} – ${closeStr}`;
+}
+
+/**
  * Định dạng số giây thành chuỗi dễ đọc ("1 giờ 20 phút", "45 phút", "30 giây").
  */
 export function formatDurationSeconds(seconds) {
@@ -68,6 +161,22 @@ export function formatDurationSeconds(seconds) {
   const hours = Math.floor(totalMinutes / 60);
   const mins = totalMinutes % 60;
   return mins > 0 ? `${hours} giờ ${mins} phút` : `${hours} giờ`;
+}
+
+/**
+ * Định dạng bộ đếm ngược giây sang "MM:SS" (hoặc "HH:MM:SS" nếu >= 1 giờ).
+ */
+export function formatCountdownMmSs(seconds) {
+  const total = Math.max(0, Math.floor(Number(seconds) || 0));
+  const hours = Math.floor(total / 3600);
+  const mins = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
+  const mm = String(mins).padStart(2, '0');
+  const ss = String(secs).padStart(2, '0');
+  if (hours > 0) {
+    return `${String(hours).padStart(2, '0')}:${mm}:${ss}`;
+  }
+  return `${mm}:${ss}`;
 }
 
 /**
@@ -119,7 +228,52 @@ export function nowLocalInput(offsetMinutes = 0) {
 }
 
 /**
- * Sinh Idempotency-Key hợp lệ (16–128 ký tự) cho các endpoint POST có đánh dấu I.
+ * Ghi nhận độ lệch đồng hồ giữa server_time trong meta response và đồng hồ máy khách.
+ */
+export function recordServerTime(serverTimeIso, clientNowMs = Date.now()) {
+  if (!serverTimeIso) return serverTimeOffsetMs;
+  const parsedMs = Date.parse(serverTimeIso);
+  if (!Number.isNaN(parsedMs)) {
+    serverTimeOffsetMs = parsedMs - clientNowMs;
+  }
+  return serverTimeOffsetMs;
+}
+
+export function getServerTimeOffsetMs() {
+  return serverTimeOffsetMs;
+}
+
+export function resetServerTimeOffset() {
+  serverTimeOffsetMs = 0;
+}
+
+export function getEstimatedServerNowMs(clientNowMs = Date.now()) {
+  return clientNowMs + serverTimeOffsetMs;
+}
+
+/**
+ * Tính số giây còn lại đến mốc hết hạn (expires_at / quote_expires_at) đồng bộ theo server_time.
+ */
+export function computeRemainingSeconds(
+  expiresAtIso,
+  { serverTimeIso = null, clientNowMs = Date.now() } = {}
+) {
+  if (!expiresAtIso) return 0;
+  const expiresMs = Date.parse(expiresAtIso);
+  if (Number.isNaN(expiresMs)) return 0;
+
+  let referenceMs = getEstimatedServerNowMs(clientNowMs);
+  if (serverTimeIso) {
+    const explicitServerMs = Date.parse(serverTimeIso);
+    if (!Number.isNaN(explicitServerMs)) {
+      referenceMs = explicitServerMs;
+    }
+  }
+  return Math.max(0, Math.floor((expiresMs - referenceMs) / 1000));
+}
+
+/**
+ * Sinh Idempotency-Key ngẫu nhiên hợp lệ (16–128 ký tự) cho các endpoint POST có đánh dấu I.
  */
 export function generateIdempotencyKey() {
   if (typeof globalThis.crypto?.randomUUID === 'function') {

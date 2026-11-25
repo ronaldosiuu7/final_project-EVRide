@@ -1,4 +1,16 @@
-import { apiRequest } from '../integrations/apiClient';
+import { apiRequest } from '../integrations/apiClient.js';
+
+export function listStations(params = {}, { signal } = {}) {
+  return apiRequest('/stations', { query: params, signal });
+}
+
+export function getStation(stationId, { signal } = {}) {
+  return apiRequest(`/stations/${stationId}`, { signal });
+}
+
+export function listStationVehicles(stationId, params = {}, { signal } = {}) {
+  return apiRequest(`/stations/${stationId}/vehicles`, { query: params, signal });
+}
 
 export function listAdminStations(params = {}, { signal } = {}) {
   return apiRequest('/admin/stations', { query: params, signal });
