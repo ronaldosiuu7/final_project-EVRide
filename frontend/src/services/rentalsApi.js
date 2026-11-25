@@ -1,4 +1,23 @@
-import { apiRequest } from '../integrations/apiClient';
+import { apiRequest } from '../integrations/apiClient.js';
+
+export function createRental(payload, idempotencyKey) {
+  return apiRequest('/rentals', {
+    method: 'POST',
+    body: {
+      vehicle_id: String(payload.vehicle_id),
+      pickup_station_id: String(payload.pickup_station_id),
+    },
+    idempotencyKey,
+  });
+}
+
+export function cancelRental(rentalId, idempotencyKey) {
+  return apiRequest(`/rentals/${encodeURIComponent(String(rentalId))}/cancel`, {
+    method: 'POST',
+    body: {},
+    idempotencyKey,
+  });
+}
 
 export function listRentals(params = {}, { signal } = {}) {
   return apiRequest('/rentals', { query: params, signal });

@@ -22,14 +22,26 @@ export default function Modal({
 
   useEffect(() => {
     if (!open) return undefined;
+    const previousFocus = document.activeElement;
     const handleKeyDown = (event) => {
+      if (event.key === 'Tab') {
+        const focusable = [...(cardRef.current?.querySelectorAll('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]') || [])].filter((el) => el.getClientRects().length);
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (!first) { event.preventDefault(); cardRef.current?.focus(); }
+        else if (event.shiftKey && (document.activeElement === first || document.activeElement === cardRef.current)) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && (document.activeElement === last || document.activeElement === cardRef.current)) { event.preventDefault(); first.focus(); }
+      }
       if (event.key === 'Escape' && !closeDisabledRef.current) {
         onCloseRef.current?.();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     cardRef.current?.focus();
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
   }, [open]);
 
   if (!open) return null;

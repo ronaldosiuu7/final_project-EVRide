@@ -1,155 +1,183 @@
-// ADAPTER BOUNDARY FOR #15:
-// Cầu nối xác thực tối giản chỉ giữ phiên trong bộ nhớ React để chạy khu vực STAFF/MANAGER.
-// Cơ chế Rolling Session, Refresh Token Rotation, Web Locks và BroadcastChannel thuộc phạm vi #15;
-// khi #15 hoàn thiện, truyền `externalAuth` vào <AuthProvider> hoặc thay thế file này.
+// Cầu nối React Context & Route Guards dùng chung cho toàn bộ EVRide (#15 CUSTOMER & #16 STAFF/MANAGER).
+// Gắn kết trực tiếp `authSession` (Rolling Session, Web Locks, BroadcastChannel) với `apiClient`
+// kèm ngữ cảnh phiên nguyên tử tại thời điểm gửi request (getSessionContext, failedToken thực tế, sessionId, epoch).
 
-import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
-import { apiRequest, configurePlatformApi } from './apiClient';
-import { getApiErrorMessage } from '../utils/errorMessages';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { Navigate, useLocation } from 'react-router-dom';
+import { configurePlatformApi } from './apiClient.js';
+import {
+  evaluateRouteAccess,
+  getDefaultAuthSessionManager,
+  resolvePostLoginPath,
+} from './authSession.js';
+import { LoadingState } from '../components/ui/index.js';
+import ForbiddenPage from '../features/auth/ForbiddenPage.jsx';
 
 const AuthContext = createContext(null);
-const ALLOWED_STAFF_ROLES = new Set(['STAFF', 'MANAGER']);
 
-export function AuthProvider({ children, externalAuth = null }) {
-  const [session, setSession] = useState({
-    accessToken: null,
-    sessionId: null,
-    user: null,
-  });
-  const [authNotice, setAuthNotice] = useState(null);
-  // Giữ token đồng bộ trong ref để apiClient luôn đọc được ngay lập tức trước khi useEffect của component con chạy.
-  const tokenRef = useRef(null);
+export function AuthProvider({ children, externalAuth = null, sessionManager = null }) {
+  const activeManager = sessionManager || getDefaultAuthSessionManager();
+  const [authState, setAuthState] = useState(() => activeManager.getState());
 
-  const activeUser = externalAuth ? externalAuth.user : session.user;
-  const activeToken = externalAuth ? externalAuth.accessToken : session.accessToken;
-  const activeSessionId = externalAuth ? externalAuth.sessionId : session.sessionId;
-
-  const clearLocalSession = useCallback((notice = null) => {
-    tokenRef.current = null;
-    setSession({ accessToken: null, sessionId: null, user: null });
-    if (notice) setAuthNotice(notice);
-  }, []);
-
-  // Đồng bộ handler cho apiClient ngay trong phase render (không chờ passive useEffect)
-  // để tránh race condition khiến useApiQuery ở component con gửi request trước khi token được gắn.
-  tokenRef.current = activeToken || null;
+  // Cấu hình đồng bộ cho apiClient ngay trong pha render để mọi request con chụp đúng
+  // token & (sessionId, epoch) tại thời điểm gửi request.
   if (externalAuth) {
     configurePlatformApi({
-      getAccessToken: externalAuth.getAccessToken || (() => tokenRef.current),
+      getAccessToken: externalAuth.getAccessToken || (() => externalAuth.accessToken || null),
+      getSessionContext:
+        externalAuth.getSessionContext ||
+        (() => ({
+          accessToken: externalAuth.accessToken || null,
+          sessionId: externalAuth.sessionId || null,
+          epoch: externalAuth.epoch || null,
+          isLoggingOut: Boolean(externalAuth.isLoggingOut),
+        })),
+      onTokenExpired: externalAuth.onTokenExpired || null,
+      onAuthInvalid: externalAuth.onAuthInvalid || null,
       customRequest: externalAuth.request || null,
-      onAuthInvalid:
-        externalAuth.onAuthInvalid || ((err) => clearLocalSession(getApiErrorMessage(err))),
     });
   } else {
     configurePlatformApi({
-      getAccessToken: () => tokenRef.current,
+      getAccessToken: () => activeManager.getAccessToken(),
+      getSessionContext: () => activeManager.getSessionContext(),
+      onTokenExpired: ({ failedToken, sessionId, epoch }) =>
+        activeManager.refreshAccessToken({
+          failedToken,
+          expectedSessionId: sessionId,
+          expectedEpoch: epoch,
+        }),
+      onAuthInvalid: (err, requestAuthContext) =>
+        activeManager.handleAuthInvalid(err, requestAuthContext),
       customRequest: null,
-      onAuthInvalid: (err) => {
-        clearLocalSession(getApiErrorMessage(err));
-      },
     });
   }
 
-  const login = useCallback(async (email, password) => {
-    setAuthNotice(null);
-    const { data } = await apiRequest('/auth/login', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-EVRide-CSRF': '1',
-      },
-      body: { email, password },
-      credentials: 'include',
-      skipAuthCallback: true,
+  useEffect(() => {
+    if (externalAuth) return undefined;
+    const unsubscribe = activeManager.subscribe((nextSnapshot) => {
+      setAuthState(nextSnapshot);
     });
+    void activeManager.bootstrap();
+    return unsubscribe;
+  }, [externalAuth, activeManager]);
 
-    if (!data?.user || !ALLOWED_STAFF_ROLES.has(data.user.role)) {
-      // Thu hồi ngay nếu tài khoản CUSTOMER đăng nhập vào cổng vận hành.
-      if (data?.session_id) {
-        try {
-          await apiRequest('/auth/logout', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-EVRide-CSRF': '1',
-              'X-Session-ID': data.session_id,
-            },
-            body: {},
-            credentials: 'include',
-            skipAuthCallback: true,
-          });
-        } catch {
-          // Bỏ qua lỗi dọn cookie nếu có.
-        }
+  const login = useCallback(
+    (email, password) => {
+      if (externalAuth?.login) {
+        return externalAuth.login(email, password);
       }
-      const forbiddenErr = new Error(
-        'Tài khoản CUSTOMER không có quyền truy cập giao diện vận hành STAFF/MANAGER.'
-      );
-      forbiddenErr.code = 'FORBIDDEN';
-      forbiddenErr.status = 403;
-      throw forbiddenErr;
-    }
+      return activeManager.login(email, password);
+    },
+    [externalAuth, activeManager]
+  );
 
-    // Gán token đồng bộ trước setSession để mọi request từ component con sau khi mount luôn có Authorization.
-    tokenRef.current = data.access_token;
-    configurePlatformApi({
-      getAccessToken: () => tokenRef.current,
-      customRequest: null,
-      onAuthInvalid: (err) => {
-        clearLocalSession(getApiErrorMessage(err));
-      },
-    });
-
-    setSession({
-      accessToken: data.access_token,
-      sessionId: data.session_id,
-      user: data.user,
-    });
-    return data.user;
-  }, [clearLocalSession]);
-
-  const logout = useCallback(async () => {
-    if (externalAuth?.logout) {
-      return externalAuth.logout();
-    }
-    const sid = session.sessionId;
-    clearLocalSession(null);
-    if (sid) {
-      try {
-        await apiRequest('/auth/logout', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-EVRide-CSRF': '1',
-            'X-Session-ID': sid,
-          },
-          body: {},
-          credentials: 'include',
-          skipAuthCallback: true,
-        });
-      } catch {
-        // Phiên cục bộ đã được xóa khỏi bộ nhớ.
+  const register = useCallback(
+    (payload) => {
+      if (externalAuth?.register) {
+        return externalAuth.register(payload);
       }
+      return activeManager.register(payload);
+    },
+    [externalAuth, activeManager]
+  );
+
+  const logout = useCallback(
+    (options) => {
+      const normalizedOptions =
+        options && typeof options === 'object' && !('nativeEvent' in options) ? options : {};
+      if (externalAuth?.logout) {
+        return externalAuth.logout(normalizedOptions);
+      }
+      return activeManager.logout(normalizedOptions);
+    },
+    [externalAuth, activeManager]
+  );
+
+  const changePassword = useCallback(
+    (payload) => {
+      if (externalAuth?.changePassword) {
+        return externalAuth.changePassword(payload);
+      }
+      return activeManager.changePassword(payload);
+    },
+    [externalAuth, activeManager]
+  );
+
+  const refreshSession = useCallback(() => {
+    if (externalAuth?.refreshSession) {
+      return externalAuth.refreshSession();
     }
-    return undefined;
-  }, [externalAuth, session.sessionId, clearLocalSession]);
+    return activeManager.refreshAccessToken();
+  }, [externalAuth, activeManager]);
+
+  const updateSessionUser = useCallback(
+    (partialUser) => {
+      if (externalAuth?.updateSessionUser) {
+        return externalAuth.updateSessionUser(partialUser);
+      }
+      return activeManager.updateUserProfile(partialUser);
+    },
+    [externalAuth, activeManager]
+  );
+
+  const clearAuthNotice = useCallback(
+    () => {
+      if (externalAuth?.clearAuthNotice) {
+        return externalAuth.clearAuthNotice();
+      }
+      return activeManager.clearAuthNotice();
+    },
+    [externalAuth, activeManager]
+  );
+
+  const activeUser = externalAuth ? externalAuth.user : authState.user;
+  const activeToken = externalAuth ? externalAuth.accessToken : authState.accessToken;
+  const activeSessionId = externalAuth ? externalAuth.sessionId : authState.sessionId;
+  const activeGeneration = externalAuth ? externalAuth.generation ?? 0 : authState.generation;
+  const isBootstrapping = externalAuth ? Boolean(externalAuth.isBootstrapping) : authState.isBootstrapping;
+  const authNotice = externalAuth ? externalAuth.authNotice || null : authState.authNotice;
+  const isAuthenticated = Boolean(activeUser && activeToken);
 
   const value = useMemo(
     () => ({
       user: activeUser,
       accessToken: activeToken,
       sessionId: activeSessionId,
-      isAuthenticated: Boolean(activeUser && activeToken),
+      generation: activeGeneration,
+      isAuthenticated,
+      isBootstrapping,
       authNotice,
-      clearAuthNotice: () => setAuthNotice(null),
-      login: externalAuth?.login || login,
+      clearAuthNotice,
+      login,
+      register,
       logout,
+      changePassword,
+      refreshSession,
+      updateSessionUser,
       hasRole: (...roles) => Boolean(activeUser && roles.includes(activeUser.role)),
     }),
-    [activeUser, activeToken, activeSessionId, authNotice, externalAuth, login, logout]
+    [
+      activeUser,
+      activeToken,
+      activeSessionId,
+      activeGeneration,
+      isAuthenticated,
+      isBootstrapping,
+      authNotice,
+      clearAuthNotice,
+      login,
+      register,
+      logout,
+      changePassword,
+      refreshSession,
+      updateSessionUser,
+    ]
   );
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  // Remount private queries, forms, blob URLs and toasts when identity changes.
+  // Token rotation/profile edits deliberately retain the same boundary.
+  const identityKey = JSON.stringify([activeSessionId || null, activeUser?.id || null, activeUser?.role || null]);
+  return <AuthContext.Provider value={value}><React.Fragment key={identityKey}>{children}</React.Fragment></AuthContext.Provider>;
 }
 
 export function useAuth() {
@@ -160,113 +188,67 @@ export function useAuth() {
   return ctx;
 }
 
-function StaffLoginGate() {
-  const { login, authNotice } = useAuth();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState('');
+export function RequireAuth({ children }) {
+  const { isBootstrapping, isAuthenticated, user } = useAuth();
+  const location = useLocation();
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-    setSubmitting(true);
-    setError('');
-    try {
-      await login(email.trim(), password);
-    } catch (err) {
-      setError(getApiErrorMessage(err));
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  const decision = evaluateRouteAccess({
+    isBootstrapping,
+    isAuthenticated,
+    user,
+    allowedRoles: [],
+  });
 
-  return (
-    <div className="auth-gate">
-      <div className="auth-card">
-        <div className="auth-card-header">
-          <span className="badge badge-info">EVRide Operations</span>
-          <h1>Đăng nhập vận hành (STAFF / MANAGER)</h1>
-          <p className="muted">
-            Cổng làm việc dành cho nhân viên vận hành và quản lý hệ thống cho thuê xe máy điện EVRide.
-          </p>
-        </div>
+  if (decision.status === 'bootstrapping') {
+    return <LoadingState message="Đang khôi phục phiên đăng nhập..." />;
+  }
 
-        {authNotice && (
-          <div className="alert alert-warning" role="alert">
-            {authNotice}
-          </div>
-        )}
+  if (decision.status === 'unauthenticated') {
+    const from = `${location.pathname}${location.search || ''}`;
+    return <Navigate to="/login" state={{ from }} replace />;
+  }
 
-        {error && (
-          <div className="alert alert-danger" role="alert">
-            {error}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="stack-md">
-          <div className="form-field">
-            <label htmlFor="staff-login-email">Email tài khoản</label>
-            <input
-              id="staff-login-email"
-              type="email"
-              required
-              autoComplete="username"
-              placeholder="staff@evride.test hoặc manager@evride.test"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </div>
-
-          <div className="form-field">
-            <label htmlFor="staff-login-password">Mật khẩu</label>
-            <input
-              id="staff-login-password"
-              type="password"
-              required
-              autoComplete="current-password"
-              placeholder="Nhập mật khẩu (12–128 ký tự)"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </div>
-
-          <button type="submit" className="btn btn-primary btn-block" disabled={submitting}>
-            {submitting ? 'Đang đăng nhập...' : 'Đăng nhập vào khu vực vận hành'}
-          </button>
-        </form>
-
-        <p className="auth-footnote">
-          Lưu ý tích hợp: Guard và cổng đăng nhập tạm thời chỉ giữ access token trong bộ nhớ phiên làm việc hiện tại;
-          cơ chế Rolling Session / Refresh Rotation dùng chung sẽ được ghép từ #15.
-        </p>
-      </div>
-    </div>
-  );
+  return children;
 }
 
 export function RequireRole({ allowedRoles, children }) {
-  const { isAuthenticated, user, logout } = useAuth();
+  const { isBootstrapping, isAuthenticated, user } = useAuth();
+  const location = useLocation();
 
-  if (!isAuthenticated || !user) {
-    return <StaffLoginGate />;
+  const decision = evaluateRouteAccess({
+    isBootstrapping,
+    isAuthenticated,
+    user,
+    allowedRoles,
+  });
+
+  if (decision.status === 'bootstrapping') {
+    return <LoadingState message="Đang khôi phục phiên đăng nhập..." />;
   }
 
-  if (!allowedRoles.includes(user.role)) {
-    return (
-      <div className="state-box state-error" role="alert">
-        <p className="state-title">403 — Không có quyền truy cập</p>
-        <p className="state-hint">
-          Tài khoản hiện tại có vai trò <code>{user.role}</code>. Chức năng này chỉ dành cho{' '}
-          <code>{allowedRoles.join(' / ')}</code>.
-          <code className="error-code">FORBIDDEN</code>
-        </p>
-        {user.role === 'CUSTOMER' && (
-          <button type="button" className="btn btn-danger" onClick={logout}>
-            Đăng xuất tài khoản CUSTOMER
-          </button>
-        )}
-      </div>
-    );
+  if (decision.status === 'unauthenticated') {
+    const from = `${location.pathname}${location.search || ''}`;
+    return <Navigate to="/login" state={{ from }} replace />;
+  }
+
+  if (decision.status === 'forbidden') {
+    return <ForbiddenPage allowedRoles={allowedRoles} />;
+  }
+
+  return children;
+}
+
+export function GuestOnlyRoute({ children }) {
+  const { isBootstrapping, isAuthenticated, user } = useAuth();
+  const location = useLocation();
+
+  if (isBootstrapping) {
+    return <LoadingState message="Đang kiểm tra phiên đăng nhập..." />;
+  }
+
+  if (isAuthenticated && user) {
+    const destination = resolvePostLoginPath(user, location.state?.from);
+    return <Navigate to={destination} replace />;
   }
 
   return children;

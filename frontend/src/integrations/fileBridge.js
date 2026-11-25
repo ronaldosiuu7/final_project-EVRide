@@ -1,11 +1,33 @@
-// ADAPTER BOUNDARY FOR #15:
-// Cầu nối upload và download file riêng tư dùng API hiện có của backend (/files/upload, /files/{id}/download).
-// Khi #15 hoàn thiện module upload/download dùng chung, chỉ cần trỏ lại hai hàm dưới đây.
+// Dịch vụ upload và tải tệp riêng tư dùng chung cho toàn dự án (#15 & #16).
+// - Đi qua `apiRequest` để thừa hưởng Bearer token trong header (KHÔNG đưa token vào URL),
+//   timeout, AbortSignal, chuẩn hóa lỗi và tự động làm mới token khi gặp 401 TOKEN_EXPIRED.
+// - Không tự đặt header Content-Type cho FormData để trình duyệt tự sinh multipart boundary chuẩn.
 
-import { ApiError, getAccessToken, resolveApiUrl } from './apiClient';
+import { ApiError, apiRequest } from './apiClient.js';
+import { isPositiveIdString } from '../utils/validation.js';
 
 export const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+export const ALLOWED_IMAGE_ACCEPT = 'image/jpeg,image/png,image/webp';
 export const MAX_EVIDENCE_FILE_BYTES = 10 * 1024 * 1024; // 10 MiB theo backend/app/api/v1/files.py
+
+export function formatFileSize(bytes) {
+  if (bytes === null || bytes === undefined || !Number.isFinite(Number(bytes)) || Number(bytes) < 0) {
+    return 'Chưa rõ kích thước';
+  }
+  const size = Number(bytes);
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+export function revokeObjectUrlSafely(url) {
+  if (!url || typeof url !== 'string') return;
+  try {
+    URL.revokeObjectURL(url);
+  } catch {
+    // Bỏ qua nếu môi trường không hỗ trợ hoặc URL đã được thu hồi.
+  }
+}
 
 export function validateEvidenceFile(file) {
   if (!file) {
@@ -14,13 +36,13 @@ export function validateEvidenceFile(file) {
   if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
     return 'Chỉ chấp nhận tệp ảnh định dạng JPEG, PNG hoặc WebP.';
   }
-  if (file.size < 1 || file.size > MAX_EVIDENCE_FILE_BYTES) {
+  if (typeof file.size !== 'number' || !Number.isFinite(file.size) || file.size < 1 || file.size > MAX_EVIDENCE_FILE_BYTES) {
     return 'Kích thước tệp phải từ 1 byte đến tối đa 10 MiB.';
   }
   return '';
 }
 
-export async function uploadEvidenceFile(file) {
+export async function uploadEvidenceFile(file, { signal, timeoutMs = 30000 } = {}) {
   const validationError = validateEvidenceFile(file);
   if (validationError) {
     throw new ApiError(422, 'VALIDATION_ERROR', validationError);
@@ -29,77 +51,49 @@ export async function uploadEvidenceFile(file) {
   const formData = new FormData();
   formData.append('file', file);
 
-  const token = getAccessToken();
-  const headers = {};
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
+  const { data } = await apiRequest('/files/upload', {
+    method: 'POST',
+    body: formData,
+    signal,
+    timeoutMs,
+  });
 
-  let response;
-  try {
-    response = await fetch(resolveApiUrl('/files/upload'), {
-      method: 'POST',
-      headers,
-      body: formData,
-      credentials: 'include',
-    });
-  } catch (networkErr) {
-    throw new ApiError(0, 'DEPENDENCY_UNAVAILABLE', 'Không thể tải tệp lên máy chủ.', {
-      details: { cause: networkErr?.message },
-    });
-  }
-
-  const payload = await response.json().catch(() => null);
-  if (!response.ok) {
-    const errObj = payload?.error || {};
+  if (!data || !isPositiveIdString(data.file_id) || data.status !== 'READY') {
     throw new ApiError(
-      response.status,
-      errObj.code || 'HTTP_ERROR',
-      errObj.message || 'Tải ảnh thất bại.'
+      502,
+      'UPLOAD_INCOMPLETE',
+      'Tệp chưa sẵn sàng trên hệ thống sau khi tải lên. Vui lòng thử lại.'
     );
   }
-  return payload?.data ?? payload;
+
+  return data;
 }
 
-export async function downloadPrivateFileBlob(fileIdOrPath) {
-  const path = String(fileIdOrPath).startsWith('/')
-    ? String(fileIdOrPath)
-    : `/files/${fileIdOrPath}/download`;
-
-  const token = getAccessToken();
-  const headers = {};
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
+export async function downloadPrivateFileBlob(fileIdOrPath, { signal, timeoutMs = 30000 } = {}) {
+  const raw = String(fileIdOrPath || '').trim();
+  if (!raw) {
+    throw new ApiError(400, 'INVALID_REQUEST', 'Thiếu định danh tệp cần tải.');
   }
 
-  let response;
-  try {
-    response = await fetch(resolveApiUrl(path), {
-      method: 'GET',
-      headers,
-      credentials: 'include',
-    });
-  } catch (networkErr) {
-    throw new ApiError(0, 'DEPENDENCY_UNAVAILABLE', 'Không thể tải tệp từ máy chủ.', {
-      details: { cause: networkErr?.message },
-    });
-  }
+  const path =
+    raw.startsWith('/') || /^https?:\/\//i.test(raw)
+      ? raw
+      : `/files/${encodeURIComponent(raw)}/download`;
 
-  if (!response.ok) {
-    const payload = await response.json().catch(() => null);
-    const errObj = payload?.error || {};
-    throw new ApiError(
-      response.status,
-      errObj.code || 'HTTP_ERROR',
-      errObj.message || `Không thể tải tệp (HTTP ${response.status}).`
-    );
-  }
+  const response = await apiRequest(path, {
+    method: 'GET',
+    responseType: 'blob',
+    signal,
+    timeoutMs,
+  });
 
-  const blob = await response.blob();
+  const blob = response.data;
   const objectUrl = URL.createObjectURL(blob);
   return {
     blob,
     objectUrl,
-    contentType: response.headers.get('content-type') || blob.type,
+    contentType: response.contentType || blob.type,
+    filename: response.filename || null,
+    revoke: () => revokeObjectUrlSafely(objectUrl),
   };
 }

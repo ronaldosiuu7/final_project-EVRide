@@ -1,4 +1,9 @@
 import { apiRequest } from '../integrations/apiClient.js';
+import { registerPrivateCacheCleaner } from '../integrations/authSession.js';
+
+export function getMyProfile({ signal } = {}) {
+  return apiRequest('/users/me', { signal });
+}
 
 export function updateMyProfile(payload) {
   return apiRequest('/users/me', {
@@ -25,6 +30,9 @@ let activeEmployeesCache = null;
 export function invalidateActiveEmployeesCache() {
   activeEmployeesCache = null;
 }
+
+// Tự động dọn cache danh sách nhân sự nội bộ khi người dùng đăng xuất hoặc chuyển tài khoản.
+registerPrivateCacheCleaner(invalidateActiveEmployeesCache);
 
 export function listUsers(params = {}, { signal } = {}) {
   return apiRequest('/users', { query: params, signal });
@@ -79,6 +87,17 @@ export function updateWalletStatus(walletId, payload) {
 
 export function getDocumentSensitive(docId, { signal } = {}) {
   return apiRequest(`/user-documents/${docId}/sensitive`, { signal });
+}
+
+export function listMyDocuments(params = {}, { signal } = {}) {
+  return apiRequest('/users/me/documents', { query: params, signal });
+}
+
+export function createMyDocument(payload) {
+  return apiRequest('/users/me/documents', {
+    method: 'POST',
+    body: payload,
+  });
 }
 
 export function verifyDocument(docId, payload) {
