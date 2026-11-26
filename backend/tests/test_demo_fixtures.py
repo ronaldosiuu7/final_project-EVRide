@@ -3,8 +3,10 @@ from collections import Counter
 from datetime import datetime
 from decimal import Decimal
 
+from app.schemas.auth import LoginRequest
 from database.seeds.demo_fixtures import (
     ACTIVE_RENTALS,
+    DEMO_PASSWORD,
     DEPOSIT_AMOUNT,
     DOCUMENTS,
     EXTRA_MINUTE_PRICE,
@@ -85,11 +87,17 @@ class DemoFixtureTests(unittest.TestCase):
             self.assertEqual(rental["invoice_status"], "PAID")
 
     def test_fake_seed_accounts_and_policy_values_are_marked(self) -> None:
-        self.assertTrue(all(user["email"].endswith("@evride.test") for user in USERS))
+        self.assertTrue(all(user["email"].endswith("@example.com") for user in USERS))
         self.assertTrue(all(vehicle["name"].startswith("[DEMO]") for vehicle in VEHICLES))
         self.assertTrue(all(vehicle["model"] for vehicle in VEHICLES))
         self.assertTrue(all("type" not in vehicle for vehicle in VEHICLES))
         self.assertEqual(Decimal(DEPOSIT_AMOUNT), Decimal("100000.00"))
+
+    def test_demo_account_emails_pass_login_request_validation(self) -> None:
+        self.assertEqual(len(USERS), 8)
+        for user in USERS:
+            payload = LoginRequest(email=user["email"], password=DEMO_PASSWORD)
+            self.assertEqual(payload.email, user["email"])
 
     def test_checkout_demo_account_supports_fixed_model_promotion(self) -> None:
         checkout_user = next(user for user in USERS if user["key"] == "customer_checkout")

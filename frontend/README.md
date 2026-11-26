@@ -26,7 +26,7 @@ npm.cmd run build
 npm.cmd run dev
 ```
 
-Mở **http://localhost:5173/** cho khách hàng; **http://localhost:5173/admin** cho vận hành (tài khoản demo vận hành trên backend: `staff@evride.test` / `manager@evride.test`).
+Mở **http://localhost:5173/** cho khách hàng; **http://localhost:5173/admin** cho vận hành (tài khoản demo vận hành trên backend: `staff@example.com` / `manager@example.com`).
 
 ---
 

@@ -104,7 +104,7 @@ Tác vụ dọn dẹp phiên (`app.cleanup_auth`) xóa `replay_ciphertext` đã 
 
 Trên macOS/Linux, thay Python executable bằng `.venv/bin/python`. Chạy lại seed cập nhật các bản ghi có ID/email/mã fixture ổn định, không thêm bản sao; lịch sử giá và audit điều chuyển được insert một lần. Toàn bộ script và fixture seed nằm trong `database/seeds/`; fixture chung được script seed và `tests/test_demo_fixtures.py` dùng.
 
-Seed tạo CUSTOMER có CCCD `PENDING`, đã `VERIFIED` và chưa nộp giấy tờ; STAFF/MANAGER, ví và mã giảm giá; ba trạm (một trạm đầy, một trạm còn đúng một chỗ); xe nhiều trạng thái; các chuyến/hóa đơn từ tháng 3 đến tháng 10 năm 2026. Tài khoản demo dùng email `@evride.test`; mật khẩu giả chung được lệnh seed in ra sau khi chạy. Các hash mật khẩu fixture chỉ phục vụ demo, không dùng làm thông tin xác thực production.
+Seed tạo CUSTOMER có CCCD `PENDING`, đã `VERIFIED` và chưa nộp giấy tờ; STAFF/MANAGER, ví và mã giảm giá; ba trạm (một trạm đầy, một trạm còn đúng một chỗ); xe nhiều trạng thái; các chuyến/hóa đơn từ tháng 3 đến tháng 10 năm 2026. Tài khoản demo dùng email `@example.com`; mật khẩu giả chung được lệnh seed in ra sau khi chạy. Các hash mật khẩu fixture chỉ phục vụ demo, không dùng làm thông tin xác thực production.
 
 ## Cấu trúc
 
