@@ -12,7 +12,6 @@ import {
   Button,
   EmptyState,
   ErrorState,
-  FilterBar,
   ImageUploadField,
   LoadingState,
   Modal,
@@ -23,6 +22,11 @@ import {
   TextField,
   useToast,
 } from '../../components/ui/index.js';
+import {
+  ArrowRightIcon,
+  ClockIcon,
+  RefreshIcon,
+} from '../../components/customer/CustomerIcons.jsx';
 import { formatDateTimeVN } from '../../utils/format.js';
 import { getCustomerStatusMeta } from '../../utils/statusConfig.js';
 import { getApiErrorMessage } from '../../utils/errorMessages.js';
@@ -165,6 +169,7 @@ function CustomerTicketCreateModal({ initialRentalId = '', onClose, onCreated })
           </div>
         ) : (
           <SelectField
+            id="ticket-create-rental"
             label="Chuyến thuê liên quan"
             required
             value={rentalId}
@@ -176,6 +181,7 @@ function CustomerTicketCreateModal({ initialRentalId = '', onClose, onCreated })
         )}
 
         <TextField
+          id="ticket-create-title"
           label="Tiêu đề yêu cầu"
           required
           maxLength={200}
@@ -187,6 +193,7 @@ function CustomerTicketCreateModal({ initialRentalId = '', onClose, onCreated })
         />
 
         <TextareaField
+          id="ticket-create-description"
           label="Mô tả chi tiết"
           required
           rows={4}
@@ -241,6 +248,7 @@ export default function CustomerTicketListPage() {
     <div className="customer-page">
       <div className="customer-page-header">
         <div>
+          <span className="customer-page-eyebrow">Trung tâm hỗ trợ</span>
           <h1 className="customer-page-title">Hỗ trợ &amp; Báo cáo sự cố</h1>
           <p className="customer-page-subtitle">
             Gửi yêu cầu hỗ trợ theo chuyến thuê, đính kèm ảnh bằng chứng và theo dõi kết quả xử lý từ đội ngũ vận hành EVRide.
@@ -252,28 +260,33 @@ export default function CustomerTicketListPage() {
             Xem câu hỏi thường gặp
           </Link>
           <Button size="sm" variant="primary" onClick={() => setCreateOpen(true)}>
-            + Tạo yêu cầu hỗ trợ
+            Tạo yêu cầu hỗ trợ
           </Button>
         </div>
       </div>
 
-      <FilterBar
-        onReset={
-          filters.status
-            ? () => setFilters((prev) => applyFilterPatch(prev, { status: '' }))
-            : undefined
-        }
-        resetLabel="Tất cả trạng thái"
-      >
-        <SelectField
-          label="Trạng thái xử lý"
-          value={filters.status}
-          onChange={(e) =>
-            setFilters((prev) => applyFilterPatch(prev, { status: e.target.value }))
-          }
-          options={CUSTOMER_TICKET_STATUS_OPTIONS}
-        />
-      </FilterBar>
+      <section className="vehicle-filter-panel" aria-label="Bộ lọc yêu cầu hỗ trợ">
+        <div className="inline-filter-row">
+          <SelectField
+            id="ticket-status-filter"
+            label="Trạng thái xử lý"
+            value={filters.status}
+            onChange={(e) =>
+              setFilters((prev) => applyFilterPatch(prev, { status: e.target.value }))
+            }
+            options={CUSTOMER_TICKET_STATUS_OPTIONS}
+          />
+          {filters.status && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setFilters((prev) => applyFilterPatch(prev, { status: '' }))}
+            >
+              Tất cả trạng thái
+            </Button>
+          )}
+        </div>
+      </section>
 
       {!ticketsQuery.loading && !ticketsQuery.error && (
         <div className="customer-results-bar">
@@ -287,7 +300,8 @@ export default function CustomerTicketListPage() {
             )}
           </span>
           <Button size="sm" variant="ghost" onClick={ticketsQuery.reload}>
-            Làm mới
+            <RefreshIcon size={15} />
+            <span>Làm mới</span>
           </Button>
         </div>
       )}
@@ -326,16 +340,27 @@ export default function CustomerTicketListPage() {
           <div className="document-list">
             {tickets.map((ticket) => {
               const statusMeta = getCustomerStatusMeta('ticketStatus', ticket.status);
+              const detailPath = `/support/tickets/${encodeURIComponent(String(ticket.id))}`;
               return (
                 <article key={ticket.id} className="document-item-card">
                   <div className="document-item-head">
                     <div>
-                      <h2 className="customer-card-title">{ticket.title}</h2>
-                      <p className="station-card-address">
-                        Gửi lúc <strong>{formatDateTimeVN(ticket.created_at, { withSeconds: true })}</strong>
-                        {ticket.updated_at ? (
-                          <> · Cập nhật: <strong>{formatDateTimeVN(ticket.updated_at)}</strong></>
-                        ) : null}
+                      <h2 className="customer-card-title">
+                        <Link to={detailPath} className="customer-card-title-link">
+                          {ticket.title}
+                        </Link>
+                      </h2>
+                      <p className="station-card-hours-line" style={{ marginTop: 4 }}>
+                        <ClockIcon size={15} className="station-meta-icon" />
+                        <span>
+                          Gửi lúc <strong>{formatDateTimeVN(ticket.created_at, { withSeconds: true })}</strong>
+                          {ticket.updated_at ? (
+                            <>
+                              {' '}
+                              · Cập nhật: <strong>{formatDateTimeVN(ticket.updated_at)}</strong>
+                            </>
+                          ) : null}
+                        </span>
                       </p>
                     </div>
                     <StatusBadge label={statusMeta.label} tone={statusMeta.tone} />
@@ -352,11 +377,9 @@ export default function CustomerTicketListPage() {
                   )}
 
                   <div className="customer-card-actions">
-                    <Link
-                      to={`/support/tickets/${encodeURIComponent(String(ticket.id))}`}
-                      className="btn btn-sm btn-secondary"
-                    >
-                      Xem chi tiết &amp; bằng chứng
+                    <Link to={detailPath} className="btn btn-sm btn-secondary">
+                      <span>Xem chi tiết &amp; bằng chứng</span>
+                      <ArrowRightIcon size={15} />
                     </Link>
                     {ticket.rental_id && (
                       <Link

@@ -1,6 +1,11 @@
 import React, { useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button, Modal, StatusBadge, useToast } from '../../components/ui/index.js';
+import {
+  ClockIcon,
+  MapPinIcon,
+  ShieldCheckIcon,
+} from '../../components/customer/CustomerIcons.jsx';
 import useIdempotentMutation from '../../hooks/useIdempotentMutation.js';
 import { createRental } from '../../services/rentalsApi.js';
 import {
@@ -114,8 +119,8 @@ export default function ReserveVehicleModal({
           </div>
         )}
 
-        <div className="station-metric-box" style={{ gap: 8 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+        <div className="reserve-vehicle-summary">
+          <div className="reserve-vehicle-summary-head">
             <div>
               <p className="vehicle-model-tag">{vehicle?.model || 'Xe máy điện'}</p>
               <strong className="customer-card-title">{vehicle?.name || 'Xe máy điện EVRide'}</strong>
@@ -123,16 +128,25 @@ export default function ReserveVehicleModal({
             <StatusBadge label={`Pin ${battery.text}`} tone={battery.tone} />
           </div>
 
-          <p className="station-card-address" style={{ marginTop: 0 }}>
-            Trạm nhận xe:{' '}
-            <strong>{station?.name || (pickupStationId ? `Trạm đã chọn` : 'Chưa xác định')}</strong>
-            {station?.address ? ` — ${station.address}` : ''}
-          </p>
-          {station && (
-            <p className="station-card-address" style={{ marginTop: 0 }}>
-              Giờ hoạt động trạm: <strong>{formatStationHours(station.opens_at, station.closes_at)}</strong>
+          <div className="station-card-meta-list">
+            <p className="station-card-address">
+              <MapPinIcon size={15} className="station-meta-icon" />
+              <span>
+                Trạm nhận xe:{' '}
+                <strong>{station?.name || (pickupStationId ? 'Trạm đã chọn' : 'Chưa xác định')}</strong>
+                {station?.address ? ` — ${station.address}` : ''}
+              </span>
             </p>
-          )}
+            {station && (
+              <p className="station-card-hours-line">
+                <ClockIcon size={15} className="station-meta-icon" />
+                <span>
+                  Giờ hoạt động trạm:{' '}
+                  <strong>{formatStationHours(station.opens_at, station.closes_at)}</strong>
+                </span>
+              </p>
+            )}
+          </div>
         </div>
 
         <div>
@@ -152,19 +166,31 @@ export default function ReserveVehicleModal({
               <dt>Tiền cọc (tạm giữ khi nhân viên bàn giao xe)</dt>
               <dd>{depositAmount}</dd>
             </div>
-            <div className="vehicle-pricing-row" style={{ borderTop: '1px dashed var(--cust-border)', paddingTop: 8 }}>
-              <dt><strong>Số dư ví tối thiểu cần có</strong></dt>
+            <div className="vehicle-pricing-row is-total">
+              <dt>
+                <strong>Số dư ví tối thiểu cần có</strong>
+              </dt>
               <dd className="price-highlight">{upfrontReq.formattedTotal}</dd>
             </div>
           </dl>
         </div>
 
-        <div className="alert alert-info stack-xs">
-          <strong>Điều kiện giữ xe cần lưu ý:</strong>
+        <div className="reserve-rules-box">
+          <span className="reserve-rules-heading">
+            <ShieldCheckIcon size={16} />
+            <span>Điều kiện giữ xe cần lưu ý</span>
+          </span>
           <ul className="rental-rules-list">
-            <li>Lượt giữ xe có hiệu lực trong <strong>30 phút</strong> theo đồng hồ máy chủ. Nhân viên tại trạm sẽ kiểm tra và thực hiện bàn giao nhận xe.</li>
-            <li>Tài khoản cần có <strong>CCCD đã xác minh</strong>, còn hạn hiệu lực và đủ từ 16 tuổi.</li>
-            <li>Hủy trước khi nhận xe không mất phí, nhưng tối đa <strong>3 lần hủy hoặc để hết hạn mỗi ngày</strong> theo giờ Việt Nam.</li>
+            <li>
+              Lượt giữ xe có hiệu lực trong <strong>30 phút</strong> theo đồng hồ máy chủ. Nhân viên tại trạm sẽ kiểm tra và thực hiện bàn giao nhận xe.
+            </li>
+            <li>
+              Tài khoản cần có <strong>CCCD đã xác minh</strong>, còn hạn hiệu lực và đủ từ 16 tuổi.
+            </li>
+            <li>
+              Hủy trước khi nhận xe không mất phí, nhưng tối đa{' '}
+              <strong>3 lần hủy hoặc để hết hạn mỗi ngày</strong> theo giờ Việt Nam.
+            </li>
           </ul>
         </div>
       </div>

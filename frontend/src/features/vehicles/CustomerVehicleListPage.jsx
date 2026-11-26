@@ -8,13 +8,12 @@ import {
   Button,
   EmptyState,
   ErrorState,
-  FilterBar,
-  LoadingState,
   Pagination,
   SelectField,
   TextField,
 } from '../../components/ui/index.js';
-import VehicleCard from '../../components/customer/VehicleCard.jsx';
+import VehicleCard, { VehicleGridSkeleton } from '../../components/customer/VehicleCard.jsx';
+import { ArrowRightIcon, RefreshIcon } from '../../components/customer/CustomerIcons.jsx';
 import ReserveVehicleModal from '../rentals/ReserveVehicleModal.jsx';
 import {
   applyFilterPatch,
@@ -116,36 +115,50 @@ export default function CustomerVehicleListPage() {
     <div className="customer-page">
       <div className="customer-page-header">
         <div>
+          <span className="customer-page-eyebrow">Đội xe máy điện</span>
           <h1 className="customer-page-title">Tìm xe máy điện</h1>
           <p className="customer-page-subtitle">
             Xem toàn bộ xe máy điện đủ điều kiện thuê (pin từ 30% trở lên, tại trạm đang mở cửa) kèm giá 30 phút đầu, giá phút thêm và tiền cọc.
           </p>
         </div>
         <Link to="/stations" className="btn btn-secondary btn-sm">
-          Xem theo trạm →
+          <span>Xem theo trạm</span>
+          <ArrowRightIcon size={15} />
         </Link>
       </div>
 
-      <FilterBar onReset={hasActiveFilters ? handleResetFilters : undefined} resetLabel="Xóa bộ lọc">
-        <SelectField
-          label="Trạm nhận xe"
-          value={filters.stationId}
-          onChange={(e) =>
-            setFilters((prev) => applyFilterPatch(prev, { stationId: e.target.value }))
-          }
-          options={stationOptions}
-        />
+      <section className="vehicle-filter-panel" aria-label="Bộ lọc tìm xe máy điện">
+        <div className="vehicle-filter-grid">
+          <SelectField
+            id="vehicle-filter-station"
+            label="Trạm nhận xe"
+            value={filters.stationId}
+            onChange={(e) =>
+              setFilters((prev) => applyFilterPatch(prev, { stationId: e.target.value }))
+            }
+            options={stationOptions}
+          />
 
-        <TextField
-          label="Dòng xe (nhập chính xác tên dòng xe)"
-          type="search"
-          placeholder="Ví dụ: Klara S, Feliz S, Evo200..."
-          value={filters.model}
-          onChange={(e) =>
-            setFilters((prev) => applyFilterPatch(prev, { model: e.target.value }))
-          }
-        />
-      </FilterBar>
+          <TextField
+            id="vehicle-filter-model"
+            label="Dòng xe (nhập chính xác tên dòng xe)"
+            type="search"
+            placeholder="Ví dụ: DEMO-CITY, DEMO-LONG-RANGE..."
+            value={filters.model}
+            onChange={(e) =>
+              setFilters((prev) => applyFilterPatch(prev, { model: e.target.value }))
+            }
+          />
+
+          <div className="station-filter-actions">
+            {hasActiveFilters && (
+              <Button size="sm" variant="ghost" onClick={handleResetFilters}>
+                Xóa bộ lọc
+              </Button>
+            )}
+          </div>
+        </div>
+      </section>
 
       {!loading && !error && (
         <div className="customer-results-bar">
@@ -162,12 +175,13 @@ export default function CustomerVehicleListPage() {
             )}
           </span>
           <Button size="sm" variant="ghost" onClick={reload}>
-            Làm mới
+            <RefreshIcon size={15} />
+            <span>Làm mới</span>
           </Button>
         </div>
       )}
 
-      {loading && <LoadingState message="Đang tìm xe máy điện..." />}
+      {loading && <VehicleGridSkeleton count={6} />}
 
       {!loading && error && (
         <ErrorState

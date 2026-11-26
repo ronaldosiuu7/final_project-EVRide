@@ -11,7 +11,6 @@ import {
   Button,
   EmptyState,
   ErrorState,
-  FilterBar,
   LoadingState,
   Pagination,
   SelectField,
@@ -19,6 +18,11 @@ import {
   Tabs,
   useToast,
 } from '../../components/ui/index.js';
+import {
+  ArrowRightIcon,
+  RefreshIcon,
+  TagIcon,
+} from '../../components/customer/CustomerIcons.jsx';
 import { formatDateTimeVN } from '../../utils/format.js';
 import { getApiErrorMessage } from '../../utils/errorMessages.js';
 import { applyFilterPatch, getSystemTotalFromMeta } from '../../utils/fleetDisplay.js';
@@ -138,6 +142,7 @@ export default function CustomerPromotionsPage() {
     <div className="customer-page">
       <div className="customer-page-header">
         <div>
+          <span className="customer-page-eyebrow">Ưu đãi khách hàng</span>
           <h1 className="customer-page-title">Ưu đãi &amp; Khuyến mãi</h1>
           <p className="customer-page-subtitle">
             Nhận mã khuyến mãi đang áp dụng và chọn mã hợp lệ khi kiểm tra báo giá trả xe. Lưu ý: việc nhận mã hoặc xem báo giá chưa tiêu thụ lượt dùng cho đến khi nhân viên hoàn tất quyết toán chuyến.
@@ -146,10 +151,12 @@ export default function CustomerPromotionsPage() {
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <Button size="sm" variant="secondary" onClick={handleRefreshAll}>
-            Làm mới
+            <RefreshIcon size={15} />
+            <span>Làm mới</span>
           </Button>
           <Link to="/rentals" className="btn btn-sm btn-primary">
-            Chuyến của tôi →
+            <span>Chuyến của tôi</span>
+            <ArrowRightIcon size={15} />
           </Link>
         </div>
       </div>
@@ -195,7 +202,10 @@ export default function CustomerPromotionsPage() {
                       <article key={promo.id} className="customer-card promo-card">
                         <div className="station-card-header">
                           <div>
-                            <span className="promo-code-chip">{promo.code}</span>
+                            <span className="promo-code-chip">
+                              <TagIcon size={13} style={{ marginRight: 5, verticalAlign: '-2px' }} />
+                              {promo.code}
+                            </span>
                             <h2 className="customer-card-title" style={{ marginTop: 8 }}>
                               {formatPromotionDiscountSummary(promo)}
                             </h2>
@@ -209,11 +219,13 @@ export default function CustomerPromotionsPage() {
                           </p>
                         )}
 
-                        <ul className="rental-rules-list">
-                          {conditionLines.map((line, idx) => (
-                            <li key={idx}>{line}</li>
-                          ))}
-                        </ul>
+                        <div className="promo-card-divider">
+                          <ul className="rental-rules-list">
+                            {conditionLines.map((line, idx) => (
+                              <li key={idx}>{line}</li>
+                            ))}
+                          </ul>
+                        </div>
 
                         <div className="customer-card-actions">
                           {promoState.canClaim ? (
@@ -254,15 +266,9 @@ export default function CustomerPromotionsPage() {
 
         {activeTab === 'mine' && (
           <div className="stack-md">
-            <FilterBar
-              onReset={
-                myFilters.isUsed
-                  ? () => setMyFilters((prev) => applyFilterPatch(prev, { isUsed: '' }))
-                  : undefined
-              }
-              resetLabel="Xem tất cả mã"
-            >
+            <div className="inline-filter-row">
               <SelectField
+                id="promo-used-filter"
                 label="Trạng thái sử dụng"
                 value={myFilters.isUsed}
                 onChange={(e) =>
@@ -270,7 +276,16 @@ export default function CustomerPromotionsPage() {
                 }
                 options={MY_PROMO_FILTER_OPTIONS}
               />
-            </FilterBar>
+              {myFilters.isUsed && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setMyFilters((prev) => applyFilterPatch(prev, { isUsed: '' }))}
+                >
+                  Xem tất cả mã
+                </Button>
+              )}
+            </div>
 
             {myPromotionsQuery.loading && !myPromotionsQuery.data && (
               <LoadingState message="Đang tải mã khuyến mãi của bạn..." />
@@ -318,7 +333,10 @@ export default function CustomerPromotionsPage() {
                       <article key={claim.id} className="customer-card promo-card">
                         <div className="station-card-header">
                           <div>
-                            <span className="promo-code-chip">{promo?.code || 'MÃ ƯU ĐÃI'}</span>
+                            <span className="promo-code-chip">
+                              <TagIcon size={13} style={{ marginRight: 5, verticalAlign: '-2px' }} />
+                              {promo?.code || 'MÃ ƯU ĐÃI'}
+                            </span>
                             <h2 className="customer-card-title" style={{ marginTop: 8 }}>
                               {formatPromotionDiscountSummary(promo)}
                             </h2>
@@ -338,11 +356,13 @@ export default function CustomerPromotionsPage() {
                           </p>
                         )}
 
-                        <ul className="rental-rules-list">
-                          {conditionLines.map((line, idx) => (
-                            <li key={idx}>{line}</li>
-                          ))}
-                        </ul>
+                        <div className="promo-card-divider">
+                          <ul className="rental-rules-list">
+                            {conditionLines.map((line, idx) => (
+                              <li key={idx}>{line}</li>
+                            ))}
+                          </ul>
+                        </div>
                       </article>
                     );
                   })}

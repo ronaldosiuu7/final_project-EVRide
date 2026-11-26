@@ -16,6 +16,10 @@ import {
   StatusBadge,
   TextField,
 } from '../../components/ui/index.js';
+import {
+  ArrowRightIcon,
+  ChevronDownIcon,
+} from '../../components/customer/CustomerIcons.jsx';
 import { getApiErrorMessage } from '../../utils/errorMessages.js';
 import {
   filterFaqsByQuery,
@@ -116,6 +120,7 @@ export default function CustomerFaqPage() {
     <div className="customer-page">
       <div className="customer-page-header">
         <div>
+          <span className="customer-page-eyebrow">Trợ giúp &amp; Chính sách</span>
           <h1 className="customer-page-title">Câu hỏi thường gặp &amp; Trợ lý FAQ</h1>
           <p className="customer-page-subtitle">
             Tra cứu nhanh quy định giữ xe, pin tối thiểu, cách tính cước, tiền cọc và trả xe kèm tài liệu nguồn chính thức của EVRide.
@@ -123,7 +128,8 @@ export default function CustomerFaqPage() {
         </div>
         {isCustomer && (
           <Link to="/support" className="btn btn-sm btn-secondary">
-            Gửi yêu cầu hỗ trợ →
+            <span>Gửi yêu cầu hỗ trợ</span>
+            <ArrowRightIcon size={15} />
           </Link>
         )}
       </div>
@@ -143,6 +149,7 @@ export default function CustomerFaqPage() {
           </div>
 
           <TextField
+            id="faq-search-input"
             label="Tìm nhanh câu hỏi"
             type="search"
             placeholder="Ví dụ: giữ xe, tiền cọc, pin, trả khác trạm..."
@@ -190,7 +197,7 @@ export default function CustomerFaqPage() {
                     >
                       <span>{item.question}</span>
                       <span aria-hidden="true" className="faq-accordion-icon">
-                        {isOpen ? '−' : '+'}
+                        <ChevronDownIcon size={18} />
                       </span>
                     </button>
 
@@ -222,13 +229,13 @@ export default function CustomerFaqPage() {
         </section>
 
         {/* Cột 2: Trợ lý Chatbot FAQ */}
-        <section className="station-detail-panel" aria-labelledby="faq-chatbot-heading">
+        <section className="station-detail-panel vehicle-booking-card" aria-labelledby="faq-chatbot-heading">
           <div className="station-detail-top">
             <div>
               <h2 id="faq-chatbot-heading" className="customer-card-title">
                 Trợ lý giải đáp FAQ
               </h2>
-              <p className="station-card-address">
+              <p className="station-card-address" style={{ marginTop: 4 }}>
                 Hỏi đáp nhanh theo tài liệu chính sách chính thức của EVRide (không thực hiện đặt xe hay giao dịch ví qua chat).
               </p>
             </div>
@@ -289,6 +296,7 @@ export default function CustomerFaqPage() {
 
               <form onSubmit={handleSendChat} className="faq-chat-form">
                 <TextField
+                  id="faq-chat-input"
                   label="Câu hỏi của bạn"
                   placeholder="Ví dụ: Tôi được giữ xe bao lâu?"
                   maxLength={2000}

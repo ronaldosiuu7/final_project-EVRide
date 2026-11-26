@@ -12,7 +12,14 @@ import {
   StatusBadge,
 } from '../../components/ui/index.js';
 import ElectricScooterIllustration from '../../components/customer/ElectricScooterIllustration.jsx';
-import StationCard from '../../components/customer/StationCard.jsx';
+import StationCard, { StationGridSkeleton } from '../../components/customer/StationCard.jsx';
+import {
+  ArrowRightIcon,
+  BoltIcon,
+  MapPinIcon,
+  ScooterIcon,
+  SearchIcon,
+} from '../../components/customer/CustomerIcons.jsx';
 import { getCustomerStatusMeta } from '../../utils/statusConfig.js';
 import { getSystemTotalFromMeta } from '../../utils/fleetDisplay.js';
 import { findUnresolvedRental } from '../../utils/rentalHelpers.js';
@@ -27,7 +34,7 @@ export default function CustomerHomePage() {
   const isCustomer = !isBootstrapping && isAuthenticated && user?.role === 'CUSTOMER';
 
   const { data, meta, loading, error, reload } = useApiQuery(
-    ({ signal }) => listStations({ page: 1, page_size: 4 }, { signal }),
+    ({ signal }) => listStations({ page: 1, page_size: 6 }, { signal }),
     [],
     { enabled: !isBootstrapping && !shouldRedirectAdmin }
   );
@@ -68,25 +75,31 @@ export default function CustomerHomePage() {
     <div className="customer-page">
       {unresolvedRental && (
         <section className="active-rental-highlight" aria-label="Chuyến đang hoạt động">
-          <div className="station-detail-top">
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
-                <strong>Chuyến hiện tại của bạn:</strong>
-                <StatusBadge
-                  label={getCustomerStatusMeta('rentalStatus', unresolvedRental.status).label}
-                  tone={getCustomerStatusMeta('rentalStatus', unresolvedRental.status).tone}
-                />
+          <div className="active-rental-bar">
+            <div className="active-rental-info">
+              <span className="active-rental-icon" aria-hidden="true">
+                <ScooterIcon size={20} />
+              </span>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 2 }}>
+                  <strong style={{ color: 'var(--cust-ink)' }}>Chuyến thuê đang mở của bạn</strong>
+                  <StatusBadge
+                    label={getCustomerStatusMeta('rentalStatus', unresolvedRental.status).label}
+                    tone={getCustomerStatusMeta('rentalStatus', unresolvedRental.status).tone}
+                  />
+                </div>
+                <p style={{ fontSize: '0.88rem', color: 'var(--cust-muted)' }}>
+                  Xe: <strong style={{ color: 'var(--cust-body)' }}>{unresolvedRental.vehicle_name || 'Xe máy điện EVRide'}</strong>{' '}
+                  ({unresolvedRental.vehicle_model_snapshot || 'Dòng xe tiêu chuẩn'})
+                </p>
               </div>
-              <p className="station-card-address" style={{ marginTop: 0 }}>
-                Xe: <strong>{unresolvedRental.vehicle_name || 'Xe máy điện EVRide'}</strong> (
-                {unresolvedRental.vehicle_model_snapshot || 'Dòng xe tiêu chuẩn'})
-              </p>
             </div>
             <Link
               to={`/rentals/${encodeURIComponent(String(unresolvedRental.id))}`}
               className="btn btn-primary btn-sm"
             >
-              Mở chuyến hiện tại →
+              <span>Theo dõi chuyến thuê</span>
+              <ArrowRightIcon size={15} />
             </Link>
           </div>
         </section>
@@ -94,43 +107,131 @@ export default function CustomerHomePage() {
 
       <section className="customer-hero-banner" aria-labelledby="customer-home-heading">
         <div>
-          <span className="customer-hero-eyebrow">Di chuyển xanh · Linh hoạt theo trạm</span>
+          <span className="customer-hero-eyebrow">
+            <BoltIcon size={14} />
+            <span>Dịch vụ xe máy điện theo trạm</span>
+          </span>
           <h1 id="customer-home-heading">
-            {user?.name ? `Xin chào ${user.name}, chọn xe máy điện gần bạn` : 'Thuê xe máy điện nhanh gọn tại các trạm EVRide'}
+            {user?.name
+              ? `Xin chào ${user.name}, tìm trạm và giữ xe sẵn sàng gần bạn`
+              : 'Chủ động thuê xe máy điện theo trạm với biểu giá minh bạch'}
           </h1>
           <p className="customer-hero-desc">
-            Tra cứu trạm đang mở cửa, xem số xe sẵn sàng, mức pin thực tế và biểu giá minh bạch theo từng 30 phút đầu và mỗi phút thêm.
+            Tra cứu trạm đang mở cửa, kiểm tra số xe đủ điều kiện thuê, phần trăm pin thực tế và giữ trước xe cụ thể trong 30 phút để nhận xe trực tiếp tại trạm.
           </p>
 
-          <form className="customer-hero-search" onSubmit={handleQuickSearch} role="search" aria-label="Tìm nhanh trạm xe">
-            <input
-              type="search"
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              placeholder="Nhập tên trạm hoặc địa chỉ cần tìm..."
-              aria-label="Tên trạm hoặc địa chỉ"
-            />
+          <form
+            className="customer-hero-search"
+            onSubmit={handleQuickSearch}
+            role="search"
+            aria-label="Tìm nhanh trạm xe"
+          >
+            <div className="customer-search-input-wrap">
+              <span className="customer-search-icon" aria-hidden="true">
+                <SearchIcon size={18} />
+              </span>
+              <input
+                id="home-station-search-input"
+                type="search"
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                placeholder="Nhập tên trạm hoặc địa chỉ (VD: Hoàn Kiếm, Hồ Tây, Cầu Giấy)..."
+                aria-label="Tên trạm hoặc địa chỉ"
+              />
+            </div>
             <Button type="submit" variant="primary">
               Tìm trạm
             </Button>
           </form>
 
-          <div className="customer-hero-actions">
-            <Link to="/stations" className="btn btn-primary">
-              Xem danh sách trạm
+          <div className="customer-hero-quick-links" aria-label="Lối tắt tra cứu nhanh">
+            <span>Tra cứu nhanh:</span>
+            <Link to="/stations?has_available_vehicles=true" className="customer-quick-pill">
+              <MapPinIcon size={14} />
+              <span>Trạm đang có xe</span>
             </Link>
-            <Link to="/vehicles" className="btn btn-secondary">
-              Xem xe có thể thuê
+            <Link to="/stations?has_return_space=true" className="customer-quick-pill">
+              <span>Trạm còn chỗ trả</span>
             </Link>
-            {isCustomer && (
-              <Link to="/rentals" className="btn btn-secondary">
-                Chuyến của tôi
+            <Link to="/vehicles" className="customer-quick-pill">
+              <ScooterIcon size={14} />
+              <span>Xem xe có thể thuê</span>
+            </Link>
+          </div>
+        </div>
+
+        <div className="customer-hero-showcase">
+          <ElectricScooterIllustration model="EVRide Urban" />
+          <dl className="customer-hero-facts">
+            <div className="customer-hero-fact">
+              <dt>Thời gian giữ chỗ</dt>
+              <dd>Tối đa 30 phút tại trạm</dd>
+            </div>
+            <div className="customer-hero-fact">
+              <dt>Cách tính cước</dt>
+              <dd>30 phút đầu + mỗi phút thêm</dd>
+            </div>
+            <div className="customer-hero-fact">
+              <dt>Bàn giao &amp; trả xe</dt>
+              <dd>Nhân viên xác nhận tại trạm</dd>
+            </div>
+            <div className="customer-hero-fact">
+              <dt>Điều kiện mở khóa</dt>
+              <dd>CCCD đã duyệt &amp; ví đủ cọc</dd>
+            </div>
+          </dl>
+        </div>
+      </section>
+
+      <section className="customer-workflow-strip" aria-label="Quy trình thuê xe tại trạm">
+        <div className="customer-workflow-step">
+          <span className="customer-workflow-num" aria-hidden="true">1</span>
+          <div className="customer-workflow-body">
+            <h3>Xác minh giấy tờ &amp; chuẩn bị ví</h3>
+            <p>
+              Hoàn tất xác minh CCCD còn hạn và chuẩn bị số dư ví mô phỏng đủ khoản cọc cùng 30 phút đầu.
+            </p>
+            {isAuthenticated ? (
+              <Link to="/profile" className="customer-workflow-link">
+                <span>Kiểm tra hồ sơ</span>
+                <ArrowRightIcon size={14} />
+              </Link>
+            ) : (
+              <Link to="/register" className="customer-workflow-link">
+                <span>Tạo tài khoản khách hàng</span>
+                <ArrowRightIcon size={14} />
               </Link>
             )}
           </div>
         </div>
 
-        <ElectricScooterIllustration model="EVRide Urban" />
+        <div className="customer-workflow-step">
+          <span className="customer-workflow-num" aria-hidden="true">2</span>
+          <div className="customer-workflow-body">
+            <h3>Chọn xe cụ thể &amp; giữ chỗ 30 phút</h3>
+            <p>
+              Xem mức pin và bảng giá niêm yết của từng chiếc xe tại trạm đang mở, sau đó giữ xe và đến quầy nhận xe.
+            </p>
+            <Link to="/vehicles" className="customer-workflow-link">
+              <span>Khám phá xe sẵn sàng</span>
+              <ArrowRightIcon size={14} />
+            </Link>
+          </div>
+        </div>
+
+        <div className="customer-workflow-step">
+          <span className="customer-workflow-num" aria-hidden="true">3</span>
+          <div className="customer-workflow-body">
+            <h3>Trả xe tại trạm còn chỗ &amp; quyết toán</h3>
+            <p>
+              Đưa xe về bất kỳ trạm đang hoạt động còn chỗ trống để nhân viên tiếp nhận, áp mã ưu đãi và quyết toán.
+            </p>
+            <Link to="/faq" className="customer-workflow-link">
+              <span>Xem quy định chi tiết</span>
+              <ArrowRightIcon size={14} />
+            </Link>
+          </div>
+        </div>
       </section>
 
       <section aria-labelledby="featured-stations-heading">
@@ -139,16 +240,17 @@ export default function CustomerHomePage() {
             <h2 id="featured-stations-heading">Trạm xe đang hoạt động</h2>
             {!loading && !error && totalStations !== null && (
               <p className="customer-page-subtitle">
-                Hiển thị {stations.length} trạm tiêu biểu trong tổng số {totalStations} trạm đang hoạt động.
+                Đang hiển thị {stations.length} trạm trong tổng số {totalStations} trạm hoạt động trên hệ thống.
               </p>
             )}
           </div>
           <Link to="/stations" className="btn btn-sm btn-secondary">
-            Xem tất cả trạm →
+            <span>Xem toàn bộ danh sách trạm</span>
+            <ArrowRightIcon size={15} />
           </Link>
         </div>
 
-        {loading && <LoadingState message="Đang tải danh sách trạm..." />}
+        {loading && <StationGridSkeleton count={6} label="Đang tải danh sách trạm đang hoạt động..." />}
 
         {!loading && error && (
           <ErrorState
@@ -162,7 +264,7 @@ export default function CustomerHomePage() {
         {!loading && !error && stations.length === 0 && (
           <EmptyState
             title="Hiện chưa có trạm đang hoạt động"
-            hint="Vui lòng thử lại sau hoặc kiểm tra lại kết nối."
+            hint="Vui lòng tải lại sau ít phút hoặc kiểm tra lại kết nối mạng."
             action={
               <Button variant="secondary" onClick={reload}>
                 Tải lại

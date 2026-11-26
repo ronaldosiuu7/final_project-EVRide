@@ -16,6 +16,10 @@ import {
   TextField,
   useToast,
 } from '../../components/ui/index.js';
+import {
+  RefreshIcon,
+  ShieldCheckIcon,
+} from '../../components/customer/CustomerIcons.jsx';
 import { getCustomerStatusMeta } from '../../utils/statusConfig.js';
 import { formatDateTimeVN, formatDateVN } from '../../utils/format.js';
 import { getApiErrorMessage } from '../../utils/errorMessages.js';
@@ -62,13 +66,16 @@ export default function CustomerProfilePage() {
   const totalDocs = getSystemTotalFromMeta(documentsQuery.meta);
   const pageEligibility = evaluateCustomerDocumentEligibility(documents);
   // A paginated slice cannot prove that no valid document exists elsewhere.
-  const eligibility = !pageEligibility.eligible && totalDocs > documents.length
-    ? {
-        tone: 'info', statusLabel: 'Cần kiểm tra thêm',
-        title: 'Giấy tờ của bạn có nhiều trang',
-        description: 'Trang này chưa có CCCD đủ điều kiện. Vui lòng kiểm tra các trang còn lại; hệ thống sẽ kiểm tra toàn bộ hồ sơ khi bạn giữ xe.',
-      }
-    : pageEligibility;
+  const eligibility =
+    !pageEligibility.eligible && totalDocs > documents.length
+      ? {
+          tone: 'info',
+          statusLabel: 'Cần kiểm tra thêm',
+          title: 'Giấy tờ của bạn có nhiều trang',
+          description:
+            'Trang này chưa có CCCD đủ điều kiện. Vui lòng kiểm tra các trang còn lại; hệ thống sẽ kiểm tra toàn bộ hồ sơ khi bạn giữ xe.',
+        }
+      : pageEligibility;
 
   const handleSaveName = async (event) => {
     event.preventDefault();
@@ -106,6 +113,7 @@ export default function CustomerProfilePage() {
     <div className="customer-page">
       <div className="customer-page-header">
         <div>
+          <span className="customer-page-eyebrow">Tài khoản &amp; Định danh</span>
           <h1 className="customer-page-title">Hồ sơ cá nhân &amp; Giấy tờ định danh</h1>
           <p className="customer-page-subtitle">
             Quản lý tên hiển thị tài khoản, nộp giấy tờ định danh và theo dõi điều kiện đủ chuẩn để giữ xe máy điện.
@@ -120,7 +128,7 @@ export default function CustomerProfilePage() {
             <h2 id="profile-info-heading" className="customer-card-title">
               Thông tin tài khoản
             </h2>
-            <p className="station-card-address">
+            <p className="station-card-address" style={{ marginTop: 4 }}>
               Bạn có thể cập nhật tên hiển thị. Email đăng nhập, vai trò và trạng thái tài khoản do hệ thống quản lý.
             </p>
           </div>
@@ -153,6 +161,7 @@ export default function CustomerProfilePage() {
               )}
 
               <TextField
+                id="profile-display-name"
                 label="Tên hiển thị"
                 required
                 maxLength={100}
@@ -206,7 +215,7 @@ export default function CustomerProfilePage() {
             <h2 id="profile-documents-heading" className="customer-card-title">
               Giấy tờ định danh &amp; điều kiện thuê xe
             </h2>
-            <p className="station-card-address">
+            <p className="station-card-address" style={{ marginTop: 4 }}>
               Để giữ và thuê xe, bạn cần có CCCD ở trạng thái <strong>Đã xác minh</strong>, còn hạn hiệu lực và đủ 16 tuổi theo giờ Việt Nam.
             </p>
           </div>
@@ -218,7 +227,10 @@ export default function CustomerProfilePage() {
         {!documentsQuery.loading && !documentsQuery.error && (
           <div className={`eligibility-banner tone-${eligibility.tone}`} role="status">
             <div className="eligibility-banner-head">
-              <strong>{eligibility.title}</strong>
+              <strong style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+                <ShieldCheckIcon size={17} />
+                <span>{eligibility.title}</span>
+              </strong>
               <StatusBadge label={eligibility.statusLabel} tone={eligibility.tone} />
             </div>
             <p>{eligibility.description}</p>
@@ -261,7 +273,8 @@ export default function CustomerProfilePage() {
                 )}
               </span>
               <Button size="sm" variant="ghost" onClick={documentsQuery.reload}>
-                Làm mới
+                <RefreshIcon size={15} />
+                <span>Làm mới</span>
               </Button>
             </div>
 
@@ -276,7 +289,7 @@ export default function CustomerProfilePage() {
                         <h3 className="customer-card-title">
                           {getDocumentTypeLabel(doc.document_type)}
                         </h3>
-                        <p className="station-card-address">
+                        <p className="station-card-address" style={{ marginTop: 4 }}>
                           Số giấy tờ: <strong>{doc.document_number_masked || 'Chưa cập nhật'}</strong>
                         </p>
                       </div>
@@ -289,26 +302,26 @@ export default function CustomerProfilePage() {
                       </div>
                     </div>
 
-                    <div className="document-item-meta">
-                      <div>
+                    <div className="station-detail-stats-strip">
+                      <div className="station-detail-stat">
                         <span className="customer-meta-label">Hạn hiệu lực</span>
                         <strong className="customer-meta-value">
                           {doc.expires_on ? formatDateVN(doc.expires_on) : 'Chưa cập nhật'}
                         </strong>
                       </div>
-                      <div>
+                      <div className="station-detail-stat">
                         <span className="customer-meta-label">Ngày sinh xác minh</span>
                         <strong className="customer-meta-value">
                           {doc.verified_birth_date ? formatDateVN(doc.verified_birth_date) : 'Chưa cập nhật'}
                         </strong>
                       </div>
-                      <div>
+                      <div className="station-detail-stat">
                         <span className="customer-meta-label">Thời điểm nộp</span>
                         <strong className="customer-meta-value">
                           {formatDateTimeVN(doc.created_at)}
                         </strong>
                       </div>
-                      <div>
+                      <div className="station-detail-stat">
                         <span className="customer-meta-label">Thời điểm duyệt</span>
                         <strong className="customer-meta-value">
                           {doc.verified_at ? formatDateTimeVN(doc.verified_at) : 'Chưa duyệt'}

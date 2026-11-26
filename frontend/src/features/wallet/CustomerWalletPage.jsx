@@ -12,7 +12,6 @@ import {
   Button,
   EmptyState,
   ErrorState,
-  FilterBar,
   LoadingState,
   Pagination,
   SelectField,
@@ -21,6 +20,12 @@ import {
   TextField,
   useToast,
 } from '../../components/ui/index.js';
+import {
+  ArrowRightIcon,
+  ClockIcon,
+  RefreshIcon,
+  WalletIcon,
+} from '../../components/customer/CustomerIcons.jsx';
 import { formatDateTimeVN } from '../../utils/format.js';
 import { getCustomerStatusMeta } from '../../utils/statusConfig.js';
 import { getApiErrorMessage } from '../../utils/errorMessages.js';
@@ -213,7 +218,7 @@ export default function CustomerWalletPage() {
       const created = res?.data;
       if (created?.id) {
         knownStatusesRef.current.set(String(created.id), 'PENDING');
-        }
+      }
 
       // TUYỆT ĐỐI KHÔNG cộng số dư ví trên frontend và KHÔNG tạo giao dịch giả!
       const pendingMessage = 'Đã gửi yêu cầu, đang chờ nhân viên xác nhận';
@@ -248,6 +253,7 @@ export default function CustomerWalletPage() {
     <div className="customer-page">
       <div className="customer-page-header">
         <div>
+          <span className="customer-page-eyebrow">Tài chính &amp; Số dư</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <h1 className="customer-page-title">Ví của tôi</h1>
             <StatusBadge label="Tiền mô phỏng" tone="info" />
@@ -259,10 +265,12 @@ export default function CustomerWalletPage() {
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <Button size="sm" variant="secondary" onClick={handleRefreshAll}>
-            Làm mới
+            <RefreshIcon size={15} />
+            <span>Làm mới</span>
           </Button>
           <Link to="/vehicles" className="btn btn-sm btn-primary">
-            Tìm xe để thuê →
+            <span>Tìm xe để thuê</span>
+            <ArrowRightIcon size={15} />
           </Link>
         </div>
       </div>
@@ -270,20 +278,25 @@ export default function CustomerWalletPage() {
       {/* Khối 1: Số dư ví + Form gửi yêu cầu nạp tiền chờ duyệt */}
       <div className="wallet-overview-grid">
         <section className="station-detail-panel wallet-balance-card" aria-labelledby="wallet-balance-heading">
-          <div className="station-detail-top">
-            <div>
-              <span id="wallet-balance-heading" className="customer-meta-label">
-                Số dư khả dụng hiện tại (Tiền mô phỏng)
+          <div className="wallet-balance-head">
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+              <span className="wallet-balance-icon-badge">
+                <WalletIcon size={22} />
               </span>
-              {walletQuery.loading && !wallet ? (
-                <p className="customer-meta-value" style={{ marginTop: 8 }}>
-                  Đang tải số dư ví...
-                </p>
-              ) : wallet ? (
-                <div className="wallet-balance-amount">
-                  {formatMoneyDisplay(wallet.balance)}
-                </div>
-              ) : null}
+              <div>
+                <span id="wallet-balance-heading" className="customer-meta-label">
+                  Số dư khả dụng hiện tại (Tiền mô phỏng)
+                </span>
+                {walletQuery.loading && !wallet ? (
+                  <p className="customer-meta-value" style={{ marginTop: 8 }}>
+                    Đang tải số dư ví...
+                  </p>
+                ) : wallet ? (
+                  <div className="wallet-balance-amount">
+                    {formatMoneyDisplay(wallet.balance)}
+                  </div>
+                ) : null}
+              </div>
             </div>
             {walletStatusMeta && (
               <StatusBadge label={walletStatusMeta.label} tone={walletStatusMeta.tone} />
@@ -301,7 +314,9 @@ export default function CustomerWalletPage() {
 
           {wallet && (
             <div className="wallet-balance-meta">
-              <span>Cập nhật lần cuối: <strong>{formatDateTimeVN(wallet.updated_at)}</strong></span>
+              <span>
+                Cập nhật lần cuối: <strong>{formatDateTimeVN(wallet.updated_at)}</strong>
+              </span>
               {compatibility.status === 'compatible' && (
                 <span className="wallet-pending-hint">
                   Số dư và lịch sử tự động cập nhật mỗi 12 giây khi bạn mở trang này.
@@ -317,7 +332,7 @@ export default function CustomerWalletPage() {
               <h2 id="wallet-topup-heading" className="customer-card-title">
                 Tạo yêu cầu nạp tiền vào ví
               </h2>
-              <p className="station-card-address">
+              <p className="station-card-address" style={{ marginTop: 4 }}>
                 Chọn nhanh mệnh giá gợi ý hoặc nhập số tiền cần nạp (Tiền mô phỏng). Tiền chỉ vào ví sau khi nhân viên duyệt yêu cầu.
               </p>
             </div>
@@ -366,6 +381,7 @@ export default function CustomerWalletPage() {
                     <button
                       key={preset.value}
                       type="button"
+                      aria-pressed={isActive}
                       disabled={!submissionGate.allowed || topupMutation.loading}
                       className={`topup-preset-chip ${isActive ? 'active' : ''}`}
                       onClick={() => handleSelectPreset(preset.value)}
@@ -378,6 +394,7 @@ export default function CustomerWalletPage() {
             </div>
 
             <TextField
+              id="wallet-topup-amount"
               label="Số tiền muốn nạp (VND — Tiền mô phỏng)"
               inputMode="decimal"
               placeholder="Ví dụ: 150000"
@@ -412,15 +429,9 @@ export default function CustomerWalletPage() {
 
         {activeTab === 'requests' && (
           <div className="stack-md">
-            <FilterBar
-              onReset={
-                topupFilters.status
-                  ? () => setTopupFilters((prev) => applyFilterPatch(prev, { status: '' }))
-                  : undefined
-              }
-              resetLabel="Xem tất cả yêu cầu"
-            >
+            <div className="inline-filter-row">
               <SelectField
+                id="wallet-topup-status-filter"
                 label="Trạng thái yêu cầu nạp"
                 value={topupFilters.status}
                 onChange={(e) =>
@@ -428,7 +439,16 @@ export default function CustomerWalletPage() {
                 }
                 options={TOPUP_STATUS_FILTER_OPTIONS}
               />
-            </FilterBar>
+              {topupFilters.status && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setTopupFilters((prev) => applyFilterPatch(prev, { status: '' }))}
+                >
+                  Xem tất cả yêu cầu
+                </Button>
+              )}
+            </div>
 
             {topupsQuery.loading && !topupsQuery.data && (
               <LoadingState message="Đang tải danh sách yêu cầu nạp tiền..." />
@@ -470,8 +490,12 @@ export default function CustomerWalletPage() {
                             <h3 className="customer-card-title">
                               Yêu cầu nạp {formatMoneyDisplay(reqItem.amount)}
                             </h3>
-                            <p className="station-card-address">
-                              Gửi lúc <strong>{formatDateTimeVN(reqItem.created_at, { withSeconds: true })}</strong>
+                            <p className="station-card-hours-line" style={{ marginTop: 4 }}>
+                              <ClockIcon size={15} className="station-meta-icon" />
+                              <span>
+                                Gửi lúc{' '}
+                                <strong>{formatDateTimeVN(reqItem.created_at, { withSeconds: true })}</strong>
+                              </span>
                             </p>
                           </div>
 
@@ -483,18 +507,18 @@ export default function CustomerWalletPage() {
                           </div>
                         </div>
 
-                        <div className="document-item-meta">
-                          <div>
+                        <div className="station-detail-stats-strip">
+                          <div className="station-detail-stat">
                             <span className="customer-meta-label">Số tiền yêu cầu</span>
                             <strong className="customer-meta-value">
                               {formatMoneyDisplay(reqItem.amount)}
                             </strong>
                           </div>
-                          <div>
+                          <div className="station-detail-stat">
                             <span className="customer-meta-label">Trạng thái</span>
                             <strong className="customer-meta-value">{statusMeta.label}</strong>
                           </div>
-                          <div>
+                          <div className="station-detail-stat">
                             <span className="customer-meta-label">Thời gian xử lý</span>
                             <strong className="customer-meta-value">
                               {reqItem.reviewed_at
@@ -542,15 +566,9 @@ export default function CustomerWalletPage() {
 
         {activeTab === 'transactions' && (
           <div className="stack-md">
-            <FilterBar
-              onReset={
-                txFilters.type
-                  ? () => setTxFilters((prev) => applyFilterPatch(prev, { type: '' }))
-                  : undefined
-              }
-              resetLabel="Xem tất cả giao dịch"
-            >
+            <div className="inline-filter-row">
               <SelectField
+                id="wallet-tx-type-filter"
                 label="Loại biến động số dư"
                 value={txFilters.type}
                 onChange={(e) =>
@@ -558,7 +576,16 @@ export default function CustomerWalletPage() {
                 }
                 options={WALLET_TX_TYPE_FILTER_OPTIONS}
               />
-            </FilterBar>
+              {txFilters.type && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setTxFilters((prev) => applyFilterPatch(prev, { type: '' }))}
+                >
+                  Xem tất cả giao dịch
+                </Button>
+              )}
+            </div>
 
             {transactionsQuery.loading && !transactionsQuery.data && (
               <LoadingState message="Đang tải lịch sử giao dịch ví..." />
@@ -600,9 +627,12 @@ export default function CustomerWalletPage() {
                         <div className="document-item-head">
                           <div>
                             <h3 className="customer-card-title">{typeMeta.label}</h3>
-                            <p className="station-card-address">
-                              Thời gian ghi sổ:{' '}
-                              <strong>{formatDateTimeVN(tx.created_at, { withSeconds: true })}</strong>
+                            <p className="station-card-hours-line" style={{ marginTop: 4 }}>
+                              <ClockIcon size={15} className="station-meta-icon" />
+                              <span>
+                                Thời gian ghi sổ:{' '}
+                                <strong>{formatDateTimeVN(tx.created_at, { withSeconds: true })}</strong>
+                              </span>
                             </p>
                           </div>
 
@@ -614,28 +644,30 @@ export default function CustomerWalletPage() {
                           </div>
                         </div>
 
-                        <div className="document-item-meta">
-                          <div>
+                        <div className="station-detail-stats-strip">
+                          <div className="station-detail-stat">
                             <span className="customer-meta-label">Số dư trước giao dịch</span>
                             <strong className="customer-meta-value">
                               {formatMoneyDisplay(tx.balance_before)}
                             </strong>
                           </div>
-                          <div>
+                          <div className="station-detail-stat">
                             <span className="customer-meta-label">Số dư sau giao dịch</span>
                             <strong className="customer-meta-value">
                               {formatMoneyDisplay(tx.balance_after)}
                             </strong>
                           </div>
                           {tx.rental_id && (
-                            <div>
+                            <div className="station-detail-stat">
                               <span className="customer-meta-label">Chuyến thuê liên quan</span>
                               <div>
                                 <Link
                                   to={`/rentals/${encodeURIComponent(String(tx.rental_id))}`}
                                   className="btn btn-sm btn-ghost"
+                                  style={{ paddingLeft: 0 }}
                                 >
-                                  Xem chuyến thuê →
+                                  <span>Xem chuyến thuê</span>
+                                  <ArrowRightIcon size={15} />
                                 </Link>
                               </div>
                             </div>

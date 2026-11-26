@@ -8,13 +8,18 @@ import {
   Button,
   EmptyState,
   ErrorState,
-  FilterBar,
   LoadingState,
   Pagination,
   StatusBadge,
   TextField,
 } from '../../components/ui/index.js';
-import VehicleCard from '../../components/customer/VehicleCard.jsx';
+import VehicleCard, { VehicleGridSkeleton } from '../../components/customer/VehicleCard.jsx';
+import {
+  ArrowRightIcon,
+  CompassIcon,
+  MapPinIcon,
+  RefreshIcon,
+} from '../../components/customer/CustomerIcons.jsx';
 import ReserveVehicleModal from '../rentals/ReserveVehicleModal.jsx';
 import {
   applyFilterPatch,
@@ -139,48 +144,57 @@ export default function CustomerStationDetailPage() {
 
       <section className="station-detail-panel" aria-labelledby="station-detail-title">
         <div className="station-detail-top">
-          <div>
+          <div className="station-detail-heading">
+            <span className="customer-page-eyebrow">Trạm nhận &amp; trả xe</span>
             <h1 id="station-detail-title" className="customer-page-title">
               {station.name || 'Trạm xe EVRide'}
             </h1>
-            <p className="customer-page-subtitle">
-              {station.address || 'Chưa cập nhật địa chỉ'}
-            </p>
+            <div className="station-detail-meta-row">
+              <span className="station-detail-meta-item">
+                <MapPinIcon size={16} className="station-meta-icon" />
+                <span>{station.address || 'Chưa cập nhật địa chỉ'}</span>
+              </span>
+              <span className="station-detail-meta-item">
+                <CompassIcon size={16} className="station-meta-icon" />
+                <span>Tọa độ: {coordinatesText}</span>
+              </span>
+            </div>
           </div>
           <StatusBadge label={openStatus.label} tone={openStatus.tone} />
         </div>
 
-        <div className="station-detail-stats">
-          <div className="station-metric-box">
+        <div className="station-detail-stats-strip">
+          <div className="station-detail-stat">
             <span className="customer-meta-label">Giờ hoạt động</span>
-            <strong className="customer-meta-value">{hoursText}</strong>
+            <strong className="station-detail-stat-value">{hoursText}</strong>
           </div>
 
-          <div className="station-metric-box">
+          <div className="station-detail-stat">
             <span className="customer-meta-label">Xe có thể thuê</span>
-            <strong className={`station-metric-number ${rentableCount === 0 ? 'is-zero' : ''}`}>
+            <strong
+              className={`station-detail-stat-value ${rentableCount === 0 ? 'is-zero' : 'is-primary'}`}
+            >
               {formatCountDisplay(rentableCount, 'xe')}
             </strong>
           </div>
 
-          <div className="station-metric-box">
+          <div className="station-detail-stat">
             <span className="customer-meta-label">Chỗ trả trống</span>
-            <strong className={`station-metric-number ${returnSpaceCount === 0 ? 'is-zero' : ''}`}>
+            <strong
+              className={`station-detail-stat-value ${returnSpaceCount === 0 ? 'is-zero' : ''}`}
+            >
               {formatCountDisplay(returnSpaceCount, 'chỗ')}
             </strong>
           </div>
 
           {capacityCount !== null && (
-            <div className="station-metric-box">
+            <div className="station-detail-stat">
               <span className="customer-meta-label">Sức chứa trạm</span>
-              <strong className="customer-meta-value">{formatCountDisplay(capacityCount, 'chỗ')}</strong>
+              <strong className="station-detail-stat-value">
+                {formatCountDisplay(capacityCount, 'chỗ')}
+              </strong>
             </div>
           )}
-
-          <div className="station-metric-box">
-            <span className="customer-meta-label">Tọa độ</span>
-            <strong className="customer-meta-value">{coordinatesText}</strong>
-          </div>
         </div>
 
         {openStatus.isOpen === false && (
@@ -198,22 +212,37 @@ export default function CustomerStationDetailPage() {
               Chỉ hiển thị xe sẵn sàng cho thuê có mức pin từ 30% trở lên và không trong lịch bảo trì.
             </p>
           </div>
-          <Link to={`/vehicles?station_id=${encodeURIComponent(String(station.id))}`} className="btn btn-sm btn-secondary">
-            Mở ở trang Tìm xe →
+          <Link
+            to={`/vehicles?station_id=${encodeURIComponent(String(station.id))}`}
+            className="btn btn-sm btn-secondary"
+          >
+            <span>Mở ở trang Tìm xe</span>
+            <ArrowRightIcon size={15} />
           </Link>
         </div>
 
-        <FilterBar onReset={hasModelFilter ? handleResetModel : undefined} resetLabel="Xóa lọc">
-          <TextField
-            label="Lọc theo dòng xe (nhập chính xác tên dòng xe)"
-            type="search"
-            placeholder="Ví dụ: Klara S, Evo200..."
-            value={vehicleFilters.model}
-            onChange={(e) =>
-              setVehicleFilters((prev) => applyFilterPatch(prev, { model: e.target.value }))
-            }
-          />
-        </FilterBar>
+        <section className="vehicle-filter-panel" aria-label="Bộ lọc xe tại trạm">
+          <div className="vehicle-filter-grid is-single">
+            <TextField
+              id="station-vehicle-model"
+              label="Lọc theo dòng xe (nhập chính xác tên dòng xe)"
+              type="search"
+              placeholder="Ví dụ: DEMO-CITY, DEMO-LONG-RANGE..."
+              value={vehicleFilters.model}
+              onChange={(e) =>
+                setVehicleFilters((prev) => applyFilterPatch(prev, { model: e.target.value }))
+              }
+            />
+
+            {hasModelFilter && (
+              <div className="station-filter-actions">
+                <Button size="sm" variant="ghost" onClick={handleResetModel}>
+                  Xóa lọc
+                </Button>
+              </div>
+            )}
+          </div>
+        </section>
 
         {!vehiclesQuery.loading && !vehiclesQuery.error && (
           <div className="customer-results-bar">
@@ -227,12 +256,13 @@ export default function CustomerStationDetailPage() {
               )}
             </span>
             <Button size="sm" variant="ghost" onClick={vehiclesQuery.reload}>
-              Làm mới
+              <RefreshIcon size={15} />
+              <span>Làm mới</span>
             </Button>
           </div>
         )}
 
-        {vehiclesQuery.loading && <LoadingState message="Đang tải danh sách xe tại trạm..." />}
+        {vehiclesQuery.loading && <VehicleGridSkeleton count={6} />}
 
         {!vehiclesQuery.loading && vehiclesQuery.error && (
           <ErrorState

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../integrations/authBridge.jsx';
 import useApiQuery from '../../hooks/useApiQuery.js';
@@ -11,6 +11,15 @@ import {
   StatusBadge,
 } from '../../components/ui/index.js';
 import ElectricScooterIllustration from '../../components/customer/ElectricScooterIllustration.jsx';
+import {
+  ArrowLeftIcon,
+  ArrowRightIcon,
+  BatteryIcon,
+  CheckCircleIcon,
+  ClockIcon,
+  MapPinIcon,
+  ShieldCheckIcon,
+} from '../../components/customer/CustomerIcons.jsx';
 import ReserveVehicleModal from '../rentals/ReserveVehicleModal.jsx';
 import {
   formatCountDisplay,
@@ -20,6 +29,7 @@ import {
   getStationOpenStatus,
   getStationReturnSpaceCount,
 } from '../../utils/fleetDisplay.js';
+import { computeUpfrontReservationRequirement } from '../../utils/rentalHelpers.js';
 
 export default function CustomerVehicleDetailPage() {
   const { vehicleId } = useParams();
@@ -42,6 +52,11 @@ export default function CustomerVehicleDetailPage() {
     ({ signal }) => getStation(stationId, { signal }),
     [stationId],
     { enabled: Boolean(stationId) }
+  );
+
+  const upfrontReq = useMemo(
+    () => (vehicleQuery.data ? computeUpfrontReservationRequirement(vehicleQuery.data) : null),
+    [vehicleQuery.data]
   );
 
   if (vehicleQuery.loading) {
@@ -129,52 +144,134 @@ export default function CustomerVehicleDetailPage() {
       </nav>
 
       <div className="vehicle-detail-layout">
-        <section className="vehicle-detail-card" aria-labelledby="vehicle-detail-title">
-          <ElectricScooterIllustration model={vehicle.model} />
+        <div className="vehicle-detail-main">
+          <section className="vehicle-detail-card" aria-labelledby="vehicle-detail-title">
+            <div className="vehicle-detail-showcase">
+              <ElectricScooterIllustration model={vehicle.model} />
+              <div className="vehicle-battery-pill">
+                <StatusBadge label={`Pin ${battery.text}`} tone={battery.tone} />
+              </div>
+            </div>
+
+            <div>
+              <p className="vehicle-model-tag">{vehicle.model || 'Chưa cập nhật dòng xe'}</p>
+              <h1 id="vehicle-detail-title" className="customer-page-title">
+                {vehicle.name || 'Xe máy điện EVRide'}
+              </h1>
+            </div>
+
+            <div className="battery-meter-wrap">
+              <div className="battery-meter-head">
+                <span className="station-detail-meta-item">
+                  <BatteryIcon size={16} className="station-meta-icon" />
+                  <strong style={{ color: 'var(--cust-ink)' }}>Tình trạng pin hiện tại</strong>
+                </span>
+                <span className="battery-meter-caption">
+                  {battery.percent !== null ? `${battery.text} · ${battery.label}` : battery.text}
+                </span>
+              </div>
+              <div className="battery-meter-track">
+                <div
+                  className={`battery-meter-fill tone-${battery.tone}`}
+                  style={{ width: battery.percent !== null ? `${battery.percent}%` : '0%' }}
+                />
+              </div>
+            </div>
+          </section>
+
+          {stationId && (
+            <section className="vehicle-station-summary" aria-labelledby="vehicle-station-heading">
+              <div className="vehicle-station-summary-head">
+                <div>
+                  <span className="customer-meta-label">Trạm đang đỗ xe</span>
+                  <h2 id="vehicle-station-heading" className="vehicle-station-summary-title">
+                    {station ? station.name : 'Thông tin trạm nhận xe'}
+                  </h2>
+                </div>
+                {stationOpenStatus && (
+                  <StatusBadge label={stationOpenStatus.label} tone={stationOpenStatus.tone} />
+                )}
+              </div>
+
+              {stationQuery.loading ? (
+                <p className="customer-meta-label">Đang tải thông tin trạm...</p>
+              ) : station ? (
+                <>
+                  <div className="station-card-meta-list">
+                    <p className="station-card-address">
+                      <MapPinIcon size={15} className="station-meta-icon" />
+                      <span>{station.address || 'Chưa cập nhật địa chỉ'}</span>
+                    </p>
+                    <p className="station-card-hours-line">
+                      <ClockIcon size={15} className="station-meta-icon" />
+                      <span>
+                        Giờ hoạt động: <strong>{stationHours}</strong> · Chỗ trả trống:{' '}
+                        <strong>{formatCountDisplay(returnSpaces, 'chỗ')}</strong>
+                      </span>
+                    </p>
+                  </div>
+                  <div>
+                    <Link
+                      to={`/stations/${encodeURIComponent(String(station.id))}`}
+                      className="btn btn-secondary btn-sm"
+                    >
+                      <span>Xem chi tiết trạm</span>
+                      <ArrowRightIcon size={15} />
+                    </Link>
+                  </div>
+                </>
+              ) : (
+                <div>
+                  <Link
+                    to={`/stations/${encodeURIComponent(stationId)}`}
+                    className="btn btn-secondary btn-sm"
+                  >
+                    <span>Xem thông tin trạm</span>
+                    <ArrowRightIcon size={15} />
+                  </Link>
+                </div>
+              )}
+            </section>
+          )}
+        </div>
+
+        <aside className="vehicle-detail-card vehicle-booking-card" aria-labelledby="vehicle-pricing-heading">
+          <div className="vehicle-booking-price-head">
+            <div>
+              <span className="customer-meta-label">Giá khởi điểm</span>
+              <div className="vehicle-booking-headline-price">{first30Price}</div>
+            </div>
+            <span className="vehicle-booking-headline-unit">cho 30 phút đầu</span>
+          </div>
 
           <div>
-            <p className="vehicle-model-tag">{vehicle.model || 'Chưa cập nhật dòng xe'}</p>
-            <h1 id="vehicle-detail-title" className="customer-page-title">
-              {vehicle.name || 'Xe máy điện EVRide'}
-            </h1>
+            <h2 id="vehicle-pricing-heading" className="customer-card-title" style={{ marginBottom: 10 }}>
+              Biểu giá &amp; tiền cọc (Tiền mô phỏng)
+            </h2>
+
+            <dl className="vehicle-pricing-list">
+              <div className="vehicle-pricing-row">
+                <dt>Giá 30 phút đầu</dt>
+                <dd className="price-highlight">{first30Price}</dd>
+              </div>
+              <div className="vehicle-pricing-row">
+                <dt>Giá mỗi phút thêm</dt>
+                <dd>{extraMinPrice}</dd>
+              </div>
+              <div className="vehicle-pricing-row">
+                <dt>Tiền cọc giữ xe</dt>
+                <dd>{depositAmount}</dd>
+              </div>
+              {upfrontReq?.formattedTotal && (
+                <div className="vehicle-pricing-row is-total">
+                  <dt>
+                    <strong>Số dư ví tối thiểu cần có</strong>
+                  </dt>
+                  <dd className="price-highlight">{upfrontReq.formattedTotal}</dd>
+                </div>
+              )}
+            </dl>
           </div>
-
-          <div className="battery-meter-wrap">
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-              <span className="customer-meta-label">Mức pin hiện tại</span>
-              <StatusBadge label={`Pin ${battery.text}`} tone={battery.tone} />
-            </div>
-            <div className="battery-meter-track">
-              <div
-                className={`battery-meter-fill tone-${battery.tone}`}
-                style={{ width: battery.percent !== null ? `${battery.percent}%` : '0%' }}
-              />
-            </div>
-            <span className="battery-meter-caption">
-              {battery.percent !== null ? `${battery.text} · ${battery.label}` : battery.text}
-            </span>
-          </div>
-        </section>
-
-        <section className="vehicle-detail-card" aria-labelledby="vehicle-pricing-heading">
-          <h2 id="vehicle-pricing-heading" className="customer-card-title">
-            Biểu giá &amp; điều kiện thuê (Tiền mô phỏng)
-          </h2>
-
-          <dl className="vehicle-pricing-list">
-            <div className="vehicle-pricing-row">
-              <dt>Giá 30 phút đầu</dt>
-              <dd className="price-highlight">{first30Price}</dd>
-            </div>
-            <div className="vehicle-pricing-row">
-              <dt>Giá mỗi phút thêm</dt>
-              <dd>{extraMinPrice}</dd>
-            </div>
-            <div className="vehicle-pricing-row">
-              <dt>Tiền cọc giữ xe</dt>
-              <dd>{depositAmount}</dd>
-            </div>
-          </dl>
 
           {isStaffOrManager ? (
             <div className="vehicle-reserve-note" role="note">
@@ -195,58 +292,27 @@ export default function CustomerVehicleDetailPage() {
             </div>
           )}
 
-          {stationId && (
-            <div className="station-metric-box" style={{ gap: 10 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-                <span className="customer-meta-label">Trạm hiện tại</span>
-                {stationOpenStatus && (
-                  <StatusBadge label={stationOpenStatus.label} tone={stationOpenStatus.tone} />
-                )}
-              </div>
-
-              {stationQuery.loading ? (
-                <p className="customer-meta-label">Đang tải thông tin trạm...</p>
-              ) : station ? (
-                <>
-                  <strong className="customer-meta-value">{station.name}</strong>
-                  <p className="station-card-address" style={{ marginTop: 0 }}>
-                    {station.address || 'Chưa cập nhật địa chỉ'}
-                  </p>
-                  <p className="station-card-address" style={{ marginTop: 0 }}>
-                    Giờ hoạt động: <strong>{stationHours}</strong> · Chỗ trả trống:{' '}
-                    <strong>{formatCountDisplay(returnSpaces, 'chỗ')}</strong>
-                  </p>
-                  <div>
-                    <Link
-                      to={`/stations/${encodeURIComponent(String(station.id))}`}
-                      className="btn btn-secondary btn-sm"
-                    >
-                      Xem chi tiết trạm
-                    </Link>
-                  </div>
-                </>
-              ) : (
-                <div>
-                  <Link
-                    to={`/stations/${encodeURIComponent(stationId)}`}
-                    className="btn btn-secondary btn-sm"
-                  >
-                    Xem thông tin trạm
-                  </Link>
-                </div>
-              )}
+          <div className="vehicle-booking-guarantees">
+            <div className="vehicle-booking-guarantee-item">
+              <CheckCircleIcon size={16} />
+              <span>Giữ chỗ miễn phí trong 30 phút để bạn di chuyển đến trạm nhận xe.</span>
             </div>
-          )}
+            <div className="vehicle-booking-guarantee-item">
+              <ShieldCheckIcon size={16} />
+              <span>Nhân viên tại trạm kiểm tra CCCD đã xác minh và bàn giao xe trực tiếp.</span>
+            </div>
+          </div>
 
           <div className="customer-card-actions">
             <Link to="/vehicles" className="btn btn-secondary btn-sm">
-              ← Quay lại tìm xe
+              <ArrowLeftIcon size={15} />
+              <span>Quay lại tìm xe</span>
             </Link>
             <Link to="/stations" className="btn btn-ghost btn-sm">
               Xem tất cả trạm
             </Link>
           </div>
-        </section>
+        </aside>
       </div>
 
       {reserveModalOpen && (

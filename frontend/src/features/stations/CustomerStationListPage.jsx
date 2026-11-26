@@ -7,13 +7,16 @@ import {
   Button,
   EmptyState,
   ErrorState,
-  FilterBar,
-  LoadingState,
   Pagination,
   SelectField,
   TextField,
 } from '../../components/ui/index.js';
-import StationCard from '../../components/customer/StationCard.jsx';
+import StationCard, { StationGridSkeleton } from '../../components/customer/StationCard.jsx';
+import {
+  MapPinIcon,
+  RefreshIcon,
+  ScooterIcon,
+} from '../../components/customer/CustomerIcons.jsx';
 import {
   applyFilterPatch,
   buildStationQueryParams,
@@ -93,77 +96,143 @@ export default function CustomerStationListPage() {
     }));
   };
 
+  const toggleAvailableOnly = () => {
+    setFilters((prev) =>
+      applyFilterPatch(prev, {
+        hasAvailableVehicles: prev.hasAvailableVehicles === 'true' ? '' : 'true',
+      })
+    );
+  };
+
+  const toggleReturnSpaceOnly = () => {
+    setFilters((prev) =>
+      applyFilterPatch(prev, {
+        hasReturnSpace: prev.hasReturnSpace === 'true' ? '' : 'true',
+      })
+    );
+  };
+
   return (
     <div className="customer-page">
       <div className="customer-page-header">
         <div>
+          <span className="customer-page-eyebrow">
+            <MapPinIcon size={14} />
+            <span>Mạng lưới trạm hoạt động</span>
+          </span>
           <h1 className="customer-page-title">Danh sách trạm xe máy điện</h1>
           <p className="customer-page-subtitle">
-            Tra cứu trạm theo tên hoặc địa chỉ, lọc nhanh trạm đang có xe sẵn sàng hoặc còn chỗ trả trống.
+            Tra cứu theo tên trạm hoặc địa chỉ, kiểm tra khung giờ mở cửa, số xe đủ điều kiện đặt và số chỗ trả còn trống tại từng điểm.
           </p>
         </div>
-        <Link to="/vehicles" className="btn btn-secondary btn-sm">
-          Tìm theo xe máy điện →
+        <Link to="/vehicles" className="btn btn-secondary">
+          <ScooterIcon size={17} />
+          <span>Tìm theo mẫu xe</span>
         </Link>
       </div>
 
-      <FilterBar onReset={hasActiveFilters ? handleResetFilters : undefined} resetLabel="Xóa bộ lọc">
-        <TextField
-          label="Tìm trạm"
-          type="search"
-          placeholder="Tên trạm hoặc địa chỉ..."
-          value={filters.q}
-          onChange={(e) => setFilters((prev) => applyFilterPatch(prev, { q: e.target.value }))}
-        />
+      <form
+        className="station-filter-panel"
+        role="search"
+        aria-label="Bộ lọc danh sách trạm"
+        onSubmit={(event) => event.preventDefault()}
+      >
+        <div className="station-filter-grid">
+          <TextField
+            id="station-search-q"
+            label="Tên trạm hoặc địa chỉ"
+            type="search"
+            placeholder="Ví dụ: Hoàn Kiếm, Hồ Tây, Cầu Giấy..."
+            value={filters.q}
+            onChange={(e) => setFilters((prev) => applyFilterPatch(prev, { q: e.target.value }))}
+          />
 
-        <SelectField
-          label="Xe có thể thuê"
-          value={filters.hasAvailableVehicles}
-          onChange={(e) =>
-            setFilters((prev) => applyFilterPatch(prev, { hasAvailableVehicles: e.target.value }))
-          }
-          options={[
-            { value: '', label: 'Tất cả trạm' },
-            { value: 'true', label: 'Có xe sẵn sàng' },
-            { value: 'false', label: 'Chưa có xe sẵn sàng' },
-          ]}
-        />
+          <SelectField
+            id="station-filter-available"
+            label="Xe có thể thuê"
+            value={filters.hasAvailableVehicles}
+            onChange={(e) =>
+              setFilters((prev) =>
+                applyFilterPatch(prev, { hasAvailableVehicles: e.target.value })
+              )
+            }
+            options={[
+              { value: '', label: 'Tất cả trạm' },
+              { value: 'true', label: 'Đang có xe sẵn sàng' },
+              { value: 'false', label: 'Tạm hết xe sẵn sàng' },
+            ]}
+          />
 
-        <SelectField
-          label="Chỗ trả xe"
-          value={filters.hasReturnSpace}
-          onChange={(e) =>
-            setFilters((prev) => applyFilterPatch(prev, { hasReturnSpace: e.target.value }))
-          }
-          options={[
-            { value: '', label: 'Tất cả trạm' },
-            { value: 'true', label: 'Còn chỗ trả trống' },
-            { value: 'false', label: 'Đã hết chỗ trả' },
-          ]}
-        />
-      </FilterBar>
+          <SelectField
+            id="station-filter-return"
+            label="Chỗ trả xe"
+            value={filters.hasReturnSpace}
+            onChange={(e) =>
+              setFilters((prev) =>
+                applyFilterPatch(prev, { hasReturnSpace: e.target.value })
+              )
+            }
+            options={[
+              { value: '', label: 'Tất cả trạm' },
+              { value: 'true', label: 'Còn chỗ trả trống' },
+              { value: 'false', label: 'Đã đầy chỗ đỗ' },
+            ]}
+          />
 
-      {!loading && !error && (
-        <div className="customer-results-bar">
-          <span>
-            {totalStations !== null ? (
-              <>
-                Tìm thấy <strong>{totalStations}</strong> trạm phù hợp
-                {stations.length > 0 && totalStations > stations.length
-                  ? ` (đang hiển thị ${stations.length} trạm ở trang này)`
-                  : ''}
-              </>
-            ) : (
-              'Đã tải danh sách trạm'
+          <div className="station-filter-actions">
+            {hasActiveFilters && (
+              <Button type="button" variant="secondary" onClick={handleResetFilters}>
+                Xóa bộ lọc
+              </Button>
             )}
-          </span>
-          <Button size="sm" variant="ghost" onClick={reload}>
-            Làm mới
-          </Button>
+            <Button type="button" variant="ghost" onClick={reload} disabled={loading}>
+              <RefreshIcon size={15} />
+              <span>Làm mới</span>
+            </Button>
+          </div>
         </div>
-      )}
 
-      {loading && <LoadingState message="Đang tìm trạm xe..." />}
+        <div className="station-quick-toggles">
+          <div className="station-chip-group" role="group" aria-label="Bộ lọc nhanh tình trạng trạm">
+            <span className="station-chip-label">Lọc nhanh:</span>
+            <button
+              type="button"
+              className="station-filter-chip"
+              aria-pressed={filters.hasAvailableVehicles === 'true'}
+              onClick={toggleAvailableOnly}
+            >
+              Đang có xe sẵn sàng
+            </button>
+            <button
+              type="button"
+              className="station-filter-chip"
+              aria-pressed={filters.hasReturnSpace === 'true'}
+              onClick={toggleReturnSpaceOnly}
+            >
+              Còn chỗ trả trống
+            </button>
+          </div>
+
+          {!loading && !error && (
+            <div className="customer-results-bar">
+              <span>
+                {totalStations !== null ? (
+                  <>
+                    Tìm thấy <strong>{totalStations}</strong> trạm phù hợp
+                    {stations.length > 0 && totalStations > stations.length
+                      ? ` · Hiển thị ${stations.length} trạm ở trang ${filters.page}`
+                      : ''}
+                  </>
+                ) : (
+                  'Đã tải danh sách trạm'
+                )}
+              </span>
+            </div>
+          )}
+        </div>
+      </form>
+
+      {loading && <StationGridSkeleton count={6} label="Đang tìm trạm xe phù hợp..." />}
 
       {!loading && error && (
         <ErrorState
@@ -176,10 +245,14 @@ export default function CustomerStationListPage() {
 
       {!loading && !error && stations.length === 0 && (
         <EmptyState
-          title={hasActiveFilters ? 'Không tìm thấy trạm nào khớp bộ lọc' : 'Chưa có trạm nào đang hoạt động'}
+          title={
+            hasActiveFilters
+              ? 'Không tìm thấy trạm nào khớp điều kiện lọc'
+              : 'Chưa có trạm nào đang hoạt động'
+          }
           hint={
             hasActiveFilters
-              ? 'Hãy thử bỏ bớt điều kiện lọc hoặc tìm với từ khóa khác.'
+              ? 'Hãy thử bỏ bớt điều kiện lọc hoặc tìm với tên khu vực khác.'
               : 'Vui lòng tải lại sau ít phút.'
           }
           action={

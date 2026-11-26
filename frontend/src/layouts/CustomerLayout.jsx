@@ -1,10 +1,31 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../integrations/authBridge.jsx';
 import { Button, Modal, StatusBadge, TextField, useToast } from '../components/ui/index.js';
+import {
+  BoltIcon,
+  ChevronDownIcon,
+  CloseIcon,
+  GridIcon,
+  KeyIcon,
+  LifebuoyIcon,
+  LogOutIcon,
+  MenuIcon,
+  UserIcon,
+} from '../components/customer/CustomerIcons.jsx';
 import { getCustomerStatusMeta } from '../utils/statusConfig.js';
 import { getApiErrorMessage } from '../utils/errorMessages.js';
 import { mapApiFieldErrors } from '../utils/validation.js';
+
+function getInitials(name) {
+  const parts = String(name || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (parts.length === 0) return 'EV';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+}
 
 function ChangePasswordModal({ onClose }) {
   const { changePassword } = useAuth();
@@ -63,7 +84,12 @@ function ChangePasswordModal({ onClose }) {
           <Button onClick={onClose} disabled={submitting}>
             Hủy
           </Button>
-          <Button type="submit" form="customer-change-password-form" variant="primary" loading={submitting}>
+          <Button
+            type="submit"
+            form="customer-change-password-form"
+            variant="primary"
+            loading={submitting}
+          >
             Cập nhật &amp; Đăng nhập lại
           </Button>
         </>
@@ -117,11 +143,10 @@ function ChangePasswordModal({ onClose }) {
   );
 }
 
-const NAV_ITEMS = [
+const PUBLIC_NAV_ITEMS = [
   { to: '/', label: 'Trang chủ', end: true },
   { to: '/stations', label: 'Trạm xe', end: false },
   { to: '/vehicles', label: 'Tìm xe', end: false },
-  { to: '/faq', label: 'FAQ', end: false },
 ];
 
 export default function CustomerLayout() {
@@ -132,31 +157,64 @@ export default function CustomerLayout() {
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+
+  const accountMenuRef = useRef(null);
+  const accountTriggerRef = useRef(null);
 
   const roleMeta = user ? getCustomerStatusMeta('userRole', user.role) : null;
-  const isStaffOrManager = user && (user.role === 'STAFF' || user.role === 'MANAGER');
+  const isCustomer = isAuthenticated && user?.role === 'CUSTOMER';
+  const isStaffOrManager = Boolean(
+    user && (user.role === 'STAFF' || user.role === 'MANAGER')
+  );
 
-  // Tự động đóng menu mobile khi người dùng chuyển trang.
+  // Tự động đóng menu khi người dùng chuyển trang.
   useEffect(() => {
     setMobileMenuOpen(false);
+    setAccountMenuOpen(false);
   }, [location.pathname, location.search]);
 
-  // Hỗ trợ phím Escape để đóng menu mobile bằng bàn phím.
+  // Hỗ trợ đóng menu tài khoản khi click ra ngoài hoặc nhấn phím Escape.
   useEffect(() => {
-    if (!mobileMenuOpen) return undefined;
-    const handleKeyDown = (event) => {
-      if (event.key === 'Escape') {
-        setMobileMenuOpen(false);
+    if ((!accountMenuOpen && !mobileMenuOpen) || typeof window === 'undefined') {
+      return undefined;
+    }
+
+    const handlePointerDown = (event) => {
+      if (
+        accountMenuOpen &&
+        accountMenuRef.current &&
+        !accountMenuRef.current.contains(event.target)
+      ) {
+        setAccountMenuOpen(false);
       }
     };
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        if (accountMenuOpen) {
+          setAccountMenuOpen(false);
+          accountTriggerRef.current?.focus();
+        }
+        if (mobileMenuOpen) {
+          setMobileMenuOpen(false);
+        }
+      }
+    };
+
+    window.addEventListener('mousedown', handlePointerDown);
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [mobileMenuOpen]);
+    return () => {
+      window.removeEventListener('mousedown', handlePointerDown);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [accountMenuOpen, mobileMenuOpen]);
 
   const handleLogout = async () => {
     setLoggingOut(true);
     try {
       await logout();
+      setAccountMenuOpen(false);
       setMobileMenuOpen(false);
       navigate('/login', { replace: true });
     } finally {
@@ -174,7 +232,9 @@ export default function CustomerLayout() {
         <div className="customer-topbar-inner">
           <div className="customer-topbar-left">
             <Link to="/" className="customer-brand" aria-label="EVRide — Về trang chủ">
-              <span className="customer-brand-mark" aria-hidden="true">EV</span>
+              <span className="customer-brand-mark" aria-hidden="true">
+                <BoltIcon size={20} />
+              </span>
               <span className="customer-brand-text">
                 <strong>EVRide</strong>
                 <span className="customer-brand-tagline">Xe máy điện theo trạm</span>
@@ -182,56 +242,71 @@ export default function CustomerLayout() {
             </Link>
 
             <nav className="customer-nav customer-nav-desktop" aria-label="Điều hướng chính">
-              {NAV_ITEMS.map((item) => (
+              {PUBLIC_NAV_ITEMS.map((item) => (
                 <NavLink
                   key={item.to}
                   to={item.to}
                   end={item.end}
-                  className={({ isActive }) => (isActive ? 'customer-nav-link active' : 'customer-nav-link')}
+                  className={({ isActive }) =>
+                    isActive ? 'customer-nav-link active' : 'customer-nav-link'
+                  }
                 >
                   {item.label}
                 </NavLink>
               ))}
-              {isAuthenticated && user?.role === 'CUSTOMER' && (
+
+              {isCustomer && (
                 <>
                   <NavLink
                     to="/rentals"
-                    className={({ isActive }) => (isActive ? 'customer-nav-link active' : 'customer-nav-link')}
+                    className={({ isActive }) =>
+                      isActive ? 'customer-nav-link active' : 'customer-nav-link'
+                    }
                   >
                     Chuyến của tôi
                   </NavLink>
                   <NavLink
                     to="/wallet"
-                    className={({ isActive }) => (isActive ? 'customer-nav-link active' : 'customer-nav-link')}
+                    className={({ isActive }) =>
+                      isActive ? 'customer-nav-link active' : 'customer-nav-link'
+                    }
                   >
                     Ví của tôi
                   </NavLink>
                   <NavLink
                     to="/promotions"
-                    className={({ isActive }) => (isActive ? 'customer-nav-link active' : 'customer-nav-link')}
+                    className={({ isActive }) =>
+                      isActive ? 'customer-nav-link active' : 'customer-nav-link'
+                    }
                   >
                     Ưu đãi
                   </NavLink>
                   <NavLink
                     to="/support"
-                    className={({ isActive }) => (isActive ? 'customer-nav-link active' : 'customer-nav-link')}
+                    className={({ isActive }) =>
+                      isActive ? 'customer-nav-link active' : 'customer-nav-link'
+                    }
                   >
                     Hỗ trợ
                   </NavLink>
                 </>
               )}
-              {isAuthenticated && (
-                <NavLink
-                  to="/profile"
-                  className={({ isActive }) => (isActive ? 'customer-nav-link active' : 'customer-nav-link')}
-                >
-                  Hồ sơ &amp; Giấy tờ
-                </NavLink>
-              )}
+
+              <NavLink
+                to="/faq"
+                className={({ isActive }) =>
+                  isActive ? 'customer-nav-link active' : 'customer-nav-link'
+                }
+              >
+                Hỏi đáp
+              </NavLink>
+
               {isStaffOrManager && (
                 <NavLink
                   to="/admin"
-                  className={({ isActive }) => (isActive ? 'customer-nav-link active' : 'customer-nav-link')}
+                  className={({ isActive }) =>
+                    isActive ? 'customer-nav-link active' : 'customer-nav-link'
+                  }
                 >
                   Cổng vận hành
                 </NavLink>
@@ -241,18 +316,100 @@ export default function CustomerLayout() {
 
           <div className="customer-user-actions customer-actions-desktop">
             {isAuthenticated && user ? (
-              <>
-                <span className="customer-user-pill">
-                  <strong>{user.name}</strong>
-                  {roleMeta && <StatusBadge label={roleMeta.label} tone={roleMeta.tone} />}
-                </span>
-                <Button size="sm" variant="secondary" onClick={() => setPasswordModalOpen(true)}>
-                  Đổi mật khẩu
-                </Button>
-                <Button size="sm" variant="ghost" loading={loggingOut} onClick={handleLogout}>
-                  Đăng xuất
-                </Button>
-              </>
+              <div className="customer-account-menu" ref={accountMenuRef}>
+                <button
+                  ref={accountTriggerRef}
+                  type="button"
+                  className="customer-account-trigger"
+                  aria-haspopup="menu"
+                  aria-expanded={accountMenuOpen}
+                  onClick={() => setAccountMenuOpen((prev) => !prev)}
+                >
+                  <span className="customer-account-avatar" aria-hidden="true">
+                    {getInitials(user.name)}
+                  </span>
+                  <span className="customer-account-name">{user.name}</span>
+                  <ChevronDownIcon size={16} className="customer-account-chevron" />
+                </button>
+
+                {accountMenuOpen && (
+                  <div
+                    className="customer-account-dropdown"
+                    role="menu"
+                    aria-label="Menu tài khoản cá nhân"
+                  >
+                    <div className="customer-account-header">
+                      <div className="customer-account-header-top">
+                        <strong>{user.name}</strong>
+                        {roleMeta && <StatusBadge label={roleMeta.label} tone={roleMeta.tone} />}
+                      </div>
+                      {user.email && (
+                        <span className="customer-account-email">{user.email}</span>
+                      )}
+                    </div>
+
+                    <Link
+                      to="/profile"
+                      role="menuitem"
+                      className="customer-account-item"
+                      onClick={() => setAccountMenuOpen(false)}
+                    >
+                      <UserIcon size={17} />
+                      <span>Hồ sơ &amp; Giấy tờ</span>
+                    </Link>
+
+                    {isCustomer && (
+                      <Link
+                        to="/support"
+                        role="menuitem"
+                        className="customer-account-item"
+                        onClick={() => setAccountMenuOpen(false)}
+                      >
+                        <LifebuoyIcon size={17} />
+                        <span>Yêu cầu hỗ trợ của tôi</span>
+                      </Link>
+                    )}
+
+                    {isStaffOrManager && (
+                      <Link
+                        to="/admin"
+                        role="menuitem"
+                        className="customer-account-item"
+                        onClick={() => setAccountMenuOpen(false)}
+                      >
+                        <GridIcon size={17} />
+                        <span>Mở Cổng vận hành</span>
+                      </Link>
+                    )}
+
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="customer-account-item"
+                      onClick={() => {
+                        setAccountMenuOpen(false);
+                        setPasswordModalOpen(true);
+                      }}
+                    >
+                      <KeyIcon size={17} />
+                      <span>Đổi mật khẩu</span>
+                    </button>
+
+                    <div className="customer-account-divider" role="separator" />
+
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="customer-account-item is-danger"
+                      disabled={loggingOut}
+                      onClick={handleLogout}
+                    >
+                      <LogOutIcon size={17} />
+                      <span>{loggingOut ? 'Đang đăng xuất...' : 'Đăng xuất'}</span>
+                    </button>
+                  </div>
+                )}
+              </div>
             ) : (
               <>
                 <Link to="/login" className="btn btn-sm btn-secondary">
@@ -273,9 +430,7 @@ export default function CustomerLayout() {
             aria-label={mobileMenuOpen ? 'Đóng menu điều hướng' : 'Mở menu điều hướng'}
             onClick={() => setMobileMenuOpen((prev) => !prev)}
           >
-            <span className="customer-menu-icon" aria-hidden="true">
-              {mobileMenuOpen ? '✕' : '☰'}
-            </span>
+            {mobileMenuOpen ? <CloseIcon size={18} /> : <MenuIcon size={18} />}
             <span>{mobileMenuOpen ? 'Đóng' : 'Menu'}</span>
           </button>
         </div>
@@ -283,56 +438,82 @@ export default function CustomerLayout() {
         {mobileMenuOpen && (
           <div id="customer-mobile-menu" className="customer-mobile-drawer">
             <nav className="customer-mobile-nav" aria-label="Điều hướng di động">
-              {NAV_ITEMS.map((item) => (
+              {PUBLIC_NAV_ITEMS.map((item) => (
                 <NavLink
                   key={item.to}
                   to={item.to}
                   end={item.end}
-                  className={({ isActive }) => (isActive ? 'customer-mobile-link active' : 'customer-mobile-link')}
+                  className={({ isActive }) =>
+                    isActive ? 'customer-mobile-link active' : 'customer-mobile-link'
+                  }
                 >
                   {item.label}
                 </NavLink>
               ))}
-              {isAuthenticated && user?.role === 'CUSTOMER' && (
+
+              {isCustomer && (
                 <>
                   <NavLink
                     to="/rentals"
-                    className={({ isActive }) => (isActive ? 'customer-mobile-link active' : 'customer-mobile-link')}
+                    className={({ isActive }) =>
+                      isActive ? 'customer-mobile-link active' : 'customer-mobile-link'
+                    }
                   >
                     Chuyến của tôi
                   </NavLink>
                   <NavLink
                     to="/wallet"
-                    className={({ isActive }) => (isActive ? 'customer-mobile-link active' : 'customer-mobile-link')}
+                    className={({ isActive }) =>
+                      isActive ? 'customer-mobile-link active' : 'customer-mobile-link'
+                    }
                   >
                     Ví của tôi
                   </NavLink>
                   <NavLink
                     to="/promotions"
-                    className={({ isActive }) => (isActive ? 'customer-mobile-link active' : 'customer-mobile-link')}
+                    className={({ isActive }) =>
+                      isActive ? 'customer-mobile-link active' : 'customer-mobile-link'
+                    }
                   >
                     Ưu đãi
                   </NavLink>
                   <NavLink
                     to="/support"
-                    className={({ isActive }) => (isActive ? 'customer-mobile-link active' : 'customer-mobile-link')}
+                    className={({ isActive }) =>
+                      isActive ? 'customer-mobile-link active' : 'customer-mobile-link'
+                    }
                   >
                     Hỗ trợ
                   </NavLink>
                 </>
               )}
+
+              <NavLink
+                to="/faq"
+                className={({ isActive }) =>
+                  isActive ? 'customer-mobile-link active' : 'customer-mobile-link'
+                }
+              >
+                Hỏi đáp
+              </NavLink>
+
               {isAuthenticated && (
                 <NavLink
                   to="/profile"
-                  className={({ isActive }) => (isActive ? 'customer-mobile-link active' : 'customer-mobile-link')}
+                  className={({ isActive }) =>
+                    isActive ? 'customer-mobile-link active' : 'customer-mobile-link'
+                  }
                 >
                   Hồ sơ &amp; Giấy tờ
                 </NavLink>
               )}
+
               {isStaffOrManager && (
                 <NavLink
                   to="/admin"
-                  className={({ isActive }) => (isActive ? 'customer-mobile-link active' : 'customer-mobile-link')}
+                  className={({ isActive }) =>
+                    isActive ? 'customer-mobile-link active' : 'customer-mobile-link'
+                  }
                 >
                   Cổng vận hành
                 </NavLink>
@@ -357,7 +538,12 @@ export default function CustomerLayout() {
                     >
                       Đổi mật khẩu
                     </Button>
-                    <Button size="sm" variant="ghost" loading={loggingOut} onClick={handleLogout}>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      loading={loggingOut}
+                      onClick={handleLogout}
+                    >
                       Đăng xuất
                     </Button>
                   </div>
@@ -377,22 +563,92 @@ export default function CustomerLayout() {
         )}
       </header>
 
-      <main id="customer-main-content" className="customer-main" tabIndex={-1} key={user?.id || 'guest'}>
+      <main
+        id="customer-main-content"
+        className="customer-main"
+        tabIndex={-1}
+        key={user?.id || 'guest'}
+      >
         <Outlet />
       </main>
 
       <footer className="customer-footer">
         <div className="customer-footer-inner">
-          <div className="customer-footer-brand">
-            <strong>EVRide</strong> — Dịch vụ cho thuê xe máy điện theo trạm
+          <div className="customer-footer-top">
+            <div>
+              <div className="customer-footer-brand">
+                <span className="customer-brand-mark" style={{ width: 28, height: 28, borderRadius: 7 }} aria-hidden="true">
+                  <BoltIcon size={15} />
+                </span>
+                <strong>EVRide — Thuê xe máy điện theo trạm</strong>
+              </div>
+              <p className="customer-footer-desc">
+                Hệ thống tra cứu trạm, giữ xe máy điện trước 30 phút và quyết toán minh bạch theo thời gian sử dụng thực tế tại trạm.
+              </p>
+            </div>
+
+            <div>
+              <h2 className="customer-footer-col-title">Dịch vụ thuê xe</h2>
+              <ul className="customer-footer-links">
+                <li>
+                  <Link to="/stations">Danh sách trạm hoạt động</Link>
+                </li>
+                <li>
+                  <Link to="/vehicles">Tìm xe máy điện sẵn sàng</Link>
+                </li>
+                <li>
+                  <Link to="/faq">Câu hỏi thường gặp &amp; Quy định</Link>
+                </li>
+              </ul>
+            </div>
+
+            <div>
+              <h2 className="customer-footer-col-title">Tài khoản &amp; Hỗ trợ</h2>
+              <ul className="customer-footer-links">
+                {isAuthenticated ? (
+                  <>
+                    <li>
+                      <Link to="/profile">Hồ sơ &amp; Giấy tờ tùy thân</Link>
+                    </li>
+                    {isCustomer && (
+                      <>
+                        <li>
+                          <Link to="/rentals">Chuyến thuê của tôi</Link>
+                        </li>
+                        <li>
+                          <Link to="/wallet">Ví tiền mô phỏng</Link>
+                        </li>
+                        <li>
+                          <Link to="/support">Gửi yêu cầu hỗ trợ</Link>
+                        </li>
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <li>
+                      <Link to="/login">Đăng nhập tài khoản</Link>
+                    </li>
+                    <li>
+                      <Link to="/register">Đăng ký khách hàng mới</Link>
+                    </li>
+                  </>
+                )}
+              </ul>
+            </div>
           </div>
-          <p className="customer-footer-note">
-            Phiên bản minh họa đồ án, sử dụng tiền mô phỏng và dữ liệu vận hành theo thời gian thực từ hệ thống.
-          </p>
+
+          <div className="customer-footer-bottom">
+            <p className="customer-footer-note">
+              Số dư ví và lộ trình định vị hiển thị trong ứng dụng là dữ liệu mô phỏng phục vụ vận hành hệ thống EVRide.
+            </p>
+          </div>
         </div>
       </footer>
 
-      {passwordModalOpen && <ChangePasswordModal onClose={() => setPasswordModalOpen(false)} />}
+      {passwordModalOpen && (
+        <ChangePasswordModal onClose={() => setPasswordModalOpen(false)} />
+      )}
     </div>
   );
 }

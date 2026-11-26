@@ -2,6 +2,13 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../integrations/authBridge.jsx';
 import { Button, TextField, useToast } from '../../components/ui/index.js';
+import ElectricScooterIllustration from '../../components/customer/ElectricScooterIllustration.jsx';
+import {
+  BoltIcon,
+  CheckCircleIcon,
+  ClockIcon,
+  ShieldCheckIcon,
+} from '../../components/customer/CustomerIcons.jsx';
 import { getApiErrorMessage } from '../../utils/errorMessages.js';
 import { mapApiFieldErrors } from '../../utils/validation.js';
 
@@ -73,83 +80,129 @@ export default function RegisterPage() {
 
   return (
     <div className="auth-page-wrap">
-      <div className="auth-panel">
-        <div className="auth-panel-header">
-          <Link to="/" className="customer-brand" aria-label="Về trang chủ EVRide">
-            <span className="customer-brand-mark">EV</span>
-            <span>EVRide</span>
-          </Link>
-          <h1>Đăng ký tài khoản khách hàng</h1>
-          <p className="muted">
-            Tạo tài khoản miễn phí kèm ví tiền mô phỏng để tìm trạm, xác minh giấy tờ và giữ xe máy điện trong 30 phút.
-          </p>
-        </div>
+      <div className="auth-split-shell">
+        <aside className="auth-brand-aside" aria-label="Quyền lợi tài khoản khách hàng EVRide">
+          <div>
+            <Link to="/" className="customer-brand" aria-label="Về trang chủ EVRide">
+              <span className="customer-brand-mark">
+                <BoltIcon size={18} />
+              </span>
+              <span className="customer-brand-text">
+                <strong>EVRide</strong>
+                <small>Thuê xe máy điện theo trạm</small>
+              </span>
+            </Link>
 
-        {formError && (
-          <div className="alert alert-danger" role="alert">
-            {formError}
+            <h2 className="auth-aside-title">
+              Bắt đầu hành trình xanh chỉ với vài bước đơn giản
+            </h2>
+            <p className="auth-aside-desc">
+              Tạo tài khoản khách hàng kèm ví tiền mô phỏng để tìm trạm, nộp giấy tờ CCCD và giữ xe máy điện thuận tiện.
+            </p>
+
+            <ul className="auth-aside-points">
+              <li className="auth-aside-point">
+                <ShieldCheckIcon size={17} />
+                <span>Hồ sơ CCCD lưu trữ riêng tư, chỉ tải qua phiên đăng nhập hợp lệ.</span>
+              </li>
+              <li className="auth-aside-point">
+                <ClockIcon size={17} />
+                <span>Chủ động chọn trạm nhận xe và xem báo giá minh bạch trước khi trả.</span>
+              </li>
+              <li className="auth-aside-point">
+                <CheckCircleIcon size={17} />
+                <span>Theo dõi lịch sử chuyến thuê, ví điện tử và mã khuyến mãi trên một nơi.</span>
+              </li>
+            </ul>
           </div>
-        )}
 
-        <form onSubmit={handleSubmit} className="stack-md" noValidate>
-          <TextField
-            label="Họ và tên"
-            required
-            maxLength={100}
-            autoComplete="name"
-            placeholder="Nguyễn Văn A"
-            value={name}
-            error={fieldErrors.name}
-            onChange={(e) => setName(e.target.value)}
-          />
+          <ElectricScooterIllustration compact />
+        </aside>
 
-          <TextField
-            label="Địa chỉ email"
-            type="email"
-            required
-            maxLength={100}
-            autoComplete="email"
-            placeholder="khachhang@example.com"
-            value={email}
-            error={fieldErrors.email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
+        <div className="auth-panel">
+          <div className="auth-panel-header">
+            <Link to="/" className="customer-brand auth-panel-mobile-brand" aria-label="Về trang chủ EVRide">
+              <span className="customer-brand-mark">
+                <BoltIcon size={18} />
+              </span>
+              <span>EVRide</span>
+            </Link>
+            <h1>Đăng ký tài khoản khách hàng</h1>
+            <p className="muted">
+              Tạo tài khoản miễn phí kèm ví tiền mô phỏng để tìm trạm, xác minh giấy tờ và giữ xe máy điện trong 30 phút.
+            </p>
+          </div>
 
-          <TextField
-            label="Mật khẩu (12–128 ký tự)"
-            type="password"
-            required
-            minLength={12}
-            maxLength={128}
-            autoComplete="new-password"
-            placeholder="Tối thiểu 12 ký tự"
-            hint="Hệ thống giữ nguyên khoảng trắng nếu bạn đặt mật khẩu có khoảng trắng."
-            value={password}
-            error={fieldErrors.password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
+          {formError && (
+            <div className="alert alert-danger" role="alert">
+              {formError}
+            </div>
+          )}
 
-          <TextField
-            label="Xác nhận mật khẩu"
-            type="password"
-            required
-            autoComplete="new-password"
-            placeholder="Nhập lại mật khẩu ở trên"
-            value={confirmPassword}
-            error={fieldErrors.confirm_password}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-          />
+          <form onSubmit={handleSubmit} className="stack-md" noValidate>
+            <TextField
+              id="register-name"
+              label="Họ và tên"
+              required
+              maxLength={100}
+              autoComplete="name"
+              placeholder="Nguyễn Văn A"
+              value={name}
+              error={fieldErrors.name}
+              onChange={(e) => setName(e.target.value)}
+            />
 
-          <Button type="submit" variant="primary" className="btn-block" loading={submitting}>
-            {submitting ? 'Đang tạo tài khoản...' : 'Đăng ký tài khoản'}
-          </Button>
-        </form>
+            <TextField
+              id="register-email"
+              label="Địa chỉ email"
+              type="email"
+              required
+              maxLength={100}
+              autoComplete="email"
+              placeholder="khachhang@example.com"
+              value={email}
+              error={fieldErrors.email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
 
-        <div className="auth-links-row">
-          <span>
-            Đã có tài khoản? <Link to="/login">Đăng nhập ngay</Link>
-          </span>
-          <Link to="/">Trang chủ</Link>
+            <TextField
+              id="register-password"
+              label="Mật khẩu (12–128 ký tự)"
+              type="password"
+              required
+              minLength={12}
+              maxLength={128}
+              autoComplete="new-password"
+              placeholder="Tối thiểu 12 ký tự"
+              hint="Hệ thống giữ nguyên khoảng trắng nếu bạn đặt mật khẩu có khoảng trắng."
+              value={password}
+              error={fieldErrors.password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+
+            <TextField
+              id="register-confirm-password"
+              label="Xác nhận mật khẩu"
+              type="password"
+              required
+              autoComplete="new-password"
+              placeholder="Nhập lại mật khẩu ở trên"
+              value={confirmPassword}
+              error={fieldErrors.confirm_password}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+            />
+
+            <Button type="submit" variant="primary" className="btn-block" loading={submitting}>
+              {submitting ? 'Đang tạo tài khoản...' : 'Đăng ký tài khoản'}
+            </Button>
+          </form>
+
+          <div className="auth-links-row">
+            <span>
+              Đã có tài khoản? <Link to="/login">Đăng nhập ngay</Link>
+            </span>
+            <Link to="/">Trang chủ</Link>
+          </div>
         </div>
       </div>
     </div>

@@ -18,6 +18,11 @@ import {
   StatusBadge,
   useToast,
 } from '../../components/ui/index.js';
+import {
+  ClockIcon,
+  LifebuoyIcon,
+  RefreshIcon,
+} from '../../components/customer/CustomerIcons.jsx';
 import { formatDateTimeVN, formatDurationSeconds } from '../../utils/format.js';
 import { getCustomerStatusMeta } from '../../utils/statusConfig.js';
 import { getApiErrorMessage } from '../../utils/errorMessages.js';
@@ -87,7 +92,7 @@ export default function CustomerRentalDetailPage() {
 
   // Đồng bộ đồng hồ đếm ngược mỗi 1 giây khi chuyến đang RESERVED; dọn dẹp sạch khi unmount/đăng xuất.
   useEffect(() => {
-    if (rental?.status !== 'RESERVED') return undefined;
+    if (rental?.status !== 'RESERVED' || typeof window === 'undefined') return undefined;
     const intervalId = window.setInterval(() => {
       setCountdownTick((prev) => prev + 1);
     }, 1000);
@@ -101,7 +106,12 @@ export default function CustomerRentalDetailPage() {
   // Khi countdown chạm 0, KHÔNG tự biến trạng thái sang EXPIRED bằng đồng hồ client,
   // mà gọi máy chủ tải lại đúng 1 lần cho mốc expires_at đó để nhận trạng thái chính thức.
   useEffect(() => {
-    if (!rental || rental.status !== 'RESERVED' || !countdownState.needsServerRefresh) {
+    if (
+      !rental ||
+      rental.status !== 'RESERVED' ||
+      !countdownState.needsServerRefresh ||
+      typeof window === 'undefined'
+    ) {
       return undefined;
     }
     const expiryKey = `${rental.id}:${rental.expires_at}`;
@@ -119,9 +129,11 @@ export default function CustomerRentalDetailPage() {
 
   // Tự tải lại trạng thái chuyến khi người dùng quay lại tab / cửa sổ trình duyệt; dọn dẹp sạch khi unmount/đăng xuất.
   useEffect(() => {
-    if (!rentalId) return undefined;
+    if (!rentalId || typeof window === 'undefined' || typeof document === 'undefined') {
+      return undefined;
+    }
     const refreshOnReturn = () => {
-      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+      if (document.visibilityState !== 'visible') {
         return;
       }
       rentalQuery.reload();
@@ -233,15 +245,18 @@ export default function CustomerRentalDetailPage() {
       {/* Khối tổng quan trạng thái & hướng dẫn vận hành */}
       <section className="station-detail-panel" aria-labelledby="rental-detail-title">
         <div className="station-detail-top">
-          <div>
-            <p className="vehicle-model-tag">
+          <div className="station-detail-heading">
+            <span className="vehicle-model-tag">
               {rental.vehicle_model_snapshot || 'Xe máy điện EVRide'}
-            </p>
+            </span>
             <h1 id="rental-detail-title" className="customer-page-title">
               {rental.vehicle_name || 'Chuyến thuê xe máy điện'}
             </h1>
-            <p className="station-card-address">
-              Tạo lúc <strong>{formatDateTimeVN(rental.created_at)}</strong>
+            <p className="station-card-hours-line">
+              <ClockIcon size={15} className="station-meta-icon" />
+              <span>
+                Tạo lúc <strong>{formatDateTimeVN(rental.created_at)}</strong>
+              </span>
             </p>
           </div>
 
@@ -252,7 +267,8 @@ export default function CustomerRentalDetailPage() {
                 to={`/support?rental_id=${encodeURIComponent(String(rental.id))}`}
                 className="btn btn-sm btn-ghost"
               >
-                Báo sự cố / Hỗ trợ
+                <LifebuoyIcon size={15} />
+                <span>Báo sự cố / Hỗ trợ</span>
               </Link>
             )}
             <Button
@@ -263,7 +279,8 @@ export default function CustomerRentalDetailPage() {
                 handoversQuery.reload();
               }}
             >
-              Đồng bộ trạng thái
+              <RefreshIcon size={15} />
+              <span>Đồng bộ trạng thái</span>
             </Button>
           </div>
         </div>
@@ -273,14 +290,22 @@ export default function CustomerRentalDetailPage() {
           <div className="reservation-hold-banner" role="status">
             <div className="station-detail-top">
               <div>
-                <strong>
-                  {countdownState.needsServerRefresh
-                    ? 'Đang kiểm tra hạn giữ chỗ với máy chủ...'
-                    : `Thời gian giữ chỗ còn lại: ${countdownState.formattedCountdown}`}
-                </strong>
-                <p style={{ marginTop: 4 }}>
-                  Hạn nhận xe trên máy chủ: <strong>{formatDateTimeVN(rental.expires_at, { withSeconds: true })}</strong>.
-                  Vui lòng có mặt tại trạm nhận xe để <strong>nhân viên trạm kiểm tra giấy tờ và thực hiện bàn giao nhận xe</strong> (khách hàng không tự bấm nhận xe trên ứng dụng).
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+                  <strong>
+                    {countdownState.needsServerRefresh
+                      ? 'Đang kiểm tra hạn giữ chỗ với máy chủ...'
+                      : 'Thời gian giữ chỗ còn lại:'}
+                  </strong>
+                  {!countdownState.needsServerRefresh && (
+                    <span className="rental-countdown-value">
+                      {countdownState.formattedCountdown}
+                    </span>
+                  )}
+                </div>
+                <p style={{ marginTop: 6 }}>
+                  Hạn nhận xe trên máy chủ:{' '}
+                  <strong>{formatDateTimeVN(rental.expires_at, { withSeconds: true })}</strong>. Vui lòng có mặt tại trạm nhận xe để{' '}
+                  <strong>nhân viên trạm kiểm tra giấy tờ và thực hiện bàn giao nhận xe</strong> (khách hàng không tự bấm nhận xe trên ứng dụng).
                 </p>
               </div>
               {canCustomerCancel && (
@@ -372,42 +397,42 @@ export default function CustomerRentalDetailPage() {
         )}
 
         {/* Thông tin trạm & biểu giá khóa của chuyến */}
-        <div className="station-detail-stats">
-          <div className="station-metric-box">
+        <div className="station-detail-stats-strip">
+          <div className="station-detail-stat">
             <span className="customer-meta-label">Trạm nhận xe</span>
             <strong className="customer-meta-value">
               {pickupStation?.name || 'Đang tải tên trạm...'}
             </strong>
             {pickupStation && (
-              <span className="station-card-address" style={{ marginTop: 0 }}>
+              <span className="customer-meta-label" style={{ fontWeight: 500 }}>
                 {pickupStation.address} ({formatStationHours(pickupStation.opens_at, pickupStation.closes_at)})
               </span>
             )}
           </div>
 
           {returnStationId && (
-            <div className="station-metric-box">
+            <div className="station-detail-stat">
               <span className="customer-meta-label">Trạm trả xe thực tế</span>
               <strong className="customer-meta-value">
                 {returnStation?.name || 'Trạm tiếp nhận trả xe'}
               </strong>
               {returnStation && (
-                <span className="station-card-address" style={{ marginTop: 0 }}>
+                <span className="customer-meta-label" style={{ fontWeight: 500 }}>
                   {returnStation.address}
                 </span>
               )}
             </div>
           )}
 
-          <div className="station-metric-box">
-            <span className="customer-meta-label">Giá khóa (30p đầu / mỗi phút thêm)</span>
+          <div className="station-detail-stat">
+            <span className="customer-meta-label">Giá khóa (30p đầu / phút thêm)</span>
             <strong className="customer-meta-value">
               {formatMoneyDisplay(rental.first_30_minutes_price_snapshot)} /{' '}
               {formatMoneyDisplay(rental.extra_minute_price_snapshot)}
             </strong>
           </div>
 
-          <div className="station-metric-box">
+          <div className="station-detail-stat">
             <span className="customer-meta-label">Cọc quy định / Cọc đang giữ</span>
             <strong className="customer-meta-value">
               {formatMoneyDisplay(rental.deposit_amount_snapshot)} /{' '}
@@ -443,7 +468,7 @@ export default function CustomerRentalDetailPage() {
             <h2 id="rental-handovers-heading" className="customer-card-title">
               Biên bản bàn giao &amp; tiếp nhận xe tại trạm
             </h2>
-            <p className="station-card-address">
+            <p className="station-card-address" style={{ marginTop: 4 }}>
               Ghi nhận thực tế từ nhân viên trạm ở bước bàn giao nhận xe và tiếp nhận trả xe.
             </p>
           </div>
@@ -478,8 +503,12 @@ export default function CustomerRentalDetailPage() {
                   <div className="document-item-head">
                     <div>
                       <h3 className="customer-card-title">{getHandoverKindLabel(ho.kind)}</h3>
-                      <p className="station-card-address">
-                        Thời điểm ghi nhận: <strong>{formatDateTimeVN(ho.time, { withSeconds: true })}</strong>
+                      <p className="station-card-hours-line" style={{ marginTop: 4 }}>
+                        <ClockIcon size={15} className="station-meta-icon" />
+                        <span>
+                          Thời điểm ghi nhận:{' '}
+                          <strong>{formatDateTimeVN(ho.time, { withSeconds: true })}</strong>
+                        </span>
                       </p>
                     </div>
                     <StatusBadge
@@ -488,20 +517,20 @@ export default function CustomerRentalDetailPage() {
                     />
                   </div>
 
-                  <div className="document-item-meta">
-                    <div>
+                  <div className="station-detail-stats-strip">
+                    <div className="station-detail-stat">
                       <span className="customer-meta-label">Mức pin bàn giao</span>
                       <strong className="customer-meta-value">
                         {formatBatteryPercent(ho.battery_percent)}
                       </strong>
                     </div>
                     {conditionLabel && (
-                      <div>
+                      <div className="station-detail-stat">
                         <span className="customer-meta-label">Tình trạng xe</span>
                         <strong className="customer-meta-value">{conditionLabel}</strong>
                       </div>
                     )}
-                    <div>
+                    <div className="station-detail-stat">
                       <span className="customer-meta-label">Ghi chú của nhân viên trạm</span>
                       <strong className="customer-meta-value">
                         {ho.note ? ho.note : 'Không có ghi chú thêm'}

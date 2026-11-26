@@ -18,6 +18,12 @@ import {
   StatusBadge,
   useToast,
 } from '../../components/ui/index.js';
+import {
+  ArrowLeftIcon,
+  ArrowRightIcon,
+  ClockIcon,
+  RefreshIcon,
+} from '../../components/customer/CustomerIcons.jsx';
 import { formatDateTimeVN } from '../../utils/format.js';
 import { getCustomerStatusMeta } from '../../utils/statusConfig.js';
 import { getApiErrorMessage } from '../../utils/errorMessages.js';
@@ -118,25 +124,30 @@ export default function CustomerTicketDetailPage() {
 
       <section className="station-detail-panel" aria-labelledby="ticket-detail-heading">
         <div className="station-detail-top">
-          <div>
+          <div className="station-detail-heading">
+            <span className="customer-page-eyebrow">Chi tiết yêu cầu hỗ trợ</span>
             <h1 id="ticket-detail-heading" className="customer-page-title">
               {ticket.title}
             </h1>
-            <p className="station-card-address">
-              Gửi lúc <strong>{formatDateTimeVN(ticket.created_at, { withSeconds: true })}</strong>
+            <p className="station-card-hours-line">
+              <ClockIcon size={15} className="station-meta-icon" />
+              <span>
+                Gửi lúc <strong>{formatDateTimeVN(ticket.created_at, { withSeconds: true })}</strong>
+              </span>
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <StatusBadge label={statusMeta.label} tone={statusMeta.tone} />
             <Button size="sm" variant="secondary" onClick={ticketQuery.reload}>
-              Làm mới
+              <RefreshIcon size={15} />
+              <span>Làm mới</span>
             </Button>
           </div>
         </div>
 
-        <div className="station-metric-box">
+        <div className="ticket-description-box">
           <span className="customer-meta-label">Nội dung mô tả</span>
-          <p style={{ whiteSpace: 'pre-wrap', marginTop: 4 }}>{ticket.description}</p>
+          <p style={{ whiteSpace: 'pre-wrap', marginTop: 6 }}>{ticket.description}</p>
         </div>
 
         {ticket.resolution_note ? (
@@ -156,11 +167,13 @@ export default function CustomerTicketDetailPage() {
               to={`/rentals/${encodeURIComponent(String(ticket.rental_id))}`}
               className="btn btn-sm btn-secondary"
             >
-              Xem chuyến thuê liên quan →
+              <span>Xem chuyến thuê liên quan</span>
+              <ArrowRightIcon size={15} />
             </Link>
           )}
           <Link to="/support" className="btn btn-sm btn-ghost">
-            ← Danh sách hỗ trợ
+            <ArrowLeftIcon size={15} />
+            <span>Danh sách hỗ trợ</span>
           </Link>
         </div>
       </section>
@@ -172,7 +185,7 @@ export default function CustomerTicketDetailPage() {
             <h2 id="ticket-evidence-heading" className="customer-card-title">
               Ảnh bằng chứng đính kèm
             </h2>
-            <p className="station-card-address">
+            <p className="station-card-address" style={{ marginTop: 4 }}>
               Ảnh được tải bảo mật theo phiên đăng nhập hiện tại.
             </p>
           </div>
