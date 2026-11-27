@@ -10,8 +10,10 @@ import {
 } from '../../components/ui';
 import useApiQuery from '../../hooks/useApiQuery';
 import useDebouncedValue from '../../hooks/useDebouncedValue';
+import { listUsers } from '../../services/accountsApi';
 import { listAdminStations } from '../../services/fleetApi';
 import { listRentals } from '../../services/rentalsApi';
+import { buildIdMap, getStationDisplayName, getUserDisplay } from '../../utils/entityDisplay';
 import { formatDateTimeVN, formatDurationSeconds, formatVnd, toIsoWithVietnamOffset } from '../../utils/format';
 import { STATUS_CONFIG } from '../../utils/statusConfig';
 import { isPositiveIdString } from '../../utils/validation';
@@ -38,8 +40,13 @@ export default function AdminRentalList() {
     ({ signal }) => listAdminStations({ page: 1, page_size: 100 }, { signal }),
     []
   );
+  const usersQuery = useApiQuery(
+    ({ signal }) => listUsers({ page: 1, page_size: 100 }, { signal }),
+    []
+  );
   const stations = stationsQuery.data || [];
-  const stationMap = new Map(stations.map((s) => [s.id, s]));
+  const stationMap = buildIdMap(stations);
+  const userMap = buildIdMap(usersQuery.data || []);
 
   const rentalsQuery = useApiQuery(
     ({ signal }) =>
@@ -84,34 +91,40 @@ export default function AdminRentalList() {
 
   const columns = [
     {
-      key: 'id',
-      header: 'ID Chuyến',
-      render: (r) => <Link to={`/admin/rentals/${r.id}`}>#{r.id}</Link>,
+      key: 'vehicle',
+      header: 'Xe & Chuyến thuê',
+      render: (r) => (
+        <div>
+          <Link to={`/admin/rentals/${r.id}`}>
+            <strong>{r.vehicle_name || `Xe #${r.vehicle_id}`}</strong>
+          </Link>
+          <div className="muted">
+            {r.vehicle_model_snapshot ? `${r.vehicle_model_snapshot} · ` : ''}
+            Chuyến #{r.id}
+          </div>
+        </div>
+      ),
     },
     {
       key: 'customer_id',
       header: 'Khách hàng',
-      render: (r) => <Link to={`/admin/users/${r.customer_id}`}>Khách #{r.customer_id}</Link>,
-    },
-    {
-      key: 'vehicle',
-      header: 'Xe máy điện (Snapshot)',
-      render: (r) => (
-        <div>
-          <Link to={`/admin/vehicles/${r.vehicle_id}`}>
-            {r.vehicle_name || `Xe #${r.vehicle_id}`}
-          </Link>
-          {r.vehicle_model_snapshot && <div className="muted">{r.vehicle_model_snapshot}</div>}
-        </div>
-      ),
+      render: (r) => {
+        const customer = getUserDisplay(userMap, r.customer_id, 'Khách');
+        return (
+          <div>
+            <Link to={`/admin/users/${r.customer_id}`}>{customer.primary}</Link>
+            {customer.secondary && <div className="muted">{customer.secondary}</div>}
+          </div>
+        );
+      },
     },
     {
       key: 'stations',
       header: 'Trạm nhận / Trả',
       render: (r) => {
-        const pName = stationMap.get(r.pickup_station_id)?.name || `#${r.pickup_station_id}`;
+        const pName = getStationDisplayName(stationMap, r.pickup_station_id);
         const rName = r.actual_return_station_id
-          ? stationMap.get(r.actual_return_station_id)?.name || `#${r.actual_return_station_id}`
+          ? getStationDisplayName(stationMap, r.actual_return_station_id)
           : '—';
         return (
           <div>
@@ -165,7 +178,7 @@ export default function AdminRentalList() {
         <div>
           <h2>Lượt giữ xe &amp; chuyến thuê</h2>
           <p className="muted">
-            Theo dõi toàn bộ lượt đặt, bàn giao nhận xe, tiếp nhận trả xe và quyết toán theo API <code>/rentals</code>.
+            Theo dõi toàn bộ lượt đặt giữ chỗ 30 phút, bàn giao nhận xe, tiếp nhận trả xe và quyết toán hóa đơn.
           </p>
         </div>
       </div>
@@ -205,7 +218,7 @@ export default function AdminRentalList() {
           label="Trạm nhận xe"
           value={pickupStationId}
           placeholder="Tất cả trạm"
-          options={stations.map((s) => ({ value: s.id, label: `#${s.id} - ${s.name}` }))}
+          options={stations.map((s) => ({ value: s.id, label: `${s.name} (#${s.id})` }))}
           onChange={(e) => {
             setPickupStationId(e.target.value);
             setPage(1);

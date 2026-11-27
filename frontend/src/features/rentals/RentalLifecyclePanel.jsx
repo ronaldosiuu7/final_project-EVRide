@@ -16,12 +16,23 @@ import {
   pickupRental,
   settleReturn,
 } from '../../services/rentalsApi';
+import { buildIdMap, getStationDisplayName } from '../../utils/entityDisplay';
 import { getApiErrorMessage } from '../../utils/errorMessages';
 import { formatDateTimeVN, formatDurationSeconds, formatVnd } from '../../utils/format';
+
+const STALE_RENTAL_ERROR_CODES = new Set(['INVALID_RENTAL_STATE', 'CONCURRENT_STATE_CHANGED']);
 
 export default function RentalLifecyclePanel({ rental, stations = [], onUpdated }) {
   const toast = useToast();
   const activeStations = stations.filter((s) => s.status === 'ACTIVE');
+  const stationMap = buildIdMap(stations);
+
+  const syncIfStaleState = (err) => {
+    if (err?.code && STALE_RENTAL_ERROR_CODES.has(err.code)) {
+      toast.info('Trạng thái chuyến thuê vừa thay đổi, hệ thống đã tự động tải lại dữ liệu mới nhất.');
+      onUpdated?.();
+    }
+  };
 
   // --- RESERVED: Pickup ---
   const [pickupStationId, setPickupStationId] = useState(rental.pickup_station_id || '');
@@ -101,8 +112,8 @@ export default function RentalLifecyclePanel({ rental, stations = [], onUpdated 
       });
       toast.success(`Đã bàn giao nhận xe cho chuyến #${rental.id} (thu cọc thành công).`);
       onUpdated();
-    } catch {
-      // Hiển thị lỗi bên dưới form; retry giữ nguyên Idempotency-Key.
+    } catch (err) {
+      syncIfStaleState(err);
     }
   };
 
@@ -115,8 +126,8 @@ export default function RentalLifecyclePanel({ rental, stations = [], onUpdated 
       });
       toast.success(`Đã hủy chuyến #${rental.id} và miễn trừ hạn mức 3 lần/ngày cho khách.`);
       onUpdated();
-    } catch {
-      // Hiển thị lỗi ngay tại form.
+    } catch (err) {
+      syncIfStaleState(err);
     }
   };
 
@@ -130,11 +141,11 @@ export default function RentalLifecyclePanel({ rental, stations = [], onUpdated 
         note: returnNote.trim() || null,
       });
       toast.success(
-        `Đã tiếp nhận xe tại trạm và đóng băng cước (RETURN_PENDING) cho chuyến #${rental.id}.`
+        `Đã tiếp nhận xe tại trạm và dừng tính cước cho chuyến #${rental.id}.`
       );
       onUpdated();
-    } catch {
-      // Hiển thị lỗi ngay tại form.
+    } catch (err) {
+      syncIfStaleState(err);
     }
   };
 
@@ -154,6 +165,7 @@ export default function RentalLifecyclePanel({ rental, stations = [], onUpdated 
       toast.info('Đã tạo báo giá trả xe có hiệu lực trong 10 phút.');
     } catch (err) {
       setQuoteError(err);
+      syncIfStaleState(err);
     } finally {
       setQuoteLoading(false);
     }
@@ -167,10 +179,10 @@ export default function RentalLifecyclePanel({ rental, stations = [], onUpdated 
       await settleMutation.execute(`settle_${rental.id}_${quote.quote_token}`, {
         quote_token: quote.quote_token,
       });
-      toast.success(`Đã quyết toán xong chuyến #${rental.id} và phát hành hóa đơn PAID.`);
+      toast.success(`Đã quyết toán xong chuyến #${rental.id} và phát hành hóa đơn.`);
       onUpdated();
-    } catch {
-      // Khi lỗi (ví dụ INSUFFICIENT_BALANCE, WALLET_UNAVAILABLE, STALE_QUOTE), RETURN_PENDING vẫn được giữ nguyên.
+    } catch (err) {
+      syncIfStaleState(err);
     }
   };
 
@@ -178,9 +190,9 @@ export default function RentalLifecyclePanel({ rental, stations = [], onUpdated 
     return (
       <div className="grid-2">
         <div className="card stack-md">
-          <h3>Bàn giao nhận xe (Pickup)</h3>
+          <h3>Bàn giao nhận xe tại trạm</h3>
           <p className="muted">
-            Kiểm tra hồ sơ khách đủ 16 tuổi &amp; CCCD VERIFIED, pin xe &ge; 30%, số dư ví đủ cọc + block 30p đầu và trong hạn giữ chỗ ({formatDateTimeVN(rental.expires_at)}).
+            Kiểm tra khách hàng đủ 16 tuổi và có CCCD đã xác minh, pin xe từ 30% trở lên, ví đủ cọc cùng 30 phút đầu và còn trong hạn giữ chỗ ({formatDateTimeVN(rental.expires_at)}).
           </p>
           <SelectField
             label="Trạm bàn giao (khớp trạm đã giữ)"
@@ -188,7 +200,7 @@ export default function RentalLifecyclePanel({ rental, stations = [], onUpdated 
             value={pickupStationId}
             options={activeStations.map((s) => ({
               value: s.id,
-              label: `#${s.id} - ${s.name}`,
+              label: `${s.name} (#${s.id})`,
             }))}
             onChange={(e) => setPickupStationId(e.target.value)}
           />
@@ -223,9 +235,9 @@ export default function RentalLifecyclePanel({ rental, stations = [], onUpdated 
           </Button>
           <ConfirmDialog
             open={pickupConfirm}
-            title="Xác nhận bàn giao xe (Pickup)"
-            message={`Chuyển chuyến #${rental.id} sang IN_RENT và thu tiền cọc ${formatVnd(rental.deposit_amount_snapshot)} từ ví khách?`}
-            confirmLabel="Xác nhận pickup"
+            title="Xác nhận bàn giao nhận xe"
+            message={`Chuyển chuyến #${rental.id} sang trạng thái đang thuê và thu tiền cọc ${formatVnd(rental.deposit_amount_snapshot)} từ ví khách?`}
+            confirmLabel="Xác nhận bàn giao"
             variant="primary"
             loading={pickupMutation.loading}
             onCancel={() => setPickupConfirm(false)}
@@ -236,15 +248,15 @@ export default function RentalLifecyclePanel({ rental, stations = [], onUpdated 
         <div className="card stack-md">
           <h3>Hủy vận hành có miễn trừ hạn mức</h3>
           <p className="muted">
-            Chỉ STAFF/MANAGER được phép hủy do lỗi xe hoặc lỗi hệ thống để không tính vào giới hạn 3 lần hủy/ngày của khách.
+            Dành cho nhân viên vận hành hoặc quản lý khi cần hủy do lỗi xe hoặc sự cố hệ thống để không tính vào giới hạn 3 lần hủy/ngày của khách.
           </p>
           <SelectField
             label="Lý do hủy vận hành"
             required
             value={cancelReason}
             options={[
-              { value: 'VEHICLE_FAULT', label: 'Lỗi xe (VEHICLE_FAULT)' },
-              { value: 'SYSTEM_ERROR', label: 'Lỗi hệ thống (SYSTEM_ERROR)' },
+              { value: 'VEHICLE_FAULT', label: 'Lỗi xe' },
+              { value: 'SYSTEM_ERROR', label: 'Lỗi hệ thống' },
             ]}
             onChange={(e) => setCancelReason(e.target.value)}
           />
@@ -273,7 +285,7 @@ export default function RentalLifecyclePanel({ rental, stations = [], onUpdated 
           <ConfirmDialog
             open={cancelConfirm}
             title="Xác nhận hủy vận hành"
-            message={`Hủy lượt giữ #${rental.id} với lý do ${cancelReason} và miễn hạn mức cho khách?`}
+            message={`Hủy lượt giữ #${rental.id} với lý do ${cancelReason === 'VEHICLE_FAULT' ? 'Lỗi xe' : 'Lỗi hệ thống'} và miễn hạn mức cho khách?`}
             confirmLabel="Xác nhận hủy"
             loading={cancelMutation.loading}
             onCancel={() => setCancelConfirm(false)}
@@ -288,10 +300,10 @@ export default function RentalLifecyclePanel({ rental, stations = [], onUpdated 
     return (
       <div className="card stack-md">
         <div className="card-header">
-          <h3>Tiếp nhận trả xe thực tế tại trạm (Initiate Return)</h3>
+          <h3>Tiếp nhận trả xe thực tế tại trạm</h3>
           <div className="page-header-actions">
             <Link to={`/admin/tickets?rental_id=${rental.id}`} className="btn btn-sm">
-              Ticket của chuyến
+              Yêu cầu hỗ trợ của chuyến
             </Link>
             <Link to={`/admin/incidents?rental_id=${rental.id}`} className="btn btn-sm btn-danger">
               Tiếp nhận nghi mất / sự cố
@@ -300,17 +312,17 @@ export default function RentalLifecyclePanel({ rental, stations = [], onUpdated 
         </div>
 
         <div className="alert alert-info">
-          Giai đoạn 1 (Tiếp nhận xe): chỉ bấm xác nhận sau khi xe thực tế đã có mặt tại trạm và được nhân viên giữ. Hệ thống sẽ đóng băng mốc <code>return_initiated_at</code>, đặt <code>actual_end_time</code> và tách riêng khỏi bước thanh toán.
+          Bước 1 — Tiếp nhận xe: chỉ bấm xác nhận sau khi xe thực tế đã về trạm và được nhân viên kiểm tra. Hệ thống sẽ chốt mốc dừng tính cước và tách riêng khỏi bước thanh toán.
         </div>
 
         <div className="grid-2">
           <SelectField
-            label="Trạm tiếp nhận trả xe (ACTIVE còn chỗ)"
+            label="Trạm tiếp nhận trả xe (đang hoạt động và còn chỗ)"
             required
             value={returnStationId}
             options={activeStations.map((s) => ({
               value: s.id,
-              label: `#${s.id} - ${s.name} (Trống ${s.available_spaces}/${s.capacity})`,
+              label: `${s.name} (Trống ${s.available_spaces}/${s.capacity})`,
             }))}
             onChange={(e) => setReturnStationId(e.target.value)}
           />
@@ -329,8 +341,8 @@ export default function RentalLifecyclePanel({ rental, stations = [], onUpdated 
             required
             value={vehicleCondition}
             options={[
-              { value: 'OK', label: 'Bình thường (OK)' },
-              { value: 'NEEDS_MAINTENANCE', label: 'Cần bảo trì (NEEDS_MAINTENANCE)' },
+              { value: 'OK', label: 'Bình thường' },
+              { value: 'NEEDS_MAINTENANCE', label: 'Cần kiểm tra / bảo trì' },
             ]}
             onChange={(e) => setVehicleCondition(e.target.value)}
           />
@@ -357,14 +369,14 @@ export default function RentalLifecyclePanel({ rental, stations = [], onUpdated 
             loading={initiateMutation.loading}
             onClick={() => setInitiateConfirm(true)}
           >
-            Tiếp nhận xe &amp; Chuyển RETURN_PENDING
+            Tiếp nhận xe &amp; Chuyển chờ quyết toán
           </Button>
         </div>
 
         <ConfirmDialog
           open={initiateConfirm}
           title="Xác nhận tiếp nhận trả xe"
-          message={`Xác nhận xe của chuyến #${rental.id} đã thực tế về trạm #${returnStationId} (tình trạng: ${vehicleCondition}) và đóng băng cước?`}
+          message={`Xác nhận xe của chuyến #${rental.id} đã thực tế về ${getStationDisplayName(stationMap, returnStationId)} (${vehicleCondition === 'OK' ? 'bình thường' : 'cần bảo trì'}) và chốt mốc dừng cước?`}
           confirmLabel="Tiếp nhận trả xe"
           variant="primary"
           loading={initiateMutation.loading}
@@ -384,14 +396,14 @@ export default function RentalLifecyclePanel({ rental, stations = [], onUpdated 
     return (
       <div className="card stack-md">
         <div className="card-header">
-          <h3>Giai đoạn 2: Báo giá 10 phút &amp; Quyết toán trả xe (RETURN_PENDING)</h3>
+          <h3>Bước 2: Báo giá 10 phút &amp; Quyết toán trả xe</h3>
           <span className="muted">
-            Mốc dừng cước bất biến: <strong>{formatDateTimeVN(rental.return_initiated_at, { withSeconds: true })}</strong>
+            Mốc dừng cước đã chốt: <strong>{formatDateTimeVN(rental.return_initiated_at, { withSeconds: true })}</strong>
           </span>
         </div>
 
         <div className="alert alert-info">
-          Xe đã được tiếp nhận tại trạm #{rental.actual_return_station_id}. Nếu bước thanh toán lỗi (ví thiếu tiền / ví bị khóa / hết hạn báo giá), kết quả tiếp nhận xe <code>RETURN_PENDING</code> vẫn được bảo toàn; bạn có thể tạo lại báo giá hoặc bấm quyết toán lại cùng Idempotency-Key mà không bị thu tiền hai lần.
+          Xe đã được tiếp nhận tại {getStationDisplayName(stationMap, rental.actual_return_station_id)}. Nếu bước thanh toán gặp gián đoạn (ví chưa đủ số dư, ví đang khóa hoặc hết hạn báo giá), kết quả tiếp nhận xe vẫn được giữ nguyên để bạn tạo báo giá mới và quyết toán lại an toàn.
         </div>
 
         <form onSubmit={handleCreateQuote} className="row-wrap">
@@ -470,7 +482,7 @@ export default function RentalLifecyclePanel({ rental, stations = [], onUpdated 
                   <strong>Quyết toán chưa hoàn tất:</strong> {getApiErrorMessage(settleMutation.error)}
                 </div>
                 <div className="muted">
-                  Trạng thái tiếp nhận xe (<code>RETURN_PENDING</code>) vẫn được giữ nguyên. Nếu lỗi do timeout, bấm &ldquo;Quyết toán &amp; Hoàn tất chuyến&rdquo; lần nữa sẽ dùng lại cùng Idempotency-Key (<code>{settleMutation.lastKey}</code>) để không thu trùng.
+                  Kết quả tiếp nhận xe vẫn được giữ nguyên. Nếu gặp lỗi kết nối, bấm &ldquo;Quyết toán &amp; Hoàn tất chuyến&rdquo; lần nữa để thử lại an toàn mà không thu trùng.
                 </div>
               </div>
             )}

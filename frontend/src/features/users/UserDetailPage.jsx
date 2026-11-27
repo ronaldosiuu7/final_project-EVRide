@@ -113,13 +113,13 @@ export default function UserDetailPage() {
 
       <div className="card stack-md">
         <div className="card-header">
-          <h3>Thông tin ví người dùng (chỉ MANAGER)</h3>
+          <h3>Thông tin ví người dùng</h3>
           {wallet && <StatusBadge domain="walletStatus" value={wallet.status} />}
         </div>
 
         {!isManager ? (
           <div className="alert alert-info">
-            Chỉ tài khoản <strong>MANAGER</strong> mới được xem ví khách hàng và thay đổi trạng thái ví (<code>GET /users/{userId}/wallet</code>).
+            Chỉ tài khoản <strong>Quản lý</strong> mới có quyền xem thông tin ví và thay đổi trạng thái ví khách hàng.
           </div>
         ) : walletQuery.loading ? (
           <LoadingState message="Đang tải thông tin ví..." />
@@ -129,11 +129,11 @@ export default function UserDetailPage() {
           <>
             <dl className="detail-grid">
               <div className="detail-item">
-                <dt>ID Ví</dt>
+                <dt>Mã ví</dt>
                 <dd>#{wallet.id}</dd>
               </div>
               <div className="detail-item">
-                <dt>Số dư hiện tại (Chỉ đọc — không sửa trực tiếp)</dt>
+                <dt>Số dư hiện tại</dt>
                 <dd>
                   <strong>{formatVnd(wallet.balance)}</strong>
                 </dd>
@@ -149,9 +149,9 @@ export default function UserDetailPage() {
                 label="Đổi trạng thái ví"
                 value={nextWalletStatus || wallet.status}
                 options={[
-                  { value: 'ACTIVE', label: 'ACTIVE (Hoạt động)' },
-                  { value: 'FROZEN', label: 'FROZEN (Đóng băng)' },
-                  { value: 'LOCKED', label: 'LOCKED (Khóa ví)' },
+                  { value: 'ACTIVE', label: 'Đang hoạt động' },
+                  { value: 'FROZEN', label: 'Tạm đóng băng' },
+                  { value: 'LOCKED', label: 'Khóa ví' },
                 ]}
                 onChange={(e) => setNextWalletStatus(e.target.value)}
               />
@@ -165,7 +165,8 @@ export default function UserDetailPage() {
             </div>
 
             <div className="alert alert-info">
-              Ghi chú API: Backend hiện chưa có endpoint cho STAFF/MANAGER tra cứu trực tiếp danh sách <code>wallet_transactions</code> của khách (<code>GET /users/&#123;id&#125;/wallet/transactions</code>). Nhân viên có thể xem giao dịch theo từng chuyến qua <Link to={`/admin/rentals?customer_id=${targetUser.id}`}>danh sách chuyến thuê</Link>.
+              Để đối chiếu các khoản thanh toán và hoàn cọc liên quan đến khách hàng này, bạn có thể mở trực tiếp{' '}
+              <Link to={`/admin/rentals?customer_id=${targetUser.id}`}>danh sách chuyến thuê của khách</Link>.
             </div>
           </>
         ) : null}

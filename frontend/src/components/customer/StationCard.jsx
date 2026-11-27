@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { StatusBadge } from '../ui/index.js';
-import { ClockIcon, MapPinIcon } from './CustomerIcons.jsx';
+import { ClockIcon, InfoIcon, MapPinIcon } from './CustomerIcons.jsx';
 import {
   formatCountDisplay,
   formatStationHours,
@@ -43,7 +43,12 @@ export function StationGridSkeleton({ count = 6, label = 'Đang tải danh sách
  * - Hiển thị: tên trạm, địa chỉ, giờ hoạt động (24/7 hoặc qua đêm), xe có thể thuê, chỗ trả trống.
  * - CTA: "Xem xe" và "Xem chi tiết".
  */
-export default function StationCard({ station }) {
+export default function StationCard({
+  station,
+  isSelected = false,
+  distanceText = null,
+  onFocusMap = null,
+}) {
   const openStatus = getStationOpenStatus(station);
   const hoursText = formatStationHours(station?.opens_at, station?.closes_at);
   const rentableCount = getStationRentableCount(station);
@@ -53,9 +58,21 @@ export default function StationCard({ station }) {
   const stationName = station?.name || 'Trạm xe EVRide';
   const stationAddress = station?.address || 'Chưa cập nhật địa chỉ';
   const stationId = station?.id ? String(station.id) : '';
+  const isOutOfVehicles = rentableCount === 0;
+  const hasCapacityBar =
+    capacityCount !== null && capacityCount > 0 && returnSpaceCount !== null;
+  const occupiedPercent = hasCapacityBar
+    ? Math.min(100, Math.max(0, Math.round(((capacityCount - returnSpaceCount) / capacityCount) * 100)))
+    : null;
+  const capacityTone =
+    returnSpaceCount !== null && returnSpaceCount <= 0
+      ? 'is-full'
+      : returnSpaceCount !== null && returnSpaceCount <= 2
+        ? 'is-tight'
+        : '';
 
   return (
-    <article className="customer-card station-card">
+    <article className={`customer-card station-card${isSelected ? ' is-map-selected' : ''}`}>
       <div className="station-card-header">
         <div className="station-card-heading">
           <h3 className="customer-card-title">
@@ -71,7 +88,10 @@ export default function StationCard({ station }) {
             )}
           </h3>
         </div>
-        <StatusBadge label={openStatus.label} tone={openStatus.tone} />
+        <div className="row-wrap" style={{ gap: 6 }}>
+          {distanceText && <StatusBadge label={`Cách ${distanceText}`} tone="info" />}
+          <StatusBadge label={openStatus.label} tone={openStatus.tone} />
+        </div>
       </div>
 
       <div className="station-card-meta-list">
@@ -111,21 +131,60 @@ export default function StationCard({ station }) {
         </div>
       </div>
 
+      {hasCapacityBar && (
+        <div className="station-capacity-block">
+          <div className="station-capacity-head">
+            <span>Tình trạng bãi đỗ</span>
+            <span>
+              {returnSpaceCount <= 0
+                ? 'Đã đầy chỗ trả'
+                : `Còn ${returnSpaceCount}/${capacityCount} chỗ trả`}
+            </span>
+          </div>
+          <div className="station-capacity-track" aria-hidden="true">
+            <div
+              className={`station-capacity-fill ${capacityTone}`}
+              style={{ width: `${occupiedPercent}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {isOutOfVehicles && (
+        <div className="station-out-of-stock-pill">
+          <InfoIcon size={15} />
+          <span>
+            {returnSpaceCount !== null && returnSpaceCount > 0
+              ? 'Tạm hết xe sẵn sàng · Vẫn nhận trả xe'
+              : 'Tạm hết xe sẵn sàng tại trạm'}
+          </span>
+        </div>
+      )}
+
       <div className="customer-card-actions">
         {stationId ? (
           <>
             <Link
               to={`/vehicles?station_id=${encodeURIComponent(stationId)}`}
-              className="btn btn-primary btn-sm"
+              className={`btn btn-sm ${isOutOfVehicles ? 'btn-secondary' : 'btn-primary'}`}
             >
               Xem xe
             </Link>
             <Link
               to={`/stations/${encodeURIComponent(stationId)}`}
-              className="btn btn-secondary btn-sm"
+              className={`btn btn-sm ${isOutOfVehicles ? 'btn-primary' : 'btn-secondary'}`}
             >
               Xem chi tiết
             </Link>
+            {onFocusMap && (
+              <button
+                type="button"
+                className="btn btn-sm btn-ghost"
+                onClick={() => onFocusMap(station)}
+              >
+                Xem bản đồ
+              </button>
+            )}
           </>
         ) : null}
       </div>

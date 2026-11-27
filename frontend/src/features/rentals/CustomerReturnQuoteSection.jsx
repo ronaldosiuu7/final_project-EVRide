@@ -168,12 +168,12 @@ export default function CustomerReturnQuoteSection({ rental }) {
           <h2 id="return-quote-heading" className="customer-card-title">
             {isReturnPending
               ? 'Báo giá quyết toán trả xe (Hiệu lực 10 phút)'
-              : 'Tìm trạm còn chỗ trả & Ước tính cước từ máy chủ'}
+              : 'Tìm trạm còn chỗ trả & Ước tính cước'}
           </h2>
           <p className="station-card-address">
             {isReturnPending
-              ? 'Nhân viên đã tiếp nhận xe tại trạm trả. Bạn có thể chọn mã khuyến mãi đã nhận để kiểm tra báo giá 10 phút từ máy chủ trong lúc chờ nhân viên hoàn tất quyết toán.'
-              : 'Bạn có thể trả xe tại bất kỳ trạm nào đang mở cửa và còn chỗ trống. Chọn trạm và mã khuyến mãi (nếu có) để xem ước tính cước từ máy chủ.'}
+              ? 'Nhân viên đã tiếp nhận xe tại trạm trả. Bạn có thể chọn mã khuyến mãi đã nhận để kiểm tra báo giá 10 phút trong lúc chờ nhân viên hoàn tất quyết toán.'
+              : 'Bạn có thể trả xe tại trạm nhận hoặc bất kỳ trạm EVRide nào đang mở cửa và còn chỗ trống. Chọn trạm và mã khuyến mãi (nếu có) để xem ước tính cước.'}
           </p>
         </div>
       </div>
@@ -296,7 +296,7 @@ export default function CustomerReturnQuoteSection({ rental }) {
               : 'Làm mới báo giá'
             : isReturnPending
               ? 'Xem báo giá quyết toán 10 phút'
-              : 'Tính cước ước tính từ máy chủ'}
+              : 'Xem ước tính cước'}
         </Button>
       </div>
 

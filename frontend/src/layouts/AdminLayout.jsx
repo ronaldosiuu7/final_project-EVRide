@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../integrations/authBridge';
 import {
   Button,
@@ -9,13 +9,17 @@ import {
   TextField,
   useToast,
 } from '../components/ui';
+import {
+  BoltIcon,
+  CloseIcon,
+  MenuIcon,
+} from '../components/customer/CustomerIcons.jsx';
 import { changeMyPassword, updateMyProfile } from '../services/accountsApi';
 import { getApiErrorMessage } from '../utils/errorMessages';
+import { getStatusMeta } from '../utils/statusConfig';
 import { mapApiFieldErrors } from '../utils/validation';
 import '../styles/admin.css';
 
-// Menu điều hướng khu vực vận hành.
-// Quyền thực tế dùng đúng CUSTOMER / STAFF / MANAGER như API; "Admin" chỉ là tên khu vực URL.
 const NAV_GROUPS = [
   {
     title: 'Tổng quan & Báo cáo',
@@ -43,7 +47,7 @@ const NAV_GROUPS = [
   {
     title: 'Hỗ trợ & Sự cố',
     items: [
-      { to: '/admin/tickets', label: 'Ticket hỗ trợ', roles: ['STAFF', 'MANAGER'] },
+      { to: '/admin/tickets', label: 'Yêu cầu hỗ trợ', roles: ['STAFF', 'MANAGER'] },
       { to: '/admin/maintenance', label: 'Phiếu bảo trì', roles: ['STAFF', 'MANAGER'] },
       { to: '/admin/incidents', label: 'Hồ sơ sự cố', roles: ['STAFF', 'MANAGER'] },
     ],
@@ -57,7 +61,7 @@ const NAV_GROUPS = [
         to: '/admin/promotions',
         label: 'Khuyến mãi',
         roles: ['MANAGER'],
-        roleTag: 'MANAGER',
+        roleTag: 'Quản lý',
       },
     ],
   },
@@ -73,6 +77,8 @@ function AccountSecurityModal({ user, displayName, onProfileUpdated, onPasswordC
   const [fieldErrors, setFieldErrors] = useState({});
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  const roleLabel = getStatusMeta('userRole', user?.role).label;
 
   const handleProfileSubmit = async (event) => {
     event.preventDefault();
@@ -99,12 +105,11 @@ function AccountSecurityModal({ user, displayName, onProfileUpdated, onPasswordC
   const handlePasswordSubmit = async (event) => {
     event.preventDefault();
     const errors = {};
-    // Contract: KHÔNG trim mật khẩu; độ dài 12–128 ký tự.
     if (!currentPassword) {
       errors.current_password = 'Vui lòng nhập mật khẩu hiện tại.';
     }
     if (newPassword.length < 12 || newPassword.length > 128) {
-      errors.new_password = 'Mật khẩu mới phải từ 12 đến 128 ký tự (không cắt khoảng trắng).';
+      errors.new_password = 'Mật khẩu mới phải từ 12 đến 128 ký tự (giữ nguyên khoảng trắng nếu có).';
     }
     if (confirmPassword !== newPassword) {
       errors.confirm_password = 'Xác nhận mật khẩu mới chưa khớp.';
@@ -122,7 +127,7 @@ function AccountSecurityModal({ user, displayName, onProfileUpdated, onPasswordC
         current_password: currentPassword,
         new_password: newPassword,
       });
-      toast.success('Đã đổi mật khẩu. Toàn bộ phiên đã bị thu hồi, vui lòng đăng nhập lại.');
+      toast.success('Đã đổi mật khẩu. Toàn bộ phiên đã được thu hồi, vui lòng đăng nhập lại.');
       await onPasswordChanged();
     } catch (err) {
       setFieldErrors(mapApiFieldErrors(err));
@@ -158,7 +163,7 @@ function AccountSecurityModal({ user, displayName, onProfileUpdated, onPasswordC
     >
       <div className="stack-md">
         <p className="muted">
-          Tài khoản: <strong>{user.email}</strong> ({user.role})
+          Tài khoản: <strong>{user.email}</strong> ({roleLabel})
         </p>
 
         <Tabs
@@ -193,7 +198,7 @@ function AccountSecurityModal({ user, displayName, onProfileUpdated, onPasswordC
         ) : (
           <form id="self-password-form" onSubmit={handlePasswordSubmit} className="stack-md">
             <div className="alert alert-info">
-              Theo chính sách bảo mật phiên, sau khi đổi mật khẩu thành công, toàn bộ phiên đăng nhập hiện có sẽ bị thu hồi và bạn cần đăng nhập lại.
+              Để bảo vệ tài khoản, sau khi đổi mật khẩu thành công, toàn bộ phiên đăng nhập hiện có sẽ được thu hồi và bạn cần đăng nhập lại.
             </div>
             <TextField
               label="Mật khẩu hiện tại"
@@ -252,18 +257,48 @@ export default function AdminLayout() {
     setOverrideName(null);
   }, [user?.id, user?.name]);
 
+  useEffect(() => {
+    if (!sidebarOpen || typeof window === 'undefined') return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setSidebarOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [sidebarOpen]);
+
   const role = user?.role;
   const displayName = overrideName ?? user?.name;
 
   return (
     <div className="admin-container">
+      <a href="#admin-main-content" className="admin-skip-link">
+        Chuyển tới nội dung vận hành
+      </a>
+
       <aside className={sidebarOpen ? 'admin-sidebar open' : 'admin-sidebar'} id="admin-sidebar">
         <div className="admin-brand">
-          <span className="admin-brand-title">EVRide Vận hành</span>
-          <span className="admin-brand-sub">Cổng STAFF / MANAGER</span>
+          <div className="admin-brand-row">
+            <span className="admin-brand-mark" aria-hidden="true">
+              <BoltIcon size={18} />
+            </span>
+            <div className="admin-brand-copy">
+              <span className="admin-brand-title">EVRide</span>
+              <span className="admin-brand-sub">Trung tâm Vận hành</span>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="admin-sidebar-close"
+            aria-label="Đóng thanh điều hướng"
+            onClick={() => setSidebarOpen(false)}
+          >
+            <CloseIcon size={18} />
+          </button>
         </div>
 
-        <nav className="admin-nav-groups" aria-label="Điều hướng quản trị">
+        <nav className="admin-nav-groups" aria-label="Điều hướng vận hành">
           {NAV_GROUPS.map((group) => {
             const visibleItems = group.items.filter((item) => !role || item.roles.includes(role));
             if (visibleItems.length === 0) return null;
@@ -290,6 +325,12 @@ export default function AdminLayout() {
             );
           })}
         </nav>
+
+        <div className="admin-sidebar-footer">
+          <Link to="/stations" className="admin-sidebar-portal-link">
+            Xem danh sách trạm công khai
+          </Link>
+        </div>
       </aside>
 
       <div
@@ -304,27 +345,28 @@ export default function AdminLayout() {
             <Button
               size="sm"
               className="menu-toggle"
-              aria-label="Mở menu điều hướng"
+              aria-label={sidebarOpen ? 'Đóng menu điều hướng' : 'Mở menu điều hướng'}
               aria-controls="admin-sidebar"
               aria-expanded={sidebarOpen}
               onClick={() => setSidebarOpen((open) => !open)}
             >
-              ☰
+              {sidebarOpen ? <CloseIcon size={17} /> : <MenuIcon size={17} />}
             </Button>
-            <h3>Hệ thống Vận hành Xe máy điện EVRide</h3>
+            <h3>Hệ thống Vận hành EVRide</h3>
           </div>
 
           <div className="admin-header-meta">
             {user && (
               <>
-                <span className="muted">
-                  <strong>{displayName}</strong> ({user.email})
+                <span className="admin-header-user">
+                  <strong>{displayName}</strong>
+                  {user.email ? <span className="muted"> ({user.email})</span> : null}
                 </span>
                 <StatusBadge domain="userRole" value={user.role} />
                 <Button size="sm" onClick={() => setAccountModalOpen(true)}>
-                  Đổi mật khẩu / Hồ sơ
+                  Hồ sơ &amp; Bảo mật
                 </Button>
-                <Button size="sm" onClick={logout}>
+                <Button size="sm" variant="ghost" onClick={logout}>
                   Đăng xuất
                 </Button>
               </>
@@ -332,7 +374,7 @@ export default function AdminLayout() {
           </div>
         </header>
 
-        <main className="admin-content">
+        <main id="admin-main-content" className="admin-content" tabIndex={-1}>
           <Outlet />
         </main>
       </div>

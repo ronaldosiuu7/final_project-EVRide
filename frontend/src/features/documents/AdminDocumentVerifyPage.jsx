@@ -74,7 +74,7 @@ export default function AdminDocumentVerifyPage() {
     if (!sensitiveDoc) return null;
     if (decision === 'VERIFIED' && sensitiveDoc.document_type === 'CCCD') {
       if (!verifiedBirthDate || !expiresOn) {
-        setFormError('Khi xác minh CCCD thành VERIFIED bắt buộc nhập đủ ngày sinh xác minh và ngày hết hạn.');
+        setFormError('Khi xác minh CCCD hợp lệ, bắt buộc nhập đầy đủ ngày sinh và ngày hết hạn.');
         return null;
       }
     }
@@ -97,7 +97,11 @@ export default function AdminDocumentVerifyPage() {
       const res = await verifyDocument(sensitiveDoc.id, payload);
       setVerifiedDoc(res.data);
       resetVerifyForm();
-      toast.success(`Đã cập nhật trạng thái giấy tờ #${sensitiveDoc.id} thành ${res.data.verified_status}.`);
+      toast.success(
+        `Đã cập nhật kết quả xác minh cho hồ sơ giấy tờ #${sensitiveDoc.id} (${
+          res.data.verified_status === 'VERIFIED' ? 'Đã xác minh' : 'Đã từ chối'
+        }).`
+      );
     } catch (err) {
       setFormError(getApiErrorMessage(err));
     } finally {
@@ -109,23 +113,15 @@ export default function AdminDocumentVerifyPage() {
     <div className="stack-lg">
       <div className="page-header">
         <div>
-          <h2>Xác minh giấy tờ eKYC</h2>
+          <h2>Xác minh giấy tờ định danh</h2>
           <p className="muted">
-            Tra cứu dữ liệu nhạy cảm theo ID giấy tờ (<code>GET /user-documents/&#123;id&#125;/sensitive</code>) và duyệt/từ chối (<code>PATCH /user-documents/&#123;id&#125;/verification</code>).
+            Tra cứu theo mã hồ sơ giấy tờ để đối chiếu thông tin, kiểm tra ảnh chụp và phê duyệt điều kiện thuê xe.
           </p>
         </div>
       </div>
 
       <div className="alert alert-info">
-        <strong>Phạm vi API Backend hiện có:</strong>
-        <ul style={{ marginLeft: 18, marginTop: 4 }}>
-          <li>
-            Backend hiện chưa triển khai endpoint danh sách toàn bộ giấy tờ chờ duyệt (<code>GET /user-documents</code>) và thu hồi giấy tờ đã duyệt (<code>POST /user-documents/&#123;id&#125;/revoke</code>).
-          </li>
-          <li>
-            Nhân viên STAFF/MANAGER nhập trực tiếp <strong>ID giấy tờ</strong> để tải số đầy đủ và ảnh mặt trước/mặt sau qua luồng tải riêng tư; hệ thống chặn tự duyệt giấy tờ của chính mình (<code>403 FORBIDDEN</code>).
-          </li>
-        </ul>
+        <strong>Hướng dẫn tra cứu:</strong> Nhập <strong>mã giấy tờ</strong> khách hàng đã nộp để tải thông tin và ảnh mặt trước/mặt sau qua kênh bảo mật. Hệ thống không cho phép nhân viên tự duyệt hồ sơ của chính mình.
       </div>
 
       <FilterBar
@@ -167,9 +163,9 @@ export default function AdminDocumentVerifyPage() {
                 <dd>{sensitiveDoc.document_type}</dd>
               </div>
               <div className="detail-item">
-                <dt>Số giấy tờ đầy đủ (Sensitive)</dt>
+                <dt>Số giấy tờ đầy đủ</dt>
                 <dd>
-                  <code>{sensitiveDoc.document_number}</code>
+                  <strong>{sensitiveDoc.document_number}</strong>
                 </dd>
               </div>
             </dl>
@@ -196,7 +192,7 @@ export default function AdminDocumentVerifyPage() {
               </div>
               <dl className="detail-grid">
                 <div className="detail-item">
-                  <dt>Số đã che (Masked)</dt>
+                  <dt>Số giấy tờ hiển thị ẩn</dt>
                   <dd>{verifiedDoc.document_number_masked}</dd>
                 </div>
                 <div className="detail-item">
@@ -210,7 +206,7 @@ export default function AdminDocumentVerifyPage() {
                 <div className="detail-item">
                   <dt>Người duyệt / Thời điểm</dt>
                   <dd>
-                    User #{verifiedDoc.verified_by} · {formatDateTimeVN(verifiedDoc.verified_at)}
+                    Nhân sự #{verifiedDoc.verified_by} · {formatDateTimeVN(verifiedDoc.verified_at)}
                   </dd>
                 </div>
               </dl>
@@ -223,8 +219,8 @@ export default function AdminDocumentVerifyPage() {
                   label="Quyết định thẩm định"
                   value={decision}
                   options={[
-                    { value: 'VERIFIED', label: 'Xác minh hợp lệ (VERIFIED)' },
-                    { value: 'REJECTED', label: 'Từ chối (REJECTED)' },
+                    { value: 'VERIFIED', label: 'Xác minh hợp lệ' },
+                    { value: 'REJECTED', label: 'Từ chối hồ sơ' },
                   ]}
                   onChange={(e) => setDecision(e.target.value)}
                 />
@@ -263,7 +259,7 @@ export default function AdminDocumentVerifyPage() {
                     if (validateVerifyForm()) setConfirmOpen(true);
                   }}
                 >
-                  {decision === 'VERIFIED' ? 'Xác nhận duyệt (VERIFIED)' : 'Từ chối giấy tờ (REJECTED)'}
+                  {decision === 'VERIFIED' ? 'Xác nhận duyệt hồ sơ' : 'Từ chối hồ sơ giấy tờ'}
                 </Button>
               </div>
             </div>
@@ -274,7 +270,7 @@ export default function AdminDocumentVerifyPage() {
       <ConfirmDialog
         open={confirmOpen}
         title="Xác nhận kết quả thẩm định giấy tờ"
-        message={`Lưu trạng thái ${decision} cho giấy tờ #${sensitiveDoc?.id}? Chỉ giấy tờ đang PENDING mới có thể duyệt một lần.`}
+        message={`Lưu kết quả ${decision === 'VERIFIED' ? 'Đã xác minh' : 'Từ chối'} cho hồ sơ giấy tờ #${sensitiveDoc?.id}? Chỉ hồ sơ đang chờ duyệt mới có thể thẩm định.`}
         confirmLabel="Xác nhận"
         variant={decision === 'VERIFIED' ? 'primary' : 'danger'}
         loading={submitting}

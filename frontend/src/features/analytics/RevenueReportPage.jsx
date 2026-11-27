@@ -58,14 +58,12 @@ export default function RevenueReportPage() {
     details?.missing_snapshot_count || 0
   );
 
-  const timeBasis = summary?.time_basis || revenue?.time_basis;
-
-  const q4Columns = [
+  const revenueColumns = [
     { key: 'month', header: 'Tháng' },
     {
       key: 'vehicle_model',
-      header: 'Mẫu xe (Snapshot)',
-      render: (r) => r.vehicle_model || <span className="muted">Thiếu snapshot</span>,
+      header: 'Dòng xe',
+      render: (r) => r.vehicle_model || <span className="muted">Chưa phân loại</span>,
     },
     { key: 'rental_count', header: 'Số chuyến', align: 'right' },
     {
@@ -88,7 +86,7 @@ export default function RevenueReportPage() {
     },
     {
       key: 'cumulative_revenue',
-      header: 'Lũy kế theo mẫu xe',
+      header: 'Lũy kế theo dòng xe',
       align: 'right',
       render: (r) => formatVnd(r.cumulative_revenue),
     },
@@ -119,8 +117,8 @@ export default function RevenueReportPage() {
     },
     {
       key: 'vehicle_model',
-      header: 'Mẫu xe (Snapshot)',
-      render: (d) => d.vehicle_model || <span className="muted">Thiếu snapshot</span>,
+      header: 'Dòng xe',
+      render: (d) => d.vehicle_model || <span className="muted">Chưa phân loại</span>,
     },
     {
       key: 'revenue',
@@ -138,9 +136,9 @@ export default function RevenueReportPage() {
     <div className="stack-lg">
       <div className="page-header">
         <div>
-          <h2>Báo cáo doanh thu &amp; Tổng hợp tài chính (M1)</h2>
+          <h2>Báo cáo doanh thu &amp; Tổng hợp tài chính</h2>
           <p className="muted">
-            Dữ liệu thật từ 3 API: <code>/analytics/financial-summary</code>, <code>/analytics/revenue</code> và <code>/analytics/revenue-details</code>.
+            Tổng hợp doanh thu thuê xe thực tế, phân bổ theo tháng và dòng xe cùng danh sách chi tiết từng hóa đơn đã quyết toán.
           </p>
         </div>
         <Link to="/admin/reports/operations" className="btn">
@@ -151,32 +149,30 @@ export default function RevenueReportPage() {
       <DateRangeFilter label="Khoảng ngày báo cáo" value={range} onChange={handleRangeChange} />
 
       <div className="card stack-sm">
-        <h3>Cơ sở thời gian &amp; nguyên tắc hạch toán doanh thu</h3>
+        <h3>Nguyên tắc ghi nhận doanh thu</h3>
         <ul className="checklist">
           <li>
-            • <strong>Chuyến thường (NORMAL):</strong> ghi nhận theo{' '}
-            <code>{timeBasis?.normal_rental_revenue || 'rentals.actual_end_time'}</code> khi chuyến <code>COMPLETED</code> và hóa đơn <code>PAID</code>.
+            • <strong>Chuyến thuê thông thường:</strong> ghi nhận tại thời điểm kết thúc chuyến khi đã hoàn tất quyết toán và thanh toán hóa đơn.
           </li>
           <li>
-            • <strong>Hồ sơ sự cố (INCIDENT):</strong> ghi nhận một lần theo{' '}
-            <code>{timeBasis?.incident_rental_revenue || 'rental_incidents.rent_settled_at'}</code> khi quyết toán tiền thuê thành công; đóng hồ sơ sau đó không ghi lại doanh thu.
+            • <strong>Chuyến phát sinh sự cố:</strong> ghi nhận một lần tại thời điểm quyết toán tiền thuê thành công; việc đóng hồ sơ sau đó không ghi trùng doanh thu.
           </li>
           <li>
-            • Không cộng tiền nạp ví (top-up), tiền cọc đang giữ hoặc tiền bồi thường ngoài hệ thống vào doanh thu thuê.
+            • Không cộng tiền nạp ví, tiền cọc đang tạm giữ hoặc khoản bồi thường ngoài hệ thống vào doanh thu cho thuê.
           </li>
         </ul>
       </div>
 
       {missingSnapshots > 0 && (
         <div className="alert alert-warning" role="alert">
-          Cảnh báo dữ liệu: Phát hiện <strong>{missingSnapshots}</strong> chuyến thuê thiếu <code>vehicle_model_snapshot</code> (được nhóm riêng là &ldquo;Thiếu snapshot&rdquo;).
+          Lưu ý dữ liệu: Có <strong>{missingSnapshots}</strong> chuyến thuê chưa có thông tin dòng xe lưu kèm (được nhóm vào mục &ldquo;Chưa phân loại&rdquo;).
         </div>
       )}
 
       <div>
-        <h3 className="section-title">1. Tổng hợp tài chính (<code>/analytics/financial-summary</code>)</h3>
+        <h3 className="section-title">1. Tổng hợp tài chính</h3>
         {summaryQuery.loading ? (
-          <LoadingState />
+          <LoadingState message="Đang tải tổng hợp tài chính..." />
         ) : summaryQuery.error ? (
           <ErrorState error={summaryQuery.error} onRetry={summaryQuery.reload} />
         ) : summary ? (
@@ -189,7 +185,7 @@ export default function RevenueReportPage() {
             <div className="stat-card">
               <h4>Doanh thu thuê thường</h4>
               <p>{formatVnd(summary.normal_rental_revenue)}</p>
-              <small>{summary.normal_rental_count} chuyến COMPLETED + PAID</small>
+              <small>{summary.normal_rental_count} chuyến đã thanh toán</small>
             </div>
             <div className="stat-card">
               <h4>Doanh thu thuê sự cố</h4>
@@ -197,20 +193,20 @@ export default function RevenueReportPage() {
               <small>{summary.incident_rental_count} hồ sơ đã quyết toán thuê</small>
             </div>
             <div className="stat-card">
-              <h4>Cọc đang giữ hiện tại (Snapshot)</h4>
+              <h4>Tiền cọc đang tạm giữ</h4>
               <p>{formatVnd(summary.deposit_held_current?.all_rentals)}</p>
               <small>
-                Tại {formatDateTimeVN(summary.deposit_held_current?.as_of)} · Sự cố xác nhận:{' '}
+                Cập nhật {formatDateTimeVN(summary.deposit_held_current?.as_of)} · Hồ sơ sự cố:{' '}
                 {formatVnd(summary.deposit_held_current?.confirmed_incidents)}
               </small>
             </div>
             <div className="stat-card">
-              <h4>Hoàn cọc sự cố (Trong kỳ)</h4>
+              <h4>Hoàn cọc sự cố (trong kỳ)</h4>
               <p>{formatVnd(summary.incident_deposit_refunded)}</p>
-              <small>Theo thời điểm giao dịch hoàn cọc</small>
+              <small>Tính theo thời điểm giao dịch hoàn cọc</small>
             </div>
             <div className="stat-card">
-              <h4>Dòng bồi thường nội bộ (Legacy nếu có)</h4>
+              <h4>Chênh lệch bồi thường nội bộ</h4>
               <p>{formatVnd(summary.compensation_net_movement)}</p>
               <small>
                 Thu: {formatVnd(summary.compensation_collected)} · Hoàn: {formatVnd(summary.compensation_refunded)}
@@ -222,7 +218,7 @@ export default function RevenueReportPage() {
 
       <div>
         <div className="page-header">
-          <h3 className="section-title">2. Doanh thu theo tháng &amp; mẫu xe (<code>/analytics/revenue</code>)</h3>
+          <h3 className="section-title">2. Doanh thu theo tháng &amp; dòng xe</h3>
           {revenue && (
             <span className="muted">
               Tổng: <strong>{formatVnd(revenue.total_revenue)}</strong> ({revenue.rental_count} lượt)
@@ -231,19 +227,19 @@ export default function RevenueReportPage() {
         </div>
 
         {revenueQuery.loading ? (
-          <LoadingState />
+          <LoadingState message="Đang tải báo cáo theo tháng..." />
         ) : revenueQuery.error ? (
           <ErrorState error={revenueQuery.error} onRetry={revenueQuery.reload} />
         ) : !revenue || revenue.items.length === 0 ? (
           <EmptyState
             title="Không có doanh thu nào trong khoảng ngày này"
-            hint="Thử mở rộng khoảng ngày hoặc bấm 'Toàn bộ' để xem toàn bộ lịch sử doanh thu."
+            hint="Thử mở rộng khoảng ngày hoặc chọn 'Toàn bộ' để xem lịch sử doanh thu."
           />
         ) : (
           <div className="stack-md">
             <RevenueStackedChart items={revenue.items} />
             <DataTable
-              columns={q4Columns}
+              columns={revenueColumns}
               rows={revenue.items}
               rowKey={(r, idx) => `${r.month}-${r.vehicle_model || 'missing'}-${idx}`}
             />
@@ -252,7 +248,7 @@ export default function RevenueReportPage() {
       </div>
 
       <div>
-        <h3 className="section-title">3. Chi tiết từng khoản doanh thu (<code>/analytics/revenue-details</code>)</h3>
+        <h3 className="section-title">3. Chi tiết từng khoản doanh thu</h3>
         <DataTable
           columns={detailsColumns}
           rows={details?.items || []}

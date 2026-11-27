@@ -98,12 +98,12 @@ export default function AdminUserList() {
         <div>
           <h2>Quản lý tài khoản</h2>
           <p className="muted">
-            Hệ thống V1 không hỗ trợ xóa tài khoản; có thể khóa/mở hoặc cập nhật nhân sự (MANAGER).
+            Tra cứu thông tin khách hàng và nhân sự, cập nhật trạng thái hoạt động hoặc tạo mới tài khoản nhân viên vận hành.
           </p>
         </div>
         {isManager && (
           <Button variant="primary" onClick={() => setCreatingStaff(true)}>
-            + Tạo tài khoản STAFF / MANAGER
+            + Tạo tài khoản nhân sự
           </Button>
         )}
       </div>
@@ -124,9 +124,9 @@ export default function AdminUserList() {
           value={role}
           placeholder="Tất cả vai trò"
           options={[
-            { value: 'CUSTOMER', label: 'CUSTOMER' },
-            { value: 'STAFF', label: 'STAFF' },
-            { value: 'MANAGER', label: 'MANAGER' },
+            { value: 'CUSTOMER', label: 'Khách hàng' },
+            { value: 'STAFF', label: 'Nhân viên vận hành' },
+            { value: 'MANAGER', label: 'Quản lý' },
           ]}
           onChange={(e) => {
             setRole(e.target.value);
@@ -138,10 +138,10 @@ export default function AdminUserList() {
           value={status}
           placeholder="Tất cả trạng thái"
           options={[
-            { value: 'ACTIVE', label: 'ACTIVE' },
-            { value: 'INACTIVE', label: 'INACTIVE' },
-            { value: 'BLOCKED', label: 'BLOCKED' },
-            { value: 'BLACKLISTED', label: 'BLACKLISTED' },
+            { value: 'ACTIVE', label: 'Đang hoạt động' },
+            { value: 'INACTIVE', label: 'Ngừng hoạt động' },
+            { value: 'BLOCKED', label: 'Đang bị khóa' },
+            { value: 'BLACKLISTED', label: 'Hạn chế sử dụng' },
           ]}
           onChange={(e) => {
             setStatus(e.target.value);

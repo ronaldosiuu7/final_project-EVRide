@@ -143,11 +143,17 @@ const AUTH_PUBLIC_PATHS = new Set(['/login', '/register', '/403', '/404']);
 export function resolvePostLoginPath(user, requestedFrom = null) {
   const role = user?.role;
   const fallback = resolveDefaultHomeForRole(role);
-  if (!requestedFrom || typeof requestedFrom !== 'string') {
+  const rawPath =
+    typeof requestedFrom === 'string'
+      ? requestedFrom
+      : requestedFrom && typeof requestedFrom === 'object' && typeof requestedFrom.pathname === 'string'
+        ? `${requestedFrom.pathname}${requestedFrom.search || ''}${requestedFrom.hash || ''}`
+        : null;
+  if (!rawPath) {
     return fallback;
   }
 
-  const trimmed = requestedFrom.trim();
+  const trimmed = rawPath.trim();
   if (!trimmed.startsWith('/') || trimmed.startsWith('//')) {
     return fallback;
   }

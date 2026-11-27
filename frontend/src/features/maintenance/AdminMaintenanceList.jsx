@@ -10,7 +10,10 @@ import {
 } from '../../components/ui';
 import useApiQuery from '../../hooks/useApiQuery';
 import useDebouncedValue from '../../hooks/useDebouncedValue';
+import { listActiveEmployees } from '../../services/accountsApi';
+import { listVehicles } from '../../services/fleetApi';
 import { listMaintenanceOrders } from '../../services/operationsApi';
+import { buildIdMap, getUserDisplay, getVehicleDisplay } from '../../utils/entityDisplay';
 import { formatDateTimeVN } from '../../utils/format';
 import { isPositiveIdString } from '../../utils/validation';
 import MaintenanceActionModal from './MaintenanceActionModal';
@@ -52,6 +55,14 @@ export default function AdminMaintenanceList() {
     [debouncedVehicleId, debouncedIncidentId, status, debouncedAssignedTo, page, pageSize]
   );
 
+  const vehiclesLookupQuery = useApiQuery(
+    ({ signal }) => listVehicles({ page: 1, page_size: 100 }, { signal }),
+    []
+  );
+  const employeesQuery = useApiQuery(({ signal }) => listActiveEmployees({ signal }), []);
+  const vehicleMap = buildIdMap(vehiclesLookupQuery.data || []);
+  const employeeMap = buildIdMap(employeesQuery.data || []);
+
   const resetFilters = () => {
     setVehicleId('');
     setIncidentId('');
@@ -65,16 +76,22 @@ export default function AdminMaintenanceList() {
     {
       key: 'vehicle_id',
       header: 'Xe / Sự cố',
-      render: (m) => (
-        <div>
-          <Link to={`/admin/vehicles/${m.vehicle_id}`}>Xe #{m.vehicle_id}</Link>
-          {m.incident_id && (
-            <div className="muted">
-              <Link to={`/admin/incidents/${m.incident_id}`}>Sự cố #{m.incident_id}</Link>
-            </div>
-          )}
-        </div>
-      ),
+      render: (m) => {
+        const vehicle = getVehicleDisplay(vehicleMap, m.vehicle_id);
+        return (
+          <div>
+            <Link to={`/admin/vehicles/${m.vehicle_id}`}>
+              <strong>{vehicle.primary}</strong>
+            </Link>
+            {vehicle.secondary && <div className="muted">{vehicle.secondary}</div>}
+            {m.incident_id && (
+              <div className="muted">
+                <Link to={`/admin/incidents/${m.incident_id}`}>Hồ sơ sự cố #{m.incident_id}</Link>
+              </div>
+            )}
+          </div>
+        );
+      },
     },
     {
       key: 'title',
@@ -94,7 +111,16 @@ export default function AdminMaintenanceList() {
     {
       key: 'assigned_to',
       header: 'Phụ trách',
-      render: (m) => (m.assigned_to ? `User #${m.assigned_to}` : 'Chưa gán'),
+      render: (m) => {
+        if (!m.assigned_to) return <span className="muted">Chưa phân công</span>;
+        const staff = getUserDisplay(employeeMap, m.assigned_to, 'Nhân sự');
+        return (
+          <div>
+            <div>{staff.primary}</div>
+            {staff.secondary && <div className="muted">{staff.secondary}</div>}
+          </div>
+        );
+      },
     },
     {
       key: 'status',
@@ -157,7 +183,7 @@ export default function AdminMaintenanceList() {
         <div>
           <h2>Phiếu bảo trì xe máy điện</h2>
           <p className="muted">
-            Dùng chung cho xe thường và xe sự cố (có <code>incident_id</code>). Phiếu <code>OPEN</code>/<code>IN_PROGRESS</code> chặn thuê; hoàn tất không tự đặt xe <code>AVAILABLE</code>.
+            Quản lý bảo trì định kỳ và bảo trì xe sau sự cố. Xe có phiếu đang mở hoặc đang sửa sẽ tạm khóa cho thuê cho đến khi được kiểm tra và mở lại.
           </p>
         </div>
         <Button variant="primary" onClick={() => setCreating(true)}>
@@ -171,10 +197,10 @@ export default function AdminMaintenanceList() {
           value={status}
           placeholder="Tất cả"
           options={[
-            { value: 'OPEN', label: 'Mở (OPEN)' },
-            { value: 'IN_PROGRESS', label: 'Đang sửa (IN_PROGRESS)' },
-            { value: 'COMPLETED', label: 'Hoàn tất (COMPLETED)' },
-            { value: 'CANCELLED', label: 'Đã hủy (CANCELLED)' },
+            { value: 'OPEN', label: 'Chờ xử lý' },
+            { value: 'IN_PROGRESS', label: 'Đang sửa chữa' },
+            { value: 'COMPLETED', label: 'Hoàn tất' },
+            { value: 'CANCELLED', label: 'Đã hủy' },
           ]}
           onChange={(e) => {
             setStatus(e.target.value);

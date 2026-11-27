@@ -182,13 +182,16 @@ export default function ReserveVehicleModal({
           </span>
           <ul className="rental-rules-list">
             <li>
-              Lượt giữ xe có hiệu lực trong <strong>30 phút</strong> theo đồng hồ máy chủ. Nhân viên tại trạm sẽ kiểm tra và thực hiện bàn giao nhận xe.
+              Lượt giữ xe có hiệu lực trong <strong>30 phút</strong>. Vui lòng đến quầy trạm để nhân viên kiểm tra giấy tờ và bàn giao xe.
             </li>
             <li>
               Tài khoản cần có <strong>CCCD đã xác minh</strong>, còn hạn hiệu lực và đủ từ 16 tuổi.
             </li>
             <li>
-              Hủy trước khi nhận xe không mất phí, nhưng tối đa{' '}
+              Khi kết thúc hành trình, bạn có thể trả xe tại trạm nhận hoặc <strong>bất kỳ trạm EVRide nào khác còn chỗ trống</strong>.
+            </li>
+            <li>
+              Hủy trước khi nhận xe không mất phí, tối đa{' '}
               <strong>3 lần hủy hoặc để hết hạn mỗi ngày</strong> theo giờ Việt Nam.
             </li>
           </ul>

@@ -14,11 +14,14 @@ import {
   TextField,
 } from '../../components/ui/index.js';
 import VehicleCard, { VehicleGridSkeleton } from '../../components/customer/VehicleCard.jsx';
+import StationMap from '../../components/maps/StationMap.jsx';
 import {
   ArrowRightIcon,
+  ClockIcon,
   CompassIcon,
   MapPinIcon,
   RefreshIcon,
+  ShieldCheckIcon,
 } from '../../components/customer/CustomerIcons.jsx';
 import ReserveVehicleModal from '../rentals/ReserveVehicleModal.jsx';
 import {
@@ -33,6 +36,7 @@ import {
   getStationReturnSpaceCount,
   getSystemTotalFromMeta,
 } from '../../utils/fleetDisplay.js';
+import { buildGoogleMapsDirectionsUrl } from '../../utils/mapHelpers.js';
 
 const PAGE_SIZE_OPTIONS = [12, 24, 48];
 
@@ -123,6 +127,7 @@ export default function CustomerStationDetailPage() {
   const returnSpaceCount = getStationReturnSpaceCount(station);
   const capacityCount = getStationCapacityCount(station);
   const coordinatesText = formatCoordinatesDisplay(station.latitude, station.longitude);
+  const directionsUrl = buildGoogleMapsDirectionsUrl(station.latitude, station.longitude);
 
   const vehicles = Array.isArray(vehiclesQuery.data) ? vehiclesQuery.data : [];
   const totalVehicles = getSystemTotalFromMeta(vehiclesQuery.meta);
@@ -158,6 +163,17 @@ export default function CustomerStationDetailPage() {
                 <CompassIcon size={16} className="station-meta-icon" />
                 <span>Tọa độ: {coordinatesText}</span>
               </span>
+              {directionsUrl && (
+                <a
+                  href={directionsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="station-detail-meta-item"
+                  style={{ color: '#0f766e', fontWeight: 600 }}
+                >
+                  <span>Chỉ đường Google Maps ↗</span>
+                </a>
+              )}
             </div>
           </div>
           <StatusBadge label={openStatus.label} tone={openStatus.tone} />
@@ -202,6 +218,53 @@ export default function CustomerStationDetailPage() {
             Trạm hiện đang ngoài khung giờ hoạt động ({hoursText}). Bạn có thể xem thông tin trạm và quay lại đặt xe khi trạm mở cửa.
           </div>
         )}
+
+        {rentableCount === 0 && openStatus.isOpen !== false && (
+          <div className="alert alert-warning" role="status" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 0 }}>
+            <span>
+              <strong>Trạm hiện tạm hết xe sẵn sàng thuê.</strong>{' '}
+              {returnSpaceCount !== null && returnSpaceCount > 0
+                ? `Trạm vẫn còn ${returnSpaceCount} chỗ trống để tiếp nhận trả xe.`
+                : 'Bạn có thể chọn một trạm gần đó đang có xe khả dụng.'}
+            </span>
+            <Link to="/stations?has_available_vehicles=true" className="btn btn-sm btn-secondary">
+              Tìm trạm đang có xe
+            </Link>
+          </div>
+        )}
+
+        <StationMap
+          stations={[station]}
+          mode="customer"
+          singleStation
+          heightVariant="compact"
+          ariaLabel={`Vị trí ${station.name || 'trạm xe EVRide'} trên bản đồ`}
+        />
+
+        <div className="customer-guide-grid" aria-label="Hướng dẫn nhận và trả xe tại trạm">
+          <div className="customer-guide-item">
+            <span className="customer-guide-icon" aria-hidden="true">
+              <ClockIcon size={17} />
+            </span>
+            <div>
+              <strong>Giữ xe 30 phút &amp; nhận tại quầy</strong>
+              <p>
+                Sau khi đặt giữ xe, đến quầy trạm trong 30 phút và xuất trình CCCD đã xác minh để nhân viên bàn giao xe.
+              </p>
+            </div>
+          </div>
+          <div className="customer-guide-item">
+            <span className="customer-guide-icon" aria-hidden="true">
+              <ShieldCheckIcon size={17} />
+            </span>
+            <div>
+              <strong>Trả xe linh hoạt tại trạm khác</strong>
+              <p>
+                Kết thúc chuyến, bạn có thể trả tại trạm này hoặc bất kỳ trạm EVRide nào đang mở và còn chỗ trống.
+              </p>
+            </div>
+          </div>
+        </div>
       </section>
 
       <section id="station-vehicles" className="customer-page" aria-labelledby="station-vehicles-heading">

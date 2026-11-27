@@ -9,6 +9,7 @@ import {
   Tabs,
 } from '../../components/ui';
 import useApiQuery from '../../hooks/useApiQuery';
+import { getUser, listActiveEmployees } from '../../services/accountsApi';
 import { listAdminStations } from '../../services/fleetApi';
 import {
   getRental,
@@ -17,6 +18,7 @@ import {
   listRentalHandovers,
   listRentalTransactions,
 } from '../../services/rentalsApi';
+import { buildIdMap, getStationDisplayName, getUserDisplay } from '../../utils/entityDisplay';
 import { formatDateTimeVN, formatDurationSeconds, formatVnd } from '../../utils/format';
 import IncidentIntakeModal from '../incidents/IncidentIntakeModal';
 import TicketCreateModal from '../tickets/TicketCreateModal';
@@ -41,6 +43,12 @@ export default function RentalDetailPage() {
     ({ signal }) => listAdminStations({ page: 1, page_size: 100 }, { signal }),
     []
   );
+  const customerQuery = useApiQuery(
+    ({ signal }) => getUser(rental.customer_id, { signal }),
+    [rental?.customer_id],
+    { enabled: Boolean(rental?.customer_id) }
+  );
+  const employeesQuery = useApiQuery(({ signal }) => listActiveEmployees({ signal }), []);
   const handoversQuery = useApiQuery(
     ({ signal }) => listRentalHandovers(rentalId, { page: 1, page_size: 20 }, { signal }),
     [rentalId],
@@ -68,7 +76,13 @@ export default function RentalDetailPage() {
   if (!rental) return null;
 
   const stations = stationsQuery.data || [];
-  const stationMap = new Map(stations.map((s) => [s.id, s]));
+  const stationMap = buildIdMap(stations);
+  const employeeMap = buildIdMap(employeesQuery.data || []);
+  const customer = customerQuery.data;
+  const customerDisplay = customer?.name
+    ? { primary: customer.name, secondary: customer.email || `Mã #${rental.customer_id}` }
+    : { primary: `Khách hàng #${rental.customer_id}`, secondary: null };
+  const vehicleTitle = rental.vehicle_name || `Xe #${rental.vehicle_id}`;
 
   const reloadAll = () => {
     rentalQuery.reload();
@@ -79,27 +93,43 @@ export default function RentalDetailPage() {
   };
 
   const handoverColumns = [
-    { key: 'id', header: 'ID', render: (h) => `#${h.id}` },
-    { key: 'kind', header: 'Loại biên bản', render: (h) => <code>{h.kind}</code> },
+    { key: 'id', header: 'Mã', render: (h) => `#${h.id}` },
+    { key: 'kind', header: 'Loại biên bản', render: (h) => <StatusBadge domain="handoverKind" value={h.kind} /> },
     { key: 'time', header: 'Thời điểm', render: (h) => formatDateTimeVN(h.time, { withSeconds: true }) },
     { key: 'battery_percent', header: 'Pin', render: (h) => `${h.battery_percent}%` },
-    { key: 'vehicle_condition', header: 'Tình trạng xe', render: (h) => h.vehicle_condition || '—' },
-    { key: 'staff_id', header: 'Nhân viên', render: (h) => `User #${h.staff_id}` },
+    {
+      key: 'vehicle_condition',
+      header: 'Tình trạng xe',
+      render: (h) => (h.vehicle_condition ? <StatusBadge domain="vehicleCondition" value={h.vehicle_condition} /> : '—'),
+    },
+    {
+      key: 'staff_id',
+      header: 'Nhân viên',
+      render: (h) => {
+        const staff = getUserDisplay(employeeMap, h.staff_id, 'Nhân sự');
+        return (
+          <div>
+            <div>{staff.primary}</div>
+            {staff.secondary && <div className="muted">{staff.secondary}</div>}
+          </div>
+        );
+      },
+    },
     { key: 'note', header: 'Ghi chú', render: (h) => h.note || '—' },
   ];
 
   const txColumns = [
-    { key: 'id', header: 'ID', render: (t) => `#${t.id}` },
-    { key: 'kind', header: 'Loại', render: (t) => <code>{t.kind}</code> },
+    { key: 'id', header: 'Mã', render: (t) => `#${t.id}` },
+    { key: 'kind', header: 'Loại giao dịch', render: (t) => <StatusBadge domain="rentalTransactionKind" value={t.kind} /> },
     { key: 'amount', header: 'Số tiền', render: (t) => formatVnd(t.amount) },
     { key: 'status', header: 'Trạng thái', render: (t) => <StatusBadge domain="transactionStatus" value={t.status} /> },
     { key: 'invoice_id', header: 'Hóa đơn', render: (t) => (t.invoice_id ? `#${t.invoice_id}` : '—') },
     { key: 'created_at', header: 'Thời điểm', render: (t) => formatDateTimeVN(t.created_at, { withSeconds: true }) },
   ];
 
-  const pickupStationName = stationMap.get(rental.pickup_station_id)?.name || `#${rental.pickup_station_id}`;
+  const pickupStationName = getStationDisplayName(stationMap, rental.pickup_station_id);
   const returnStationName = rental.actual_return_station_id
-    ? stationMap.get(rental.actual_return_station_id)?.name || `#${rental.actual_return_station_id}`
+    ? getStationDisplayName(stationMap, rental.actual_return_station_id)
     : '—';
 
   return (
@@ -108,18 +138,23 @@ export default function RentalDetailPage() {
         <div>
           <Link to="/admin/rentals">← Quay lại danh sách chuyến thuê</Link>
           <div className="row-wrap" style={{ marginTop: 4 }}>
-            <h2>Chuyến thuê #{rental.id}</h2>
+            <h2>Chuyến thuê — {vehicleTitle}</h2>
             <StatusBadge domain="rentalStatus" value={rental.status} />
           </div>
+          <p className="muted" style={{ marginTop: 4 }}>
+            Mã chuyến #{rental.id}
+            {customer?.name ? ` · Khách hàng: ${customer.name}` : ''}
+            {rental.vehicle_model_snapshot ? ` · ${rental.vehicle_model_snapshot}` : ''}
+          </p>
         </div>
         <div className="page-header-actions">
           <Link to={`/admin/tickets?rental_id=${rental.id}`} className="btn">
-            Xem ticket của chuyến
+            Xem yêu cầu hỗ trợ
           </Link>
           {['IN_RENT', 'RETURN_PENDING', 'STOLEN', 'INCIDENT_PENDING', 'COMPLETED'].includes(
             rental.status
           ) && (
-            <Button onClick={() => setTicketModalOpen(true)}>+ Tạo ticket mới</Button>
+            <Button onClick={() => setTicketModalOpen(true)}>+ Tạo yêu cầu hỗ trợ</Button>
           )}
           <Link to={`/admin/incidents?rental_id=${rental.id}`} className="btn">
             Kiểm tra hồ sơ sự cố
@@ -139,15 +174,15 @@ export default function RentalDetailPage() {
             <div className="detail-item">
               <dt>Khách hàng</dt>
               <dd>
-                <Link to={`/admin/users/${rental.customer_id}`}>Khách hàng #{rental.customer_id}</Link>
+                <Link to={`/admin/users/${rental.customer_id}`}>{customerDisplay.primary}</Link>
+                {customerDisplay.secondary && <div className="muted">{customerDisplay.secondary}</div>}
               </dd>
             </div>
             <div className="detail-item">
               <dt>Xe máy điện</dt>
               <dd>
-                <Link to={`/admin/vehicles/${rental.vehicle_id}`}>
-                  {rental.vehicle_name || `Xe #${rental.vehicle_id}`}
-                </Link>
+                <Link to={`/admin/vehicles/${rental.vehicle_id}`}>{vehicleTitle}</Link>
+                <div className="muted">Mã xe #{rental.vehicle_id}</div>
               </dd>
             </div>
             <div className="detail-item">
@@ -163,43 +198,41 @@ export default function RentalDetailPage() {
               </dd>
             </div>
             <div className="detail-item">
-              <dt>Nhận xe (actual_start_time)</dt>
+              <dt>Thời điểm nhận xe</dt>
               <dd>{formatDateTimeVN(rental.actual_start_time, { withSeconds: true })}</dd>
             </div>
             <div className="detail-item">
-              <dt>Tiếp nhận trả (return_initiated_at / actual_end_time)</dt>
+              <dt>Thời điểm tiếp nhận trả</dt>
               <dd>{formatDateTimeVN(rental.return_initiated_at || rental.actual_end_time, { withSeconds: true })}</dd>
             </div>
             <div className="detail-item">
-              <dt>Quyết toán hóa đơn (settled_at)</dt>
+              <dt>Thời điểm quyết toán</dt>
               <dd>{formatDateTimeVN(rental.settled_at, { withSeconds: true })}</dd>
             </div>
             <div className="detail-item">
-              <dt>Thời gian đã chạy (elapsed_seconds)</dt>
+              <dt>Thời lượng sử dụng</dt>
               <dd>{formatDurationSeconds(rental.elapsed_seconds)}</dd>
             </div>
           </dl>
         </div>
 
         <div className="card stack-sm">
-          <h3>Snapshot giá/cọc tại thời điểm giữ xe</h3>
+          <h3>Biểu giá &amp; tiền cọc áp dụng</h3>
           <dl className="detail-grid">
             <div className="detail-item">
-              <dt>Mẫu xe snapshot</dt>
+              <dt>Dòng xe</dt>
               <dd>{rental.vehicle_model_snapshot || '—'}</dd>
             </div>
             <div className="detail-item">
-              <dt>Chính sách / Đơn vị tính</dt>
-              <dd>
-                {rental.pricing_policy_version || '—'} · {rental.billing_unit || '—'}
-              </dd>
+              <dt>Đơn vị tính cước</dt>
+              <dd>30 phút đầu, sau đó tính theo từng phút thêm</dd>
             </div>
             <div className="detail-item">
-              <dt>30 phút đầu (Snapshot)</dt>
+              <dt>Giá 30 phút đầu</dt>
               <dd>{formatVnd(rental.first_30_minutes_price_snapshot)}</dd>
             </div>
             <div className="detail-item">
-              <dt>Mỗi phút thêm (Snapshot)</dt>
+              <dt>Giá mỗi phút thêm</dt>
               <dd>{formatVnd(rental.extra_minute_price_snapshot)}</dd>
             </div>
             <div className="detail-item">
@@ -209,7 +242,7 @@ export default function RentalDetailPage() {
               </dd>
             </div>
             <div className="detail-item">
-              <dt>Tổng tiền thuê (total_price)</dt>
+              <dt>Tổng tiền thuê</dt>
               <dd>
                 <strong>{formatVnd(rental.total_price)}</strong>
               </dd>
@@ -217,7 +250,7 @@ export default function RentalDetailPage() {
           </dl>
           {rental.cancellation_reason && (
             <div className="alert alert-warning">
-              Lý do hủy: <code>{rental.cancellation_reason}</code> · Miễn hạn mức:{' '}
+              Lý do hủy: <strong>{rental.cancellation_reason === 'VEHICLE_FAULT' ? 'Lỗi xe' : rental.cancellation_reason === 'SYSTEM_ERROR' ? 'Lỗi hệ thống' : 'Khách hàng hủy'}</strong> · Miễn hạn mức:{' '}
               <strong>{rental.cancellation_limit_exempt ? 'Có' : 'Không'}</strong>
             </div>
           )}
@@ -241,9 +274,9 @@ export default function RentalDetailPage() {
             <RentalLifecyclePanel rental={rental} stations={stations} onUpdated={reloadAll} />
             {!['RESERVED', 'IN_RENT', 'RETURN_PENDING'].includes(rental.status) && (
               <div className="alert alert-info">
-                Chuyến đang ở trạng thái <code>{rental.status}</code>. Không còn thao tác pickup/trả xe thường.
+                Chuyến thuê hiện không còn thao tác bàn giao hoặc trả xe thông thường.
                 {rental.status === 'COMPLETED' &&
-                  ' Với phản ánh phát sinh sau COMPLETED, nhân viên chỉ mở ticket/bảo trì xe, không sửa hóa đơn hoặc thu thêm tiền.'}
+                  ' Nếu phát sinh phản ánh sau khi hoàn tất, nhân viên có thể tạo yêu cầu hỗ trợ hoặc phiếu bảo trì xe (không chỉnh sửa hóa đơn đã quyết toán).'}
               </div>
             )}
           </div>
@@ -254,9 +287,7 @@ export default function RentalDetailPage() {
             <div className="card stack-sm">
               <h3>Hóa đơn chuyến thuê</h3>
               {!canHaveInvoice ? (
-                <p className="muted">
-                  Chuyến đang ở trạng thái <code>{rental.status}</code> nên chưa phát hành hóa đơn.
-                </p>
+                <p className="muted">Chuyến thuê ở trạng thái hiện tại chưa phát hành hóa đơn.</p>
               ) : invoiceQuery.loading ? (
                 <LoadingState message="Đang kiểm tra hóa đơn..." />
               ) : invoiceQuery.error?.status === 404 ? (
@@ -266,7 +297,7 @@ export default function RentalDetailPage() {
               ) : invoiceQuery.data ? (
                 <dl className="detail-grid">
                   <div className="detail-item">
-                    <dt>ID Hóa đơn</dt>
+                    <dt>Mã hóa đơn</dt>
                     <dd>#{invoiceQuery.data.id}</dd>
                   </div>
                   <div className="detail-item">
@@ -278,7 +309,7 @@ export default function RentalDetailPage() {
                   <div className="detail-item">
                     <dt>Trạng thái</dt>
                     <dd>
-                      <StatusBadge domain="transactionStatus" value={invoiceQuery.data.status === 'PAID' ? 'SUCCESS' : invoiceQuery.data.status} label={invoiceQuery.data.status} />
+                      <StatusBadge domain="invoiceStatus" value={invoiceQuery.data.status} />
                     </dd>
                   </div>
                   <div className="detail-item">
@@ -290,7 +321,7 @@ export default function RentalDetailPage() {
             </div>
 
             <div>
-              <h3>Biên bản bàn giao (Handovers)</h3>
+              <h3>Biên bản bàn giao &amp; tiếp nhận</h3>
               <DataTable
                 columns={handoverColumns}
                 rows={handoversQuery.data || []}
@@ -302,7 +333,7 @@ export default function RentalDetailPage() {
             </div>
 
             <div>
-              <h3>Giao dịch tài chính của chuyến (Transactions)</h3>
+              <h3>Giao dịch tài chính của chuyến</h3>
               <DataTable
                 columns={txColumns}
                 rows={txQuery.data || []}
@@ -315,16 +346,26 @@ export default function RentalDetailPage() {
           </div>
         )}
 
-        {activeTab === 'gps' && <RentalGpsPanel rental={rental} />}
+        {activeTab === 'gps' && (
+          <RentalGpsPanel
+            rental={rental}
+            pickupStation={stationMap.get(String(rental.pickup_station_id)) || null}
+            returnStation={
+              rental.actual_return_station_id
+                ? stationMap.get(String(rental.actual_return_station_id)) || null
+                : null
+            }
+          />
+        )}
 
         {activeTab === 'review' && (
           <div className="card stack-sm">
-            <h3>Đánh giá của khách hàng (Chỉ đọc)</h3>
+            <h3>Đánh giá của khách hàng</h3>
             <p className="muted">
-              Theo quy định V1, đánh giá chuyến chỉ phục vụ xem theo quyền API; không công khai thông tin cá nhân và nhân viên không được chỉnh sửa đánh giá.
+              Đánh giá chuyến đi được lưu nguyên trạng để phục vụ nâng cao chất lượng dịch vụ và không thể chỉnh sửa.
             </p>
             {!canHaveReview ? (
-              <p className="muted">Chỉ chuyến thuê đã hoàn tất (<code>COMPLETED</code>) mới có đánh giá từ khách hàng.</p>
+              <p className="muted">Chỉ các chuyến thuê đã hoàn tất quyết toán mới có đánh giá từ khách hàng.</p>
             ) : reviewQuery.loading ? (
               <LoadingState />
             ) : reviewQuery.error?.status === 404 ? (

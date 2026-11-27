@@ -107,18 +107,18 @@ export default function UserEditModal({ user, onClose, onSuccess }) {
             value={status}
             error={fieldErrors.status}
             options={[
-              { value: 'ACTIVE', label: 'Đang hoạt động (ACTIVE)' },
-              { value: 'INACTIVE', label: 'Ngừng hoạt động (INACTIVE)' },
-              { value: 'BLOCKED', label: 'Bị khóa (BLOCKED)' },
-              { value: 'BLACKLISTED', label: 'Danh sách đen (BLACKLISTED)' },
+              { value: 'ACTIVE', label: 'Đang hoạt động' },
+              { value: 'INACTIVE', label: 'Ngừng hoạt động' },
+              { value: 'BLOCKED', label: 'Đang bị khóa' },
+              { value: 'BLACKLISTED', label: 'Hạn chế sử dụng' },
             ]}
-            hint="Khi khóa tài khoản (khác ACTIVE), toàn bộ phiên đăng nhập của tài khoản sẽ bị thu hồi ngay."
+            hint="Khi tạm ngừng hoặc khóa tài khoản, toàn bộ phiên đăng nhập hiện có sẽ bị thu hồi ngay."
             onChange={(e) => setStatus(e.target.value)}
           />
 
           {isCustomer ? (
             <div className="alert alert-info">
-              Tài khoản <code>CUSTOMER</code> không thể chuyển đổi thành nhân viên qua PATCH theo quy định tách quyền sở hữu dữ liệu.
+              Tài khoản khách hàng không thể chuyển đổi sang vai trò nhân sự để đảm bảo tách bạch dữ liệu cá nhân và vận hành.
             </div>
           ) : (
             <SelectField
@@ -126,10 +126,10 @@ export default function UserEditModal({ user, onClose, onSuccess }) {
               value={role}
               error={fieldErrors.role}
               options={[
-                { value: 'STAFF', label: 'Nhân viên vận hành (STAFF)' },
-                { value: 'MANAGER', label: 'Quản lý (MANAGER)' },
+                { value: 'STAFF', label: 'Nhân viên vận hành' },
+                { value: 'MANAGER', label: 'Quản lý' },
               ]}
-              hint="Hệ thống chặn khóa hoặc hạ quyền tài khoản MANAGER đang hoạt động cuối cùng."
+              hint="Hệ thống bảo vệ tài khoản quản lý hoạt động cuối cùng không thể tự khóa hoặc hạ quyền."
               onChange={(e) => setRole(e.target.value)}
             />
           )}

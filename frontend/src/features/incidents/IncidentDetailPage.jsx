@@ -10,6 +10,7 @@ import {
 } from '../../components/ui';
 import useApiQuery from '../../hooks/useApiQuery';
 import { useAuth } from '../../integrations/authBridge';
+import { getUser, listActiveEmployees } from '../../services/accountsApi';
 import { listAdminStations } from '../../services/fleetApi';
 import {
   getIncident,
@@ -19,6 +20,14 @@ import {
 } from '../../services/incidentsApi';
 import { listMaintenanceOrders, listTickets } from '../../services/operationsApi';
 import { getRental } from '../../services/rentalsApi';
+import {
+  buildIdMap,
+  getBillingCutoffReasonLabel,
+  getIncidentActionLabel,
+  getReportSourceLabel,
+  getStationDisplayName,
+  getUserDisplay,
+} from '../../utils/entityDisplay';
 import { formatDateTimeVN, formatDurationSeconds, formatVnd } from '../../utils/format';
 import MaintenanceCreateModal from '../maintenance/MaintenanceCreateModal';
 import {
@@ -60,6 +69,13 @@ export default function IncidentDetailPage() {
     [rentalId],
     { enabled: Boolean(rentalId) }
   );
+  const customerId = rentalQuery.data?.customer_id;
+  const customerQuery = useApiQuery(
+    ({ signal }) => getUser(customerId, { signal }),
+    [customerId],
+    { enabled: Boolean(customerId) }
+  );
+  const employeesQuery = useApiQuery(({ signal }) => listActiveEmployees({ signal }), []);
   const ticketsQuery = useApiQuery(
     ({ signal }) => listTickets({ rental_id: rentalId, page: 1, page_size: 100 }, { signal }),
     [rentalId],
@@ -111,8 +127,12 @@ export default function IncidentDetailPage() {
   if (!incident) return null;
 
   const rental = rentalQuery.data;
+  const customer = customerQuery.data;
   const stations = stationsQuery.data || [];
+  const stationMap = buildIdMap(stations);
+  const employeeMap = buildIdMap(employeesQuery.data || []);
   const allTickets = ticketsQuery.data || [];
+  const ticketMap = buildIdMap(allTickets);
   const humanTickets = allTickets.filter(
     (t) =>
       ['CUSTOMER', 'STAFF'].includes(t.report_source) &&
@@ -189,15 +209,22 @@ export default function IncidentDetailPage() {
     isManager && incident.status === 'CONFIRMED' && Boolean(financeSummary?.can_close);
 
   const eventColumns = [
-    { key: 'id', header: 'ID', render: (e) => `#${e.id}` },
-    { key: 'action', header: 'Sự kiện', render: (e) => <code>{e.action}</code> },
-    { key: 'actor_id', header: 'Người thực hiện', render: (e) => (e.actor_id ? `User #${e.actor_id}` : 'SYSTEM') },
+    { key: 'id', header: 'Mã', render: (e) => `#${e.id}` },
+    { key: 'action', header: 'Sự kiện', render: (e) => <strong>{getIncidentActionLabel(e.action)}</strong> },
+    {
+      key: 'actor_id',
+      header: 'Người thực hiện',
+      render: (e) => {
+        if (!e.actor_id) return 'Hệ thống';
+        return getUserDisplay(employeeMap, e.actor_id, 'Nhân sự').primary;
+      },
+    },
     {
       key: 'summary',
       header: 'Chi tiết ghi nhận',
       render: (e) => (
         <div className="muted">
-          {e.after_data?.note || e.after_data?.reason || e.after_data?.status || '—'}
+          {e.after_data?.note || e.after_data?.reason || '—'}
         </div>
       ),
     },
@@ -209,9 +236,9 @@ export default function IncidentDetailPage() {
   ];
 
   const ticketColumns = [
-    { key: 'id', header: 'ID', render: (t) => <Link to={`/admin/tickets/${t.id}`}>#{t.id}</Link> },
-    { key: 'title', header: 'Tiêu đề' },
-    { key: 'report_source', header: 'Nguồn', render: (t) => <code>{t.report_source || 'LEGACY'}</code> },
+    { key: 'id', header: 'Mã', render: (t) => <Link to={`/admin/tickets/${t.id}`}>#{t.id}</Link> },
+    { key: 'title', header: 'Tiêu đề', render: (t) => <Link to={`/admin/tickets/${t.id}`}>{t.title}</Link> },
+    { key: 'report_source', header: 'Nguồn', render: (t) => getReportSourceLabel(t.report_source) },
     { key: 'received_at', header: 'Tiếp nhận lúc', render: (t) => formatDateTimeVN(t.received_at, { withSeconds: true }) },
     { key: 'status', header: 'Trạng thái', render: (t) => <StatusBadge domain="ticketStatus" value={t.status} /> },
   ];
@@ -233,6 +260,10 @@ export default function IncidentDetailPage() {
   ];
 
   const compAmount = financeSummary?.compensation_amount ?? incident.compensation_assessed_amount;
+  const vehicleTitle = rental?.vehicle_name || (rental ? `Xe #${rental.vehicle_id}` : null);
+  const validReportTicket = incident.valid_report_ticket_id
+    ? ticketMap.get(String(incident.valid_report_ticket_id))
+    : null;
 
   return (
     <div className="stack-lg">
@@ -240,28 +271,35 @@ export default function IncidentDetailPage() {
         <div>
           <Link to="/admin/incidents">← Quay lại danh sách hồ sơ sự cố</Link>
           <div className="row-wrap" style={{ marginTop: 4 }}>
-            <h2>Hồ sơ sự cố #{incident.id}</h2>
+            <h2>
+              Hồ sơ sự cố {vehicleTitle ? `— ${vehicleTitle}` : `#${incident.id}`}
+            </h2>
             <StatusBadge domain="incidentStatus" value={incident.status} />
             {incident.verified_outcome && (
               <StatusBadge domain="incidentOutcome" value={incident.verified_outcome} />
             )}
           </div>
+          <p className="muted" style={{ marginTop: 4 }}>
+            Mã hồ sơ #{incident.id}
+            {rental?.vehicle_model_snapshot ? ` · Dòng xe: ${rental.vehicle_model_snapshot}` : ''}
+            {customer ? ` · Khách hàng: ${customer.name} (${customer.email})` : ''}
+          </p>
         </div>
         <div className="page-header-actions">
           <Link to={`/admin/rentals/${incident.rental_id}`} className="btn">
-            Chuyến #{incident.rental_id}
+            Xem chuyến thuê (#{incident.rental_id})
           </Link>
           {rental && (
             <Link to={`/admin/vehicles/${rental.vehicle_id}`} className="btn">
-              Xe #{rental.vehicle_id}
+              {vehicleTitle || `Xe #${rental.vehicle_id}`}
             </Link>
           )}
           {canCreateEvidence && (
-            <Button onClick={() => setModal('evidence')}>+ Tạo ticket bằng chứng</Button>
+            <Button onClick={() => setModal('evidence')}>+ Tạo yêu cầu bằng chứng</Button>
           )}
           {canVerify && (
             <Button variant="danger" onClick={() => setModal('verify')}>
-              MANAGER xác minh kết luận
+              Quản lý xác minh kết luận
             </Button>
           )}
         </div>
@@ -272,16 +310,32 @@ export default function IncidentDetailPage() {
           <h3>Thông tin điều tra &amp; mốc dừng cước</h3>
           <dl className="detail-grid">
             <div className="detail-item">
+              <dt>Khách hàng</dt>
+              <dd>
+                {customer ? (
+                  <Link to={`/admin/users/${customer.id}`}>
+                    <strong>{customer.name}</strong> ({customer.email})
+                  </Link>
+                ) : rental ? (
+                  <Link to={`/admin/users/${rental.customer_id}`}>Khách hàng #{rental.customer_id}</Link>
+                ) : (
+                  '—'
+                )}
+              </dd>
+            </div>
+            <div className="detail-item">
               <dt>Trạng thái chuyến thuê</dt>
               <dd>{rental ? <StatusBadge domain="rentalStatus" value={rental.status} /> : '—'}</dd>
             </div>
             <div className="detail-item">
-              <dt>Mốc dừng cước (Backend chốt)</dt>
+              <dt>Mốc dừng cước</dt>
               <dd>
                 {incident.billing_cutoff_at ? (
                   <>
                     <strong>{formatDateTimeVN(incident.billing_cutoff_at, { withSeconds: true })}</strong>
-                    <div className="muted">Lý do: <code>{incident.billing_cutoff_reason}</code></div>
+                    <div className="muted">
+                      Căn cứ: {getBillingCutoffReasonLabel(incident.billing_cutoff_reason)}
+                    </div>
                   </>
                 ) : (
                   'Chưa chốt mốc dừng cước'
@@ -289,15 +343,17 @@ export default function IncidentDetailPage() {
               </dd>
             </div>
             <div className="detail-item">
-              <dt>Lý do xác minh (MANAGER)</dt>
+              <dt>Lý do xác minh</dt>
               <dd>{incident.verification_reason || 'Chưa xác minh'}</dd>
             </div>
             <div className="detail-item">
-              <dt>Ticket báo cáo hợp lệ</dt>
+              <dt>Báo cáo hợp lệ liên quan</dt>
               <dd>
                 {incident.valid_report_ticket_id ? (
                   <Link to={`/admin/tickets/${incident.valid_report_ticket_id}`}>
-                    Ticket #{incident.valid_report_ticket_id}
+                    {validReportTicket?.title
+                      ? `${validReportTicket.title} (#${incident.valid_report_ticket_id})`
+                      : `Yêu cầu #${incident.valid_report_ticket_id}`}
                   </Link>
                 ) : (
                   '—'
@@ -337,7 +393,7 @@ export default function IncidentDetailPage() {
                 {incident.arrived_station_at ? (
                   <>
                     <div>
-                      Trạm #{incident.received_station_id} ·{' '}
+                      {getStationDisplayName(stationMap, incident.received_station_id)} ·{' '}
                       <StatusBadge domain="recoveryCondition" value={incident.recovery_condition} />
                     </div>
                     {incident.inspection_note && (
@@ -358,7 +414,7 @@ export default function IncidentDetailPage() {
                     tone="success"
                   />
                 ) : incident.recovery_condition === 'UNREPAIRABLE' ? (
-                  <StatusBadge label="UNREPAIRABLE — Không thể giải phóng cho thuê" tone="danger" />
+                  <StatusBadge label="Hư hỏng không sửa được — Không thể cho thuê lại" tone="danger" />
                 ) : (
                   'Chưa giải phóng khỏi hồ sơ sự cố'
                 )}
@@ -384,7 +440,7 @@ export default function IncidentDetailPage() {
             )}
             {canReleaseVehicle && (
               <Button variant="primary" size="sm" onClick={() => setModal('release')}>
-                MANAGER giải phóng xe
+                Giải phóng xe cho thuê lại
               </Button>
             )}
           </div>
@@ -472,7 +528,7 @@ export default function IncidentDetailPage() {
 
           <div className="card stack-md">
             <div className="card-header">
-              <h4>Điều kiện đóng hồ sơ sự cố (<code>CLOSED_INCIDENT</code>)</h4>
+              <h4>Điều kiện đóng hồ sơ sự cố</h4>
               {canClose && (
                 <Button variant="danger" onClick={() => setModal('close')}>
                   Đóng hồ sơ sự cố
@@ -480,14 +536,31 @@ export default function IncidentDetailPage() {
               )}
             </div>
             <ul className="checklist">
-              <li>
-                {financeSummary?.rent_settled ? '✅' : '⏳'} 1. Đã quyết toán tiền thuê sự cố (<code>settle-rent</code>)
+              <li className="row-wrap">
+                <StatusBadge
+                  label={financeSummary?.rent_settled ? 'Đạt' : 'Chưa xong'}
+                  tone={financeSummary?.rent_settled ? 'success' : 'warning'}
+                />
+                <span>1. Đã quyết toán khoản tiền thuê của hồ sơ sự cố</span>
               </li>
-              <li>
-                {financeSummary?.deposit_remaining_held === '0.00' ? '✅' : '⏳'} 2. Tiền cọc còn giữ đã xử lý/hoàn hết về <code>0.00</code> (hiện còn: {formatVnd(financeSummary?.deposit_remaining_held)})
+              <li className="row-wrap">
+                <StatusBadge
+                  label={financeSummary?.deposit_remaining_held === '0.00' ? 'Đạt' : 'Chưa xong'}
+                  tone={financeSummary?.deposit_remaining_held === '0.00' ? 'success' : 'warning'}
+                />
+                <span>
+                  2. Tiền cọc đang giữ đã xử lý hoặc hoàn đủ về 0đ (hiện còn:{' '}
+                  <strong>{formatVnd(financeSummary?.deposit_remaining_held)}</strong>)
+                </span>
               </li>
-              <li>
-                {financeSummary?.external_compensation_settled ? '✅' : '⏳'} 3. Đã ghi nhận kết quả bồi thường ngoài hệ thống (<code>0.00 + NOT_REQUIRED</code> hoặc số dương + chứng từ thanh toán)
+              <li className="row-wrap">
+                <StatusBadge
+                  label={financeSummary?.external_compensation_settled ? 'Đạt' : 'Chưa xong'}
+                  tone={financeSummary?.external_compensation_settled ? 'success' : 'warning'}
+                />
+                <span>
+                  3. Đã ghi nhận kết quả bồi thường ngoài hệ thống (không yêu cầu bồi thường hoặc đã có chứng từ thanh toán)
+                </span>
               </li>
             </ul>
           </div>

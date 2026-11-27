@@ -10,7 +10,10 @@ import {
 } from '../../components/ui';
 import useApiQuery from '../../hooks/useApiQuery';
 import useDebouncedValue from '../../hooks/useDebouncedValue';
+import { listActiveEmployees } from '../../services/accountsApi';
 import { listTickets } from '../../services/operationsApi';
+import { listRentals } from '../../services/rentalsApi';
+import { buildIdMap, getReportSourceLabel, getUserDisplay } from '../../utils/entityDisplay';
 import { formatDateTimeVN } from '../../utils/format';
 import { isPositiveIdString } from '../../utils/validation';
 import TicketCreateModal from './TicketCreateModal';
@@ -43,6 +46,14 @@ export default function AdminTicketList() {
     [status, debouncedRentalId, debouncedAssignedTo, page, pageSize]
   );
 
+  const employeesQuery = useApiQuery(({ signal }) => listActiveEmployees({ signal }), []);
+  const rentalsLookupQuery = useApiQuery(
+    ({ signal }) => listRentals({ page: 1, page_size: 100 }, { signal }),
+    []
+  );
+  const employeeMap = buildIdMap(employeesQuery.data || []);
+  const rentalMap = buildIdMap(rentalsLookupQuery.data || []);
+
   const resetFilters = () => {
     setStatus('');
     setRentalId('');
@@ -52,34 +63,51 @@ export default function AdminTicketList() {
 
   const columns = [
     {
-      key: 'id',
-      header: 'Ticket',
-      render: (t) => <Link to={`/admin/tickets/${t.id}`}>#{t.id}</Link>,
-    },
-    {
-      key: 'rental_id',
-      header: 'Chuyến thuê',
-      render: (t) => <Link to={`/admin/rentals/${t.rental_id}`}>#{t.rental_id}</Link>,
-    },
-    {
       key: 'title',
-      header: 'Tiêu đề & Nguồn báo',
+      header: 'Yêu cầu hỗ trợ',
       render: (t) => (
         <div>
           <Link to={`/admin/tickets/${t.id}`}>
             <strong>{t.title}</strong>
           </Link>
           <div className="muted">
-            Nguồn: <code>{t.report_source || 'LEGACY'}</code>
-            {t.check_cycle ? ` · Cảnh báo chu kỳ ${t.check_cycle}` : ''}
+            Yêu cầu #{t.id} · {getReportSourceLabel(t.report_source)}
+            {t.check_cycle ? ` · Nhắc kiểm tra lần ${t.check_cycle}` : ''}
           </div>
         </div>
       ),
     },
     {
+      key: 'rental_id',
+      header: 'Chuyến thuê',
+      render: (t) => {
+        const rental = rentalMap.get(String(t.rental_id));
+        return (
+          <div>
+            <Link to={`/admin/rentals/${t.rental_id}`}>
+              {rental?.vehicle_name || `Chuyến #${t.rental_id}`}
+            </Link>
+            <div className="muted">
+              Chuyến #{t.rental_id}
+              {rental?.vehicle_model_snapshot ? ` · ${rental.vehicle_model_snapshot}` : ''}
+            </div>
+          </div>
+        );
+      },
+    },
+    {
       key: 'assigned_to',
       header: 'Phụ trách',
-      render: (t) => (t.assigned_to ? `User #${t.assigned_to}` : 'Chưa phân công'),
+      render: (t) => {
+        if (!t.assigned_to) return <span className="muted">Chưa phân công</span>;
+        const staff = getUserDisplay(employeeMap, t.assigned_to, 'Nhân sự');
+        return (
+          <div>
+            <div>{staff.primary}</div>
+            {staff.secondary && <div className="muted">{staff.secondary}</div>}
+          </div>
+        );
+      },
     },
     {
       key: 'status',
@@ -106,13 +134,13 @@ export default function AdminTicketList() {
     <div>
       <div className="page-header">
         <div>
-          <h2>Ticket hỗ trợ &amp; báo hỏng</h2>
+          <h2>Yêu cầu hỗ trợ &amp; báo hỏng</h2>
           <p className="muted">
-            Tiếp nhận, phân công, giải quyết theo luồng tuần tự <code>OPEN → IN_PROGRESS → RESOLVED → CLOSED</code> và đính kèm ảnh bằng chứng.
+            Tiếp nhận, phân công nhân viên phụ trách, cập nhật tiến trình xử lý và lưu ảnh bằng chứng cho từng chuyến thuê.
           </p>
         </div>
         <Button variant="primary" onClick={() => setCreating(true)}>
-          + Tạo ticket mới
+          + Tạo yêu cầu mới
         </Button>
       </div>
 
@@ -122,10 +150,10 @@ export default function AdminTicketList() {
           value={status}
           placeholder="Tất cả"
           options={[
-            { value: 'OPEN', label: 'Mới mở (OPEN)' },
-            { value: 'IN_PROGRESS', label: 'Đang xử lý (IN_PROGRESS)' },
-            { value: 'RESOLVED', label: 'Đã giải quyết (RESOLVED)' },
-            { value: 'CLOSED', label: 'Đã đóng (CLOSED)' },
+            { value: 'OPEN', label: 'Mới mở' },
+            { value: 'IN_PROGRESS', label: 'Đang xử lý' },
+            { value: 'RESOLVED', label: 'Đã giải quyết' },
+            { value: 'CLOSED', label: 'Đã đóng' },
           ]}
           onChange={(e) => {
             setStatus(e.target.value);
@@ -166,8 +194,8 @@ export default function AdminTicketList() {
           setPageSize(size);
           setPage(1);
         }}
-        emptyTitle="Chưa có ticket hỗ trợ nào"
-        emptyHint="Thử xóa bộ lọc hoặc tạo ticket mới cho chuyến thuê."
+        emptyTitle="Chưa có yêu cầu hỗ trợ nào"
+        emptyHint="Thử xóa bộ lọc hoặc tạo yêu cầu hỗ trợ mới cho chuyến thuê."
       />
 
       {creating && (
