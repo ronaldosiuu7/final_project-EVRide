@@ -132,7 +132,7 @@ export const ERROR_MESSAGES_BY_CODE = {
   EVIDENCE_REQUIRED: 'Thiếu bằng chứng xác nhận cho thao tác.',
   RATE_LIMITED: 'Bạn thao tác quá nhanh. Vui lòng đợi một lát trước khi thử lại.',
   POLICY_NOT_CONFIGURED: 'Chính sách hệ thống chưa được cấu hình.',
-  FEATURE_NOT_ENABLED: 'Chức năng mô phỏng này hiện chưa được bật trên máy chủ.',
+  FEATURE_NOT_ENABLED: 'Chức năng này hiện chưa được bật trên máy chủ.',
   DEPENDENCY_UNAVAILABLE: 'Máy chủ hoặc dịch vụ phụ thuộc tạm thời không sẵn sàng.',
 };
 

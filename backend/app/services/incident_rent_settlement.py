@@ -136,7 +136,7 @@ def settle_rent(db, context, actor, body, idempotency_record):
         ops.fail(
             503,
             "FEATURE_NOT_ENABLED",
-            "Thanh toán mô phỏng chưa được bật.",
+            "Chức năng thanh toán ví hiện chưa được bật.",
         )
 
     rental = context["rental"]

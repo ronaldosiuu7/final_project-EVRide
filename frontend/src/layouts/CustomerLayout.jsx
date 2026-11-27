@@ -616,7 +616,7 @@ export default function CustomerLayout() {
                           <Link to="/rentals">Chuyến thuê của tôi</Link>
                         </li>
                         <li>
-                          <Link to="/wallet">Ví tiền mô phỏng</Link>
+                          <Link to="/wallet">Ví điện tử</Link>
                         </li>
                         <li>
                           <Link to="/support">Gửi yêu cầu hỗ trợ</Link>
@@ -640,7 +640,7 @@ export default function CustomerLayout() {
 
           <div className="customer-footer-bottom">
             <p className="customer-footer-note">
-              Số dư ví và lộ trình định vị hiển thị trong ứng dụng là dữ liệu mô phỏng phục vụ vận hành hệ thống EVRide.
+              EVRide – Hệ thống cho thuê xe máy điện theo trạm tại nội thành Hà Nội.
             </p>
           </div>
         </div>

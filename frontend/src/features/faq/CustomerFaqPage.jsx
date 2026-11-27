@@ -260,7 +260,7 @@ export default function CustomerFaqPage() {
               <div className="faq-chat-log" aria-live="polite">
                 {chatMessages.length === 0 ? (
                   <p className="muted" style={{ fontSize: '0.88rem' }}>
-                    Hãy nhập câu hỏi của bạn về giữ xe, pin, giá thuê, tiền cọc, trả xe, thanh toán mô phỏng hoặc bảo trì...
+                    Hãy nhập câu hỏi của bạn về giữ xe, pin, giá thuê, tiền cọc, trả xe, thanh toán ví hoặc bảo trì...
                   </p>
                 ) : (
                   chatMessages.map((msg) => (

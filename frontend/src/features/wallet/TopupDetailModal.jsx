@@ -67,9 +67,6 @@ export default function TopupDetailModal({ requestSummary, onClose }) {
                 </div>
 
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {item.payment_mode === 'DEMO' && (
-                    <StatusBadge label="Tiền mô phỏng" tone="info" />
-                  )}
                   {statusMeta && (
                     <StatusBadge label={statusMeta.label} tone={statusMeta.tone} />
                   )}

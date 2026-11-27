@@ -189,7 +189,7 @@ export default function CustomerHomePage() {
           <div className="customer-workflow-body">
             <h3>Xác minh giấy tờ &amp; chuẩn bị ví</h3>
             <p>
-              Hoàn tất xác minh CCCD còn hạn và chuẩn bị số dư ví mô phỏng đủ khoản cọc cùng 30 phút đầu.
+              Hoàn tất xác minh CCCD còn hạn và chuẩn bị số dư ví đủ khoản cọc cùng 30 phút đầu.
             </p>
             {isAuthenticated ? (
               <Link to="/profile" className="customer-workflow-link">

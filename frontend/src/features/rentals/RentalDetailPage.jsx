@@ -231,7 +231,7 @@ export default function RentalDetailPage() {
           tabs={[
             { key: 'lifecycle', label: 'Thao tác bàn giao / trả / quyết toán' },
             { key: 'handovers', label: 'Biên bản & Giao dịch / Hóa đơn' },
-            { key: 'gps', label: 'GPS mô phỏng' },
+            { key: 'gps', label: 'Định vị GPS' },
             { key: 'review', label: 'Đánh giá chuyến' },
           ]}
         />

@@ -66,7 +66,7 @@ export default function RentalGpsPanel({ rental }) {
         longitude: lngNum.toFixed(6),
         recorded_at: recordedIso,
       });
-      toast.success('Đã ghi điểm GPS mô phỏng.');
+      toast.success('Đã ghi nhận tọa độ GPS.');
       latestQuery.reload();
       historyQuery.reload();
     } catch {
@@ -91,7 +91,7 @@ export default function RentalGpsPanel({ rental }) {
     <div className="stack-md">
       <div className="card stack-sm">
         <div className="card-header">
-          <h3>Vị trí GPS mô phỏng gần nhất</h3>
+          <h3>Vị trí GPS gần nhất</h3>
           {latest && (
             <StatusBadge
               label={latest.is_stale ? `Dữ liệu cũ (> ${latest.stale_after_seconds}s)` : 'Dữ liệu mới'}
@@ -131,7 +131,7 @@ export default function RentalGpsPanel({ rental }) {
 
       {rental.status === 'IN_RENT' && (
         <div className="card stack-md">
-          <h4>Ghi nhận tọa độ GPS mô phỏng (chỉ môi trường demo)</h4>
+          <h4>Cập nhật tọa độ GPS thủ công</h4>
           <form onSubmit={handlePostDemoGps} className="row-wrap">
             <TextField
               label="Latitude"
@@ -161,7 +161,7 @@ export default function RentalGpsPanel({ rental }) {
               onChange={(e) => setRecordedAt(e.target.value)}
             />
             <Button type="submit" variant="secondary" loading={gpsMutation.loading}>
-              Gửi điểm GPS demo
+              Ghi nhận tọa độ GPS
             </Button>
           </form>
           {(coordError || gpsMutation.error) && (

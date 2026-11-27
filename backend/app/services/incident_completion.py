@@ -42,7 +42,7 @@ def cash_enabled(context):
         ops.fail(
             503,
             "FEATURE_NOT_ENABLED",
-            "Thanh toán mô phỏng chưa được bật.",
+            "Chức năng thanh toán ví hiện chưa được bật.",
         )
 
     wallet = context["wallet"]

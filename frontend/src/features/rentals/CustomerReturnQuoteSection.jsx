@@ -176,7 +176,6 @@ export default function CustomerReturnQuoteSection({ rental }) {
               : 'Bạn có thể trả xe tại bất kỳ trạm nào đang mở cửa và còn chỗ trống. Chọn trạm và mã khuyến mãi (nếu có) để xem ước tính cước từ máy chủ.'}
           </p>
         </div>
-        <StatusBadge label="Tiền mô phỏng" tone="info" />
       </div>
 
       {/* Tìm trạm còn chỗ trả khi đang IN_RENT */}

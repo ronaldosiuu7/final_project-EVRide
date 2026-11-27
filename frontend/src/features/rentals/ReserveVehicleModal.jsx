@@ -151,7 +151,7 @@ export default function ReserveVehicleModal({
 
         <div>
           <h3 className="customer-meta-label" style={{ marginBottom: 8 }}>
-            Biểu giá khóa tại thời điểm đặt chỗ (Tiền mô phỏng)
+            Biểu giá khóa tại thời điểm đặt chỗ
           </h3>
           <dl className="vehicle-pricing-list">
             <div className="vehicle-pricing-row">

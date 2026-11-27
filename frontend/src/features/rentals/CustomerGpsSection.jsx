@@ -85,12 +85,11 @@ export default function CustomerGpsSection({ rentalId, isLiveTrip = false }) {
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <h2 id="customer-gps-heading" className="customer-card-title">
-              Hành trình &amp; Vị trí GPS mô phỏng
+              Hành trình &amp; Vị trí GPS
             </h2>
-            <StatusBadge label="GPS mô phỏng" tone="info" />
           </div>
           <p className="station-card-address">
-            Dữ liệu tọa độ phục vụ minh họa theo dõi lộ trình xe máy điện trên hệ thống.
+            Theo dõi vị trí và lộ trình di chuyển của xe máy điện trên hệ thống.
           </p>
         </div>
         <Button size="sm" variant="secondary" onClick={handleManualRefresh}>
@@ -99,7 +98,7 @@ export default function CustomerGpsSection({ rentalId, isLiveTrip = false }) {
       </div>
 
       {latestQuery.loading && !latestQuery.data && (
-        <LoadingState message="Đang tải vị trí GPS mô phỏng mới nhất..." />
+        <LoadingState message="Đang tải vị trí GPS mới nhất..." />
       )}
 
       {!latestQuery.loading && latestQuery.error && (
@@ -166,7 +165,7 @@ export default function CustomerGpsSection({ rentalId, isLiveTrip = false }) {
 
         {!historyQuery.loading && !historyQuery.error && historyPoints.length === 0 && (
           <EmptyState
-            title="Chưa có lịch sử tọa độ GPS mô phỏng"
+            title="Chưa có lịch sử tọa độ GPS"
             hint="Các điểm định vị sẽ xuất hiện tại đây khi hệ thống ghi nhận tín hiệu trong chuyến đi."
           />
         )}

@@ -132,28 +132,24 @@ export default function OperationalAnalyticsPage() {
     <div className="stack-lg">
       <div className="page-header">
         <div>
-          <h2>Phân tích vận hành mở rộng (Theo đặc tả &amp; Contract)</h2>
+          <h2>Phân tích vận hành mở rộng</h2>
           <p className="muted">
-            Bao gồm tổng quan đặc tả, bản đồ nhiệt giờ cao điểm (Q3), thời gian nằm chờ (Q8), top 3 tuyến (Q5) và khách lâu không đi (Q6).
+            Bao gồm tổng quan vận hành, bản đồ nhiệt giờ cao điểm, thời gian xe chờ tại trạm, top 3 tuyến phổ biến và nhóm khách chưa phát sinh chuyến gần đây.
           </p>
         </div>
         <Link to="/admin/reports" className="btn">
-          ← Quay lại Báo cáo doanh thu (API thật)
+          ← Quay lại Báo cáo doanh thu
         </Link>
-      </div>
-
-      <div className="alert alert-warning">
-        <strong>Trạng thái Backend:</strong> Backend V1 hiện mới triển khai 3 API báo cáo doanh thu/tài chính. 5 nhóm phân tích mở rộng dưới đây đã hoàn thiện giao diện, bộ lọc, service interface và dữ liệu fixture chuẩn contract (<code>src/fixtures/analyticsFixtures.js</code>) để sẵn sàng nối API khi Backend bổ sung.
       </div>
 
       <Tabs
         activeKey={activeTab}
         onChange={setActiveTab}
         tabs={[
-          { key: 'utilization', label: 'Mức sử dụng trạm (Q3 Heatmap & Q8 Chờ)' },
-          { key: 'routes', label: 'Top 3 tuyến mỗi tháng (Q5)' },
-          { key: 'inactive', label: 'Khách lâu không đi (Q6)' },
-          { key: 'overview', label: 'Tổng quan đặc tả (/analytics/overview)' },
+          { key: 'utilization', label: 'Mức sử dụng trạm (Giờ cao điểm & Thời gian chờ)' },
+          { key: 'routes', label: 'Top 3 tuyến mỗi tháng' },
+          { key: 'inactive', label: 'Khách lâu không đi' },
+          { key: 'overview', label: 'Tổng quan vận hành' },
         ]}
       />
 

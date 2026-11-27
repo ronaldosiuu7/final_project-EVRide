@@ -1045,7 +1045,7 @@ test('CustomerWalletPage renders balance, linked topup input & filter labels, an
 
     const text = extractVisibleText(root.toJSON());
     assert.match(text, /300\.000/);
-    assert.match(text, /Tiền mô phỏng/);
+    assert.doesNotMatch(text, /Tiền mô phỏng|DEMO/);
     assert.match(text, /Chờ nhân viên xác nhận/);
     assert.doesNotMatch(text, /PENDING|ACTIVE|GET \/api/);
   } finally {

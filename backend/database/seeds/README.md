@@ -2,10 +2,14 @@
 
 Lưu dữ liệu mẫu cho môi trường phát triển, kiểm thử và demo.
 
-Dữ liệu gồm trạm, xe, tài khoản thử nghiệm, khuyến mãi và các chuyến đi mẫu.
-Tài khoản `checkout.customer@example.com` có giấy tờ đã duyệt, ví demo và mã
-`DEMO-CITY-2500` (giảm cố định 2.500 VND, chỉ áp dụng xe `DEMO-CITY`) để thử
-luồng thuê. Mật khẩu chung cho tài khoản demo được in sau khi seed thành công.
+Dữ liệu mô phỏng dịch vụ EVRide tại nội thành Hà Nội gồm 7 trạm xe, 30 xe máy điện
+thuộc 5 mẫu xe thật (`VinFast Feliz S`, `VinFast Evo200`, `VinFast Klara S`,
+`Dat Bike Quantum S2`, `YADEA Ossy`), 10 tài khoản thử nghiệm, 6 mã khuyến mãi,
+24 chuyến lịch sử (tháng 3–11/2026) cùng các chuyến đang mở, phiếu bảo trì và lịch sử điều chuyển.
+Tài khoản `checkout.customer@example.com` có giấy tờ đã duyệt, ví demo hoạt động,
+không vướng chuyến đang mở và đã nhận mã `FELIZ2500` (giảm cố định 2.500 VND,
+áp dụng cho dòng xe `VinFast Feliz S`) để thử ngay luồng thuê xe. Mật khẩu chung
+cho tài khoản demo được in sau khi seed thành công.
 
 Chạy từ thư mục `backend/` sau khi cấu hình `.env` trỏ đến PostgreSQL local và áp dụng migration mới nhất:
 

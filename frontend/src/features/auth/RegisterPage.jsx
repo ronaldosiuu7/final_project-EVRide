@@ -97,7 +97,7 @@ export default function RegisterPage() {
               Bắt đầu hành trình xanh chỉ với vài bước đơn giản
             </h2>
             <p className="auth-aside-desc">
-              Tạo tài khoản khách hàng kèm ví tiền mô phỏng để tìm trạm, nộp giấy tờ CCCD và giữ xe máy điện thuận tiện.
+              Tạo tài khoản khách hàng kèm ví điện tử để tìm trạm, nộp giấy tờ CCCD và giữ xe máy điện thuận tiện.
             </p>
 
             <ul className="auth-aside-points">
@@ -129,7 +129,7 @@ export default function RegisterPage() {
             </Link>
             <h1>Đăng ký tài khoản khách hàng</h1>
             <p className="muted">
-              Tạo tài khoản miễn phí kèm ví tiền mô phỏng để tìm trạm, xác minh giấy tờ và giữ xe máy điện trong 30 phút.
+              Tạo tài khoản miễn phí kèm ví điện tử để tìm trạm, xác minh giấy tờ và giữ xe máy điện trong 30 phút.
             </p>
           </div>
 

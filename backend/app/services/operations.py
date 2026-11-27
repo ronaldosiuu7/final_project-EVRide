@@ -647,7 +647,7 @@ def require_demo_gps():
         fail(
             503,
             "FEATURE_NOT_ENABLED",
-            "GPS mô phỏng chưa được bật cho môi trường này.",
+            "Chức năng cập nhật tọa độ GPS hiện chưa được bật cho môi trường này.",
         )
 
 

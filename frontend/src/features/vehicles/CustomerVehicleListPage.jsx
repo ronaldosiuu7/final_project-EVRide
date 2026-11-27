@@ -143,7 +143,7 @@ export default function CustomerVehicleListPage() {
             id="vehicle-filter-model"
             label="Dòng xe (nhập chính xác tên dòng xe)"
             type="search"
-            placeholder="Ví dụ: DEMO-CITY, DEMO-LONG-RANGE..."
+            placeholder="Ví dụ: VinFast Feliz S, Dat Bike Quantum S2..."
             value={filters.model}
             onChange={(e) =>
               setFilters((prev) => applyFilterPatch(prev, { model: e.target.value }))

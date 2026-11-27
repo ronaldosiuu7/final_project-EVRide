@@ -391,7 +391,7 @@ export default function CustomerRentalDetailPage() {
             <strong>Chuyến thuê đã hoàn tất quyết toán</strong>
             <p>
               Hoàn tất lúc <strong>{formatDateTimeVN(rental.settled_at || rental.actual_end_time)}</strong> · Tổng cước chính thức:{' '}
-              <strong>{formatMoneyDisplay(rental.total_price)}</strong> (Tiền mô phỏng).
+              <strong>{formatMoneyDisplay(rental.total_price)}</strong>.
             </p>
           </div>
         )}
@@ -544,7 +544,7 @@ export default function CustomerRentalDetailPage() {
         )}
       </section>
 
-      {/* Vị trí & Lộ trình GPS mô phỏng */}
+      {/* Vị trí & Lộ trình GPS */}
       {showGpsSection && (
         <CustomerGpsSection
           rentalId={String(rental.id)}

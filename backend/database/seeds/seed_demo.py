@@ -271,15 +271,39 @@ def _seed_documents(
             ),
             "revoked_at": None,
         }
-        _upsert_by(
-            session,
-            UserDocument,
-            {
-                "user_id": user_ids[fixture["user"]],
-                "document_number": fixture["document_number"],
-            },
-            values,
+        user_id = user_ids[fixture["user"]]
+        row = session.scalar(
+            select(UserDocument)
+            .where(
+                UserDocument.user_id == user_id,
+                UserDocument.document_number == fixture["document_number"],
+            )
+            .with_for_update()
         )
+        if row is None:
+            row = session.scalar(
+                select(UserDocument)
+                .where(
+                    UserDocument.user_id == user_id,
+                    (
+                        UserDocument.document_number.like("DEMO-CCCD-%")
+                        | UserDocument.document_number.like("-CCCD-%")
+                    ),
+                )
+                .with_for_update()
+            )
+        if row is None:
+            session.add(
+                UserDocument(
+                    user_id=user_id,
+                    document_number=fixture["document_number"],
+                    **values,
+                )
+            )
+        else:
+            row.document_number = fixture["document_number"]
+            for field, value in values.items():
+                setattr(row, field, value)
 
 
 def _seed_wallets(session: Session, user_ids: dict[str, int]) -> None:
@@ -337,14 +361,31 @@ def _seed_promotions(session: Session) -> dict[str, int]:
                 {"code": fixture["code"]},
             )
         else:
-            if row.code != fixture["code"]:
-                raise RuntimeError(
-                    f"Demo seed ID collision in promotions.id={fixture['id']}."
+            code_changed = row.code != fixture["code"]
+            if code_changed:
+                existing_with_code = session.scalar(
+                    select(Promotion)
+                    .where(
+                        Promotion.code == fixture["code"],
+                        Promotion.id != row.id,
+                    )
+                    .with_for_update()
                 )
+                if existing_with_code is not None:
+                    raise RuntimeError(
+                        f"Demo seed code collision for promotions.code={fixture['code']!r}."
+                    )
+                row.code = fixture["code"]
+                row.used_count = fixture["used_count"]
             for field, value in values.items():
                 if field == "used_count":
                     continue
                 setattr(row, field, value)
+            if (
+                row.usage_limit is not None
+                and row.used_count > row.usage_limit
+            ):
+                row.used_count = row.usage_limit
         result[fixture["code"]] = row.id
     session.flush()
     return result
@@ -535,10 +576,9 @@ def _seed_one_rental(
         "vehicle_model_snapshot": vehicle_fixture["model"],
         "first_30_minutes_price_snapshot": Decimal(FIRST_30_MINUTES_PRICE),
         "extra_minute_price_snapshot": Decimal(EXTRA_MINUTE_PRICE),
-        "pricing_policy_version": "EVRIDE_DEMO_V1_20261102_R2",
+        "pricing_policy_version": "EVRIDE_V1_20261102_R2",
         "billing_unit": BILLING_UNIT,
         "pricing_policy_snapshot": {
-            "is_demo": True,
             "first_30_minutes_price": FIRST_30_MINUTES_PRICE,
             "extra_minute_price": EXTRA_MINUTE_PRICE,
             "billing_unit": BILLING_UNIT,
@@ -575,7 +615,7 @@ def _seed_handover(
             "time": happened_at,
             "battery_percent": battery_percent,
             "vehicle_condition": vehicle_condition,
-            "note": "Fictional demo handover.",
+            "note": "Đã kiểm tra xe và hoàn tất bàn giao tại trạm.",
             "created_at": happened_at,
         },
     )

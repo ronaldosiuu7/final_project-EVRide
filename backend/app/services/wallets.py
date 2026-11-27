@@ -28,7 +28,7 @@ REVIEWER_ROLES = ("STAFF", "MANAGER")
 
 def _require_demo_payments_enabled() -> None:
     if os.getenv("DEMO_PAYMENTS_ENABLED", "").strip().lower() not in ("1", "true", "yes"):
-        raise ServiceError(503, "FEATURE_NOT_ENABLED", "Nạp tiền mô phỏng chưa được bật.")
+        raise ServiceError(503, "FEATURE_NOT_ENABLED", "Chức năng nạp tiền ví hiện chưa được bật.")
 
 
 def _clock(session: Session) -> datetime:

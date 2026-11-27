@@ -246,7 +246,7 @@ export default function CustomerVehicleDetailPage() {
 
           <div>
             <h2 id="vehicle-pricing-heading" className="customer-card-title" style={{ marginBottom: 10 }}>
-              Biểu giá &amp; tiền cọc (Tiền mô phỏng)
+              Biểu giá &amp; tiền cọc
             </h2>
 
             <dl className="vehicle-pricing-list">

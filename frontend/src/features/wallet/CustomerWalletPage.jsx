@@ -256,7 +256,6 @@ export default function CustomerWalletPage() {
           <span className="customer-page-eyebrow">Tài chính &amp; Số dư</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <h1 className="customer-page-title">Ví của tôi</h1>
-            <StatusBadge label="Tiền mô phỏng" tone="info" />
           </div>
           <p className="customer-page-subtitle">
             Quản lý số dư phục vụ đặt cọc và thanh toán chuyến thuê xe máy điện. Mọi khoản nạp tiền đều cần nhân viên xác nhận trước khi vào ví.
@@ -285,7 +284,7 @@ export default function CustomerWalletPage() {
               </span>
               <div>
                 <span id="wallet-balance-heading" className="customer-meta-label">
-                  Số dư khả dụng hiện tại (Tiền mô phỏng)
+                  Số dư khả dụng hiện tại
                 </span>
                 {walletQuery.loading && !wallet ? (
                   <p className="customer-meta-value" style={{ marginTop: 8 }}>
@@ -333,7 +332,7 @@ export default function CustomerWalletPage() {
                 Tạo yêu cầu nạp tiền vào ví
               </h2>
               <p className="station-card-address" style={{ marginTop: 4 }}>
-                Chọn nhanh mệnh giá gợi ý hoặc nhập số tiền cần nạp (Tiền mô phỏng). Tiền chỉ vào ví sau khi nhân viên duyệt yêu cầu.
+                Chọn nhanh mệnh giá gợi ý hoặc nhập số tiền cần nạp. Tiền chỉ vào ví sau khi nhân viên duyệt yêu cầu.
               </p>
             </div>
           </div>
@@ -395,7 +394,7 @@ export default function CustomerWalletPage() {
 
             <TextField
               id="wallet-topup-amount"
-              label="Số tiền muốn nạp (VND — Tiền mô phỏng)"
+              label="Số tiền muốn nạp (VND)"
               inputMode="decimal"
               placeholder="Ví dụ: 150000"
               hint="Nhập số dương không chứa dấu phẩy hay ký tự đặc biệt (ví dụ 150000 cho 150.000đ)."
@@ -500,9 +499,6 @@ export default function CustomerWalletPage() {
                           </div>
 
                           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                            {reqItem.payment_mode === 'DEMO' && (
-                              <StatusBadge label="Tiền mô phỏng" tone="info" />
-                            )}
                             <StatusBadge label={statusMeta.label} tone={statusMeta.tone} />
                           </div>
                         </div>

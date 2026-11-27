@@ -157,8 +157,8 @@ export function describeReservationError(error) {
     return {
       title: 'Ví chưa đủ điều kiện thanh toán đặt cọc & cước đầu',
       message,
-      hint: 'Số dư ví (Tiền mô phỏng) cần đủ tổng tiền cọc và giá 30 phút đầu, đồng thời ví phải đang hoạt động.',
-      actionLabel: 'Mở Ví Tiền mô phỏng',
+      hint: 'Số dư ví cần đủ tổng tiền cọc và giá 30 phút đầu, đồng thời ví phải đang hoạt động.',
+      actionLabel: 'Mở Ví của tôi',
       actionTo: '/wallet',
       canRetrySameKey: false,
     };
@@ -272,7 +272,7 @@ export function evaluateGpsStatus(latestGpsData) {
       badgeLabel: 'Chưa có tọa độ',
       badgeTone: 'neutral',
       warningText:
-        'Chuyến thuê hiện chưa có điểm định vị GPS mô phỏng nào được ghi nhận trên hệ thống.',
+        'Chuyến thuê hiện chưa có điểm định vị GPS nào được ghi nhận trên hệ thống.',
     };
   }
 

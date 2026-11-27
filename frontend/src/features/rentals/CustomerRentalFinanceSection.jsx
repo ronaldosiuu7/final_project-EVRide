@@ -82,7 +82,6 @@ export default function CustomerRentalFinanceSection({ rentalId, rentalStatus })
             <h2 id="rental-finance-heading" className="customer-card-title">
               Hóa đơn &amp; Giao dịch tài chính chuyến thuê
             </h2>
-            <StatusBadge label="Tiền mô phỏng" tone="info" />
           </div>
           <p className="station-card-address">
             Mọi số liệu hóa đơn và giao dịch thu cọc, thanh toán, hoàn cọc đều được đồng bộ trực tiếp từ hệ thống quyết toán.
