@@ -15,13 +15,15 @@ import useApiQuery from '../../hooks/useApiQuery';
 import useIdempotentMutation from '../../hooks/useIdempotentMutation';
 import { useAuth } from '../../integrations/authBridge';
 import { uploadEvidenceFile, validateEvidenceFile } from '../../integrations/fileBridge';
-import { listActiveEmployees } from '../../services/accountsApi';
+import { getUser, listActiveEmployees } from '../../services/accountsApi';
 import {
   attachFileToTicket,
   getTicket,
   listTicketAttachments,
   updateTicket,
 } from '../../services/operationsApi';
+import { getRental } from '../../services/rentalsApi';
+import { buildIdMap, getReportSourceLabel, getUserDisplay } from '../../utils/entityDisplay';
 import { getApiErrorMessage } from '../../utils/errorMessages';
 import { formatDateTimeVN } from '../../utils/format';
 
@@ -39,6 +41,21 @@ export default function TicketDetailPage() {
 
   const ticketQuery = useApiQuery(({ signal }) => getTicket(ticketId, { signal }), [ticketId]);
   const employeesQuery = useApiQuery(({ signal }) => listActiveEmployees({ signal }), []);
+  const employees = employeesQuery.data || [];
+  const employeeMap = buildIdMap(employees);
+  const ticketRentalId = ticketQuery.data?.rental_id;
+  const ticketCreatorId = ticketQuery.data?.created_by;
+
+  const rentalQuery = useApiQuery(
+    ({ signal }) => getRental(ticketRentalId, { signal }),
+    [ticketRentalId],
+    { enabled: Boolean(ticketRentalId) }
+  );
+  const creatorQuery = useApiQuery(
+    ({ signal }) => getUser(ticketCreatorId, { signal }),
+    [ticketCreatorId],
+    { enabled: Boolean(ticketCreatorId && !employeesQuery.loading && !employeeMap.has(String(ticketCreatorId))) }
+  );
   const attachmentsQuery = useApiQuery(
     ({ signal }) => listTicketAttachments(ticketId, { page: 1, page_size: 50 }, { signal }),
     [ticketId]
@@ -80,7 +97,14 @@ export default function TicketDetailPage() {
   const ticket = ticketQuery.data;
   if (!ticket) return null;
 
-  const employees = employeesQuery.data || [];
+  const rental = rentalQuery.data;
+  const creatorUser = employeeMap.get(String(ticket.created_by)) || creatorQuery.data;
+  const creatorName = !ticket.created_by
+    ? 'Hệ thống'
+    : creatorUser?.name || `Tài khoản #${ticket.created_by}`;
+  const assignee = ticket.assigned_to
+    ? getUserDisplay(employeeMap, ticket.assigned_to, 'Nhân sự')
+    : null;
   const nextStatus = NEXT_STATUS[ticket.status];
   const isSystemAlert = ticket.check_cycle !== null && ticket.check_cycle !== undefined;
 
@@ -90,7 +114,7 @@ export default function TicketDetailPage() {
     setUpdateError('');
     try {
       await updateTicket(ticket.id, payload);
-      toast.success(`Đã cập nhật ticket #${ticket.id}.`);
+      toast.success(`Đã cập nhật yêu cầu hỗ trợ #${ticket.id}.`);
       ticketQuery.reload();
     } catch (err) {
       setUpdateError(getApiErrorMessage(err));
@@ -113,7 +137,7 @@ export default function TicketDetailPage() {
       await attachMutation.execute(`attach_ticket_${ticket.id}_${uploaded.file_id}`, {
         file_id: uploaded.file_id,
       });
-      toast.success(`Đã tải lên và gắn ảnh bằng chứng #${uploaded.file_id} vào ticket.`);
+      toast.success(`Đã tải lên và gắn ảnh bằng chứng #${uploaded.file_id} vào yêu cầu hỗ trợ.`);
       setSelectedFile(null);
       setFileInputKey((k) => k + 1);
       attachmentsQuery.reload();
@@ -128,17 +152,21 @@ export default function TicketDetailPage() {
     <div className="stack-lg">
       <div className="page-header">
         <div>
-          <Link to="/admin/tickets">← Quay lại danh sách ticket</Link>
+          <Link to="/admin/tickets">← Quay lại danh sách yêu cầu hỗ trợ</Link>
           <div className="row-wrap" style={{ marginTop: 4 }}>
-            <h2>
-              Ticket #{ticket.id}: {ticket.title}
-            </h2>
+            <h2>{ticket.title}</h2>
             <StatusBadge domain="ticketStatus" value={ticket.status} />
           </div>
+          <p className="muted" style={{ marginTop: 4 }}>
+            Yêu cầu #{ticket.id} · Chuyến #{ticket.rental_id}
+            {rental?.vehicle_name ? ` (${rental.vehicle_name})` : ''}
+          </p>
         </div>
         <div className="page-header-actions">
           <Link to={`/admin/rentals/${ticket.rental_id}`} className="btn">
-            Xem chuyến #{ticket.rental_id}
+            {rental?.vehicle_name
+              ? `Xem chuyến ${rental.vehicle_name}`
+              : `Xem chuyến #${ticket.rental_id}`}
           </Link>
           <Link to={`/admin/incidents?rental_id=${ticket.rental_id}`} className="btn">
             Hồ sơ sự cố liên quan
@@ -148,7 +176,8 @@ export default function TicketDetailPage() {
 
       {isSystemAlert && (
         <div className="alert alert-warning">
-          Ticket này là cảnh báo chu kỳ <code>check_cycle = {ticket.check_cycle}</code>; phải xử lý qua luồng kiểm tra 24 giờ (<code>/admin/check-ins</code>).
+          Đây là nhắc kiểm tra tự động lần {ticket.check_cycle}. Vui lòng xử lý trong mục{' '}
+          <Link to="/admin/check-ins">Kiểm tra 24 giờ</Link>.
         </div>
       )}
 
@@ -157,20 +186,25 @@ export default function TicketDetailPage() {
           <div className="detail-item">
             <dt>Chuyến thuê</dt>
             <dd>
-              <Link to={`/admin/rentals/${ticket.rental_id}`}>#{ticket.rental_id}</Link>
+              <Link to={`/admin/rentals/${ticket.rental_id}`}>
+                {rental?.vehicle_name || `Chuyến #${ticket.rental_id}`}
+              </Link>
+              <div className="muted">
+                Chuyến #{ticket.rental_id}
+                {rental?.vehicle_model_snapshot ? ` · ${rental.vehicle_model_snapshot}` : ''}
+              </div>
             </dd>
           </div>
           <div className="detail-item">
             <dt>Nguồn báo / Thời điểm tiếp nhận</dt>
             <dd>
-              <code>{ticket.report_source || 'LEGACY'}</code> · {formatDateTimeVN(ticket.received_at)}
+              {getReportSourceLabel(ticket.report_source)} · {formatDateTimeVN(ticket.received_at)}
             </dd>
           </div>
           <div className="detail-item">
             <dt>Người tạo / Người phụ trách</dt>
             <dd>
-              {ticket.created_by ? `User #${ticket.created_by}` : 'SYSTEM'} →{' '}
-              {ticket.assigned_to ? `User #${ticket.assigned_to}` : 'Chưa phân công'}
+              {creatorName} → {assignee ? assignee.primary : 'Chưa phân công'}
             </dd>
           </div>
           <div className="detail-item">
@@ -193,16 +227,16 @@ export default function TicketDetailPage() {
 
       {!isSystemAlert && ticket.status !== 'CLOSED' && (
         <div className="card stack-md">
-          <h3>Cập nhật xử lý ticket (Tuần tự: OPEN → IN_PROGRESS → RESOLVED → CLOSED)</h3>
+          <h3>Cập nhật tiến trình xử lý</h3>
 
           <div className="grid-2">
             <SelectField
-              label="Phân công nhân viên phụ trách (STAFF/MANAGER ACTIVE)"
+              label="Phân công nhân viên phụ trách"
               value={assignedTo}
               placeholder="Chọn nhân viên phụ trách"
               options={employees.map((emp) => ({
                 value: emp.id,
-                label: `#${emp.id} - ${emp.name} (${emp.role})`,
+                label: `${emp.name} (${emp.role === 'MANAGER' ? 'Quản lý' : 'Nhân viên'})`,
               }))}
               onChange={(e) => setAssignedTo(e.target.value)}
             />
@@ -210,7 +244,7 @@ export default function TicketDetailPage() {
 
           {ticket.status === 'IN_PROGRESS' && (
             <TextareaField
-              label="Kết quả xử lý (bắt buộc khi chuyển RESOLVED)"
+              label="Kết quả xử lý (bắt buộc khi đánh dấu đã giải quyết)"
               required
               maxLength={5000}
               value={resolutionNote}
@@ -251,14 +285,25 @@ export default function TicketDetailPage() {
                   if (nextStatus === 'RESOLVED') {
                     payload.resolution_note = resolutionNote.trim();
                   }
+                  const nextLabel =
+                    nextStatus === 'IN_PROGRESS'
+                      ? 'Đang xử lý'
+                      : nextStatus === 'RESOLVED'
+                        ? 'Đã giải quyết'
+                        : 'Đã đóng';
                   setConfirmAction({
-                    title: `Chuyển ticket sang ${nextStatus}`,
-                    message: `Xác nhận chuyển ticket #${ticket.id} từ ${ticket.status} sang ${nextStatus}?`,
+                    title: `Chuyển trạng thái sang ${nextLabel}`,
+                    message: `Xác nhận chuyển yêu cầu #${ticket.id} sang trạng thái ${nextLabel}?`,
                     payload,
                   });
                 }}
               >
-                Chuyển sang {nextStatus}
+                Chuyển sang{' '}
+                {nextStatus === 'IN_PROGRESS'
+                  ? 'Đang xử lý'
+                  : nextStatus === 'RESOLVED'
+                    ? 'Đã giải quyết'
+                    : 'Đã đóng'}
               </Button>
             )}
           </div>
@@ -267,7 +312,7 @@ export default function TicketDetailPage() {
 
       <div className="card stack-md">
         <div className="card-header">
-          <h3>Ảnh bằng chứng đính kèm (<code>TICKET_EVIDENCE</code>)</h3>
+          <h3>Ảnh bằng chứng đính kèm</h3>
         </div>
 
         <form onSubmit={handleUploadEvidence} className="row-wrap">
@@ -279,7 +324,7 @@ export default function TicketDetailPage() {
             onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
           />
           <Button type="submit" variant="primary" disabled={!selectedFile} loading={uploading}>
-            Tải lên &amp; Gắn vào ticket
+            Tải lên &amp; Gắn vào yêu cầu
           </Button>
         </form>
         {uploadError && (
@@ -293,7 +338,7 @@ export default function TicketDetailPage() {
         ) : attachmentsQuery.error ? (
           <ErrorState error={attachmentsQuery.error} onRetry={attachmentsQuery.reload} />
         ) : (attachmentsQuery.data || []).length === 0 ? (
-          <p className="muted">Chưa có ảnh bằng chứng nào gắn với ticket này.</p>
+          <p className="muted">Chưa có ảnh bằng chứng nào gắn với yêu cầu hỗ trợ này.</p>
         ) : (
           <div className="grid-2">
             {(attachmentsQuery.data || []).map((att) => (

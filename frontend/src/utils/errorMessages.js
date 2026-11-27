@@ -13,9 +13,9 @@ export const ERROR_MESSAGES_BY_CODE = {
   INVALID_DATE_RANGE: 'Khoảng ngày không hợp lệ (từ ngày phải nhỏ hơn hoặc bằng đến ngày).',
   DATE_RANGE_REQUIRED: 'Cần truyền cả từ ngày và đến ngày cùng nhau.',
   INVALID_REQUEST: 'Yêu cầu không hợp lệ.',
-  IDEMPOTENCY_KEY_REQUIRED: 'Thiếu khóa chống gửi trùng hợp lệ. Vui lòng tải lại trang và thử lại.',
-  SESSION_SELECTION_REQUIRED: 'Thiếu mã phiên làm việc hợp lệ. Vui lòng đăng nhập lại.',
-  TOO_MANY_AUTH_COOKIES: 'Quá giới hạn phiên lưu trên trình duyệt. Vui lòng xóa cookie cũ và đăng nhập lại.',
+  IDEMPOTENCY_KEY_REQUIRED: 'Phiên xử lý chưa hợp lệ. Vui lòng tải lại trang và thử lại.',
+  SESSION_SELECTION_REQUIRED: 'Phiên làm việc chưa hợp lệ. Vui lòng đăng nhập lại.',
+  TOO_MANY_AUTH_COOKIES: 'Trình duyệt đang lưu quá nhiều phiên cũ. Vui lòng đăng xuất hoặc làm mới trình duyệt rồi đăng nhập lại.',
 
   // 401
   UNAUTHENTICATED: 'Bạn chưa đăng nhập hoặc phiên đã hết hạn.',
@@ -117,7 +117,7 @@ export const ERROR_MESSAGES_BY_CODE = {
   VALIDATION_ERROR: 'Dữ liệu gửi lên không hợp lệ. Vui lòng kiểm tra lại các trường nhập.',
   INVALID_AMOUNT: 'Số tiền nạp phải lớn hơn 0 và đúng định dạng cho phép.',
   TOPUP_BACKEND_INCOMPATIBLE:
-    'Máy chủ hiện tại chưa cập nhật luồng phê duyệt nạp tiền nên tạm khóa gửi yêu cầu để tránh cộng tiền trực tiếp.',
+    'Chức năng gửi yêu cầu nạp tiền hiện tạm thời bảo trì. Vui lòng thử lại sau hoặc liên hệ quầy trạm.',
   INVALID_ASSIGNEE: 'Người phụ trách phải là nhân viên hoặc quản lý đang hoạt động.',
   ASSIGNEE_REQUIRED: 'Cần phân công nhân viên phụ trách trước khi xử lý.',
   RESOLUTION_REQUIRED: 'Bắt buộc nhập kết quả xử lý.',
@@ -172,6 +172,34 @@ export function isUnsafeTechnicalMessage(text) {
   return UNSAFE_TECHNICAL_PATTERNS.some((pattern) => pattern.test(trimmed));
 }
 
+const ENUM_HUMAN_REPLACEMENTS = [
+  [/\bIN_RENT\b/g, 'Đang thuê'],
+  [/\bRESERVED\b/g, 'Đang giữ chỗ'],
+  [/\bRETURN_PENDING\b/g, 'Chờ quyết toán'],
+  [/\bCOMPLETED\b/g, 'Đã hoàn tất'],
+  [/\bCANCELLED\b/g, 'Đã hủy'],
+  [/\bEXPIRED\b/g, 'Đã hết hạn'],
+  [/\bAVAILABLE\b/g, 'Sẵn sàng'],
+  [/\bMAINTENANCE\b/g, 'Đang bảo trì'],
+  [/\bSUSPECTED_STOLEN\b/g, 'Nghi mất / trộm'],
+  [/\bSTOLEN\b/g, 'Mất xe'],
+  [/\bINCIDENT_PENDING\b/g, 'Đang xử lý sự cố'],
+  [/\bCLOSED_INCIDENT\b/g, 'Đã đóng sự cố'],
+  [/\bPENDING\b/g, 'Chờ duyệt'],
+  [/\bVERIFIED\b/g, 'Đã xác minh'],
+  [/\bREJECTED\b/g, 'Đã từ chối'],
+  [/\bACTIVE\b/g, 'Đang hoạt động'],
+  [/\bINACTIVE\b/g, 'Ngừng hoạt động'],
+];
+
+function humanizeStatusEnums(text) {
+  let out = text;
+  for (const [pattern, replacement] of ENUM_HUMAN_REPLACEMENTS) {
+    out = out.replace(pattern, replacement);
+  }
+  return out;
+}
+
 export function sanitizeUiMessage(rawMessage, fallbackMessage = 'Đã xảy ra lỗi không xác định.') {
   if (typeof rawMessage !== 'string') {
     return fallbackMessage;
@@ -180,7 +208,7 @@ export function sanitizeUiMessage(rawMessage, fallbackMessage = 'Đã xảy ra l
   if (!cleaned || isUnsafeTechnicalMessage(cleaned)) {
     return fallbackMessage;
   }
-  return cleaned;
+  return humanizeStatusEnums(cleaned);
 }
 
 export function sanitizeErrorDetails(details) {

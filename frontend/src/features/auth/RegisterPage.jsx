@@ -159,7 +159,7 @@ export default function RegisterPage() {
               required
               maxLength={100}
               autoComplete="email"
-              placeholder="khachhang@example.com"
+              placeholder="nguyen.minh@evride.vn"
               value={email}
               error={fieldErrors.email}
               onChange={(e) => setEmail(e.target.value)}

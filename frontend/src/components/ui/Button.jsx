@@ -28,7 +28,7 @@ export default function Button({
       {...rest}
     >
       {loading && <span className="btn-spinner" aria-hidden="true" />}
-      <span>{children}</span>
+      <span className="btn-content">{children}</span>
     </button>
   );
 }

@@ -361,7 +361,7 @@ export default function CustomerWalletPage() {
               <p>{getApiErrorMessage(topupMutation.error)}</p>
               {canRetrySameKey && (
                 <p style={{ fontSize: '0.85rem' }}>
-                  Kết quả phản hồi chưa xác định — bạn có thể bấm nút bên dưới để thử gửi lại an toàn với cùng khóa chống trùng lặp.
+                  Kết quả phản hồi chưa xác định — bạn có thể bấm nút bên dưới để thử gửi lại an toàn mà không bị tạo trùng yêu cầu.
                 </p>
               )}
             </div>
@@ -459,7 +459,7 @@ export default function CustomerWalletPage() {
                 onRetry={topupsQuery.reload}
                 title={
                   compatibility.status === 'incompatible'
-                    ? 'Máy chủ chưa có danh sách yêu cầu nạp tiền chờ duyệt'
+                    ? 'Danh sách yêu cầu nạp tiền hiện tạm thời chưa khả dụng'
                     : 'Không tải được danh sách yêu cầu nạp tiền'
                 }
                 hideCode

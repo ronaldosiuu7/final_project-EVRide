@@ -8,6 +8,7 @@ import {
   StatusBadge,
   TextField,
 } from '../../components/ui';
+import StationMap from '../../components/maps/StationMap.jsx';
 import useApiQuery from '../../hooks/useApiQuery';
 import useDebouncedValue from '../../hooks/useDebouncedValue';
 import { useAuth } from '../../integrations/authBridge';
@@ -30,6 +31,8 @@ export default function AdminStationList() {
   const [pageSize, setPageSize] = useState(20);
   const [editingStation, setEditingStation] = useState(null);
   const [creating, setCreating] = useState(false);
+  const [showMap, setShowMap] = useState(true);
+  const [selectedStationId, setSelectedStationId] = useState(null);
 
   const { data, meta, loading, error, reload } = useApiQuery(
     ({ signal }) =>
@@ -117,10 +120,13 @@ export default function AdminStationList() {
         <div>
           <h2>Quản lý trạm xe máy điện</h2>
           <p className="muted">
-            Bao gồm cả trạm ACTIVE và INACTIVE từ API vận hành <code>GET /admin/stations</code>.
+            Quản lý toàn bộ trạm đang hoạt động và tạm ngưng, theo dõi sức chứa, chỗ trả trống và số xe sẵn sàng.
           </p>
         </div>
         <div className="page-header-actions">
+          <Button variant="secondary" onClick={() => setShowMap((v) => !v)}>
+            {showMap ? 'Ẩn bản đồ' : 'Xem bản đồ trạm'}
+          </Button>
           {isManager && (
             <Button variant="primary" onClick={() => setCreating(true)}>
               + Tạo trạm mới
@@ -145,8 +151,8 @@ export default function AdminStationList() {
           value={status}
           placeholder="Tất cả trạng thái"
           options={[
-            { value: 'ACTIVE', label: 'Hoạt động (ACTIVE)' },
-            { value: 'INACTIVE', label: 'Ngừng hoạt động (INACTIVE)' },
+            { value: 'ACTIVE', label: 'Đang hoạt động' },
+            { value: 'INACTIVE', label: 'Ngừng hoạt động' },
           ]}
           onChange={(e) => {
             setStatus(e.target.value);
@@ -154,6 +160,20 @@ export default function AdminStationList() {
           }}
         />
       </FilterBar>
+
+      {showMap && !loading && !error && (data || []).length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <StationMap
+            stations={data || []}
+            mode="admin"
+            selectedStationId={selectedStationId}
+            onSelectStation={(st) => setSelectedStationId(String(st.id))}
+            onEditStation={isManager ? (st) => setEditingStation(st) : null}
+            heightVariant="compact"
+            ariaLabel="Bản đồ giám sát mạng lưới trạm vận hành"
+          />
+        </div>
+      )}
 
       <DataTable
         columns={columns}
@@ -168,7 +188,7 @@ export default function AdminStationList() {
           setPage(1);
         }}
         emptyTitle="Không có trạm nào phù hợp"
-        emptyHint="Thử xóa bộ lọc hoặc MANAGER tạo trạm mới."
+        emptyHint="Thử xóa bộ lọc hoặc tạo trạm mới."
         emptyAction={
           <Button size="sm" onClick={resetFilters}>
             Xóa bộ lọc

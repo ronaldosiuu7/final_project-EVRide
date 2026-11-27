@@ -14,7 +14,7 @@ const PALETTE = [
 ];
 
 function colorForModel(modelKey, allModels) {
-  if (modelKey === 'Thiếu snapshot') return '#6b7280';
+  if (modelKey === 'Chưa phân loại') return '#64748b';
   const index = allModels.indexOf(modelKey);
   if (index >= 0) return PALETTE[index % PALETTE.length];
   let hash = 0;
@@ -33,7 +33,7 @@ export default function RevenueStackedChart({ items = [] }) {
   const byMonth = new Map();
 
   for (const row of items) {
-    const modelLabel = row.vehicle_model || 'Thiếu snapshot';
+    const modelLabel = row.vehicle_model || 'Chưa phân loại';
     modelSet.add(modelLabel);
     if (!byMonth.has(row.month)) {
       byMonth.set(row.month, { month: row.month, total: 0, segments: [] });
@@ -51,8 +51,8 @@ export default function RevenueStackedChart({ items = [] }) {
   return (
     <div className="chart-card">
       <div className="card-header">
-        <h3>Biểu đồ cột chồng doanh thu theo tháng &amp; mẫu xe (Snapshot)</h3>
-        <span className="muted">Di chuột hoặc focus vào từng đoạn cột để xem chi tiết</span>
+        <h3>Biểu đồ cột chồng doanh thu theo tháng &amp; dòng xe</h3>
+        <span className="muted">Di chuột hoặc chọn vào từng phần cột để xem chi tiết</span>
       </div>
 
       <div className="chart-legend" aria-label="Chú giải mẫu xe">

@@ -8,6 +8,7 @@ import {
   TextField,
   useToast,
 } from '../../components/ui';
+import GpsRouteMap from '../../components/maps/GpsRouteMap.jsx';
 import useApiQuery from '../../hooks/useApiQuery';
 import useIdempotentMutation from '../../hooks/useIdempotentMutation';
 import {
@@ -18,9 +19,10 @@ import {
 import { getApiErrorMessage } from '../../utils/errorMessages';
 import { formatDateTimeVN, nowLocalInput, toIsoWithVietnamOffset } from '../../utils/format';
 
-export default function RentalGpsPanel({ rental }) {
+export default function RentalGpsPanel({ rental, pickupStation = null, returnStation = null }) {
   const toast = useToast();
   const [page, setPage] = useState(1);
+  const [selectedPointId, setSelectedPointId] = useState(null);
   const [latitude, setLatitude] = useState('21.028500');
   const [longitude, setLongitude] = useState('105.854200');
   const [recordedAt, setRecordedAt] = useState(nowLocalInput());
@@ -28,6 +30,7 @@ export default function RentalGpsPanel({ rental }) {
 
   useEffect(() => {
     setPage(1);
+    setSelectedPointId(null);
     setCoordError('');
     setRecordedAt(nowLocalInput());
   }, [rental.id]);
@@ -75,20 +78,44 @@ export default function RentalGpsPanel({ rental }) {
   };
 
   const columns = [
-    { key: 'id', header: 'ID', render: (p) => `#${p.id}` },
-    { key: 'latitude', header: 'Vĩ độ (latitude)' },
-    { key: 'longitude', header: 'Kinh độ (longitude)' },
+    { key: 'id', header: 'Mã điểm', render: (p) => `#${p.id}` },
+    { key: 'latitude', header: 'Vĩ độ' },
+    { key: 'longitude', header: 'Kinh độ' },
     {
       key: 'recorded_at',
       header: 'Thời điểm ghi nhận (giờ VN)',
       render: (p) => formatDateTimeVN(p.recorded_at, { withSeconds: true }),
     },
+    {
+      key: 'focus',
+      header: 'Bản đồ',
+      render: (p) => (
+        <Button
+          size="sm"
+          variant={String(selectedPointId) === String(p.id) ? 'primary' : 'ghost'}
+          onClick={() => setSelectedPointId(String(p.id))}
+        >
+          {String(selectedPointId) === String(p.id) ? 'Đang xem' : 'Định vị'}
+        </Button>
+      ),
+    },
   ];
 
   const latest = latestQuery.data;
+  const historyRows = historyQuery.data || [];
 
   return (
     <div className="stack-md">
+      <GpsRouteMap
+        latestPoint={latest?.point || null}
+        isStale={Boolean(latest?.is_stale)}
+        historyPoints={historyRows}
+        pickupStation={pickupStation}
+        returnStation={returnStation}
+        selectedPointId={selectedPointId}
+        onSelectPoint={(pt) => setSelectedPointId(String(pt.id))}
+      />
+
       <div className="card stack-sm">
         <div className="card-header">
           <h3>Vị trí GPS gần nhất</h3>
@@ -112,7 +139,7 @@ export default function RentalGpsPanel({ rental }) {
             {latest.point ? (
               <dl className="detail-grid">
                 <div className="detail-item">
-                  <dt>Tọa độ</dt>
+                  <dt>Tọa độ gần nhất</dt>
                   <dd>
                     {latest.point.latitude}, {latest.point.longitude}
                   </dd>
@@ -134,7 +161,7 @@ export default function RentalGpsPanel({ rental }) {
           <h4>Cập nhật tọa độ GPS thủ công</h4>
           <form onSubmit={handlePostDemoGps} className="row-wrap">
             <TextField
-              label="Latitude"
+              label="Vĩ độ"
               type="number"
               step="0.000001"
               min={-90}
@@ -144,7 +171,7 @@ export default function RentalGpsPanel({ rental }) {
               onChange={(e) => setLatitude(e.target.value)}
             />
             <TextField
-              label="Longitude"
+              label="Kinh độ"
               type="number"
               step="0.000001"
               min={-180}
@@ -176,7 +203,7 @@ export default function RentalGpsPanel({ rental }) {
         <h4>Lịch sử tọa độ GPS</h4>
         <DataTable
           columns={columns}
-          rows={historyQuery.data || []}
+          rows={historyRows}
           loading={historyQuery.loading}
           error={historyQuery.error}
           onRetry={historyQuery.reload}

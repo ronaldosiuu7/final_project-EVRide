@@ -10,12 +10,14 @@ import {
 } from '../../components/ui';
 import useApiQuery from '../../hooks/useApiQuery';
 import { useAuth } from '../../integrations/authBridge';
+import { listActiveEmployees } from '../../services/accountsApi';
 import {
   getVehicle,
   listAdminStations,
   listPrices,
   listVehicleMoveHistory,
 } from '../../services/fleetApi';
+import { buildIdMap, getStationDisplayName, getUserDisplay } from '../../utils/entityDisplay';
 import { formatDateTimeVN, formatVnd } from '../../utils/format';
 import PriceCreateModal from '../prices/PriceCreateModal';
 import VehicleBatteryModal from './VehicleBatteryModal';
@@ -40,6 +42,7 @@ export default function VehicleDetailPage() {
 
   const vehicleQuery = useApiQuery(() => getVehicle(vehicleId), [vehicleId]);
   const stationsQuery = useApiQuery(() => listAdminStations({ page: 1, page_size: 100 }), []);
+  const employeesQuery = useApiQuery(({ signal }) => listActiveEmployees({ signal }), []);
   const pricesQuery = useApiQuery(
     () => listPrices({ vehicle_id: vehicleId, page: pricePage, page_size: 20 }),
     [vehicleId, pricePage]
@@ -56,9 +59,10 @@ export default function VehicleDetailPage() {
   if (!vehicle) return null;
 
   const stations = stationsQuery.data || [];
-  const stationMap = new Map(stations.map((s) => [s.id, s]));
+  const stationMap = buildIdMap(stations);
+  const employeeMap = buildIdMap(employeesQuery.data || []);
   const currentStation = vehicle.current_station_id
-    ? stationMap.get(vehicle.current_station_id)
+    ? stationMap.get(String(vehicle.current_station_id))
     : null;
 
   const atStation = vehicle.current_station_id !== null;
@@ -91,23 +95,47 @@ export default function VehicleDetailPage() {
       header: 'Tiền cọc (Cũ → Mới)',
       render: (p) => `${formatVnd(p.old_deposit_amount)} → ${formatVnd(p.new_deposit_amount)}`,
     },
-    { key: 'changed_by', header: 'Người áp dụng', render: (p) => `User #${p.changed_by}` },
+    {
+      key: 'changed_by',
+      header: 'Người áp dụng',
+      render: (p) => {
+        const actor = getUserDisplay(employeeMap, p.changed_by, 'Nhân sự');
+        return (
+          <div>
+            <div>{actor.primary}</div>
+            {actor.secondary && <div className="muted">{actor.secondary}</div>}
+          </div>
+        );
+      },
+    },
     { key: 'created_at', header: 'Thời điểm', render: (p) => formatDateTimeVN(p.created_at) },
   ];
 
   const moveColumns = [
-    { key: 'id', header: 'ID Audit', render: (m) => `#${m.id}` },
+    { key: 'id', header: 'Mã', render: (m) => `#${m.id}` },
     {
       key: 'from_station_id',
       header: 'Trạm nguồn',
-      render: (m) => stationMap.get(m.from_station_id)?.name || `#${m.from_station_id}`,
+      render: (m) => getStationDisplayName(stationMap, m.from_station_id),
     },
     {
       key: 'to_station_id',
       header: 'Trạm đích',
-      render: (m) => stationMap.get(m.to_station_id)?.name || `#${m.to_station_id}`,
+      render: (m) => getStationDisplayName(stationMap, m.to_station_id),
     },
-    { key: 'actor_id', header: 'Người điều chuyển', render: (m) => `User #${m.actor_id}` },
+    {
+      key: 'actor_id',
+      header: 'Người điều chuyển',
+      render: (m) => {
+        const actor = getUserDisplay(employeeMap, m.actor_id, 'Nhân sự');
+        return (
+          <div>
+            <div>{actor.primary}</div>
+            {actor.secondary && <div className="muted">{actor.secondary}</div>}
+          </div>
+        );
+      },
+    },
     { key: 'note', header: 'Ghi chú', render: (m) => m.note || '—' },
     { key: 'moved_at', header: 'Thời điểm', render: (m) => formatDateTimeVN(m.moved_at) },
   ];
@@ -117,12 +145,16 @@ export default function VehicleDetailPage() {
       <div className="page-header">
         <div>
           <Link to="/admin/vehicles">← Quay lại danh sách xe</Link>
-          <h2>
-            Xe máy điện #{vehicle.id}: {vehicle.name}
-          </h2>
+          <div className="row-wrap" style={{ marginTop: 4 }}>
+            <h2>{vehicle.name}</h2>
+            <StatusBadge domain="vehicleStatus" value={vehicle.status} />
+          </div>
+          <p className="muted" style={{ marginTop: 4 }}>
+            Mã xe #{vehicle.id} · {vehicle.model}
+          </p>
         </div>
         <div className="page-header-actions">
-          {isManager && <Button onClick={() => setEditing(true)}>Sửa tên / model</Button>}
+          {isManager && <Button onClick={() => setEditing(true)}>Sửa tên / dòng xe</Button>}
           <Button disabled={!canBattery} onClick={() => setBatteryOpen(true)}>
             Cập nhật pin
           </Button>
@@ -131,7 +163,7 @@ export default function VehicleDetailPage() {
           </Button>
           {vehicle.status === 'MAINTENANCE' ? (
             <Button disabled={!canReopen} onClick={() => setStatusOpen(true)}>
-              Mở lại (AVAILABLE)
+              Mở lại cho thuê
             </Button>
           ) : (
             <Button disabled={!canMaintenance} onClick={() => setStatusOpen(true)}>
@@ -149,7 +181,7 @@ export default function VehicleDetailPage() {
       <div className="card">
         <dl className="detail-grid">
           <div className="detail-item">
-            <dt>Mẫu xe (model)</dt>
+            <dt>Dòng xe</dt>
             <dd>{vehicle.model}</dd>
           </div>
           <div className="detail-item">
@@ -206,7 +238,7 @@ export default function VehicleDetailPage() {
         {activeTab === 'prices' && (
           <div className="stack-sm">
             <div className="alert alert-info">
-              Lịch sử giá là chỉ đọc (append-only). Giá mới chỉ áp dụng cho lượt giữ/chuyến thuê tạo sau khi cập nhật, không làm thay đổi snapshot của chuyến đã tạo.
+              Lịch sử giá được lưu cố định theo từng phiên bản. Giá mới chỉ áp dụng cho các lượt giữ và chuyến thuê tạo sau thời điểm cập nhật.
             </div>
             <DataTable
               columns={priceColumns}

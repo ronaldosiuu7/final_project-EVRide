@@ -3,7 +3,9 @@ import { Link } from 'react-router-dom';
 import { Button, DataTable, FilterBar, TextField } from '../../components/ui';
 import useApiQuery from '../../hooks/useApiQuery';
 import { useAuth } from '../../integrations/authBridge';
-import { listPrices } from '../../services/fleetApi';
+import { listActiveEmployees } from '../../services/accountsApi';
+import { listPrices, listVehicles } from '../../services/fleetApi';
+import { buildIdMap, getUserDisplay, getVehicleDisplay } from '../../utils/entityDisplay';
 import { formatDateTimeVN, formatVnd } from '../../utils/format';
 import { isPositiveIdString } from '../../utils/validation';
 import PriceCreateModal from './PriceCreateModal';
@@ -28,6 +30,14 @@ export default function AdminPriceList() {
     [appliedVehicleId, page, pageSize]
   );
 
+  const vehiclesLookupQuery = useApiQuery(
+    ({ signal }) => listVehicles({ page: 1, page_size: 100 }, { signal }),
+    []
+  );
+  const employeesQuery = useApiQuery(({ signal }) => listActiveEmployees({ signal }), []);
+  const vehicleMap = buildIdMap(vehiclesLookupQuery.data || []);
+  const employeeMap = buildIdMap(employeesQuery.data || []);
+
   const applyFilter = () => {
     setAppliedVehicleId(vehicleIdInput.trim());
     setPage(1);
@@ -43,7 +53,17 @@ export default function AdminPriceList() {
     {
       key: 'vehicle_id',
       header: 'Xe máy điện',
-      render: (p) => <Link to={`/admin/vehicles/${p.vehicle_id}`}>Xe #{p.vehicle_id}</Link>,
+      render: (p) => {
+        const vehicle = getVehicleDisplay(vehicleMap, p.vehicle_id);
+        return (
+          <div>
+            <Link to={`/admin/vehicles/${p.vehicle_id}`}>
+              <strong>{vehicle.primary}</strong>
+            </Link>
+            {vehicle.secondary && <div className="muted">{vehicle.secondary}</div>}
+          </div>
+        );
+      },
     },
     { key: 'version_number', header: 'Phiên bản', render: (p) => `v${p.version_number}` },
     {
@@ -63,7 +83,19 @@ export default function AdminPriceList() {
       header: 'Tiền cọc (Cũ → Mới)',
       render: (p) => `${formatVnd(p.old_deposit_amount)} → ${formatVnd(p.new_deposit_amount)}`,
     },
-    { key: 'changed_by', header: 'Người áp dụng', render: (p) => `User #${p.changed_by}` },
+    {
+      key: 'changed_by',
+      header: 'Người áp dụng',
+      render: (p) => {
+        const actor = getUserDisplay(employeeMap, p.changed_by, 'Nhân sự');
+        return (
+          <div>
+            <div>{actor.primary}</div>
+            {actor.secondary && <div className="muted">{actor.secondary}</div>}
+          </div>
+        );
+      },
+    },
     { key: 'created_at', header: 'Thời điểm áp dụng', render: (p) => formatDateTimeVN(p.created_at) },
   ];
 
@@ -71,9 +103,9 @@ export default function AdminPriceList() {
     <div>
       <div className="page-header">
         <div>
-          <h2>Bảng giá theo xe (M5)</h2>
+          <h2>Bảng giá theo xe</h2>
           <p className="muted">
-            Để trống bộ lọc để xem phiên bản giá hiện hành của từng xe; nhập ID xe để xem toàn bộ lịch sử phiên bản (chỉ đọc).
+            Để trống bộ lọc để xem phiên bản giá hiện hành của từng xe; nhập mã xe để xem toàn bộ lịch sử điều chỉnh giá.
           </p>
         </div>
         {isManager && (

@@ -1,19 +1,16 @@
-// Bản đồ enum -> nhãn tiếng Việt và màu sắc hiển thị theo contract V1.
-// - STATUS_CONFIG & getStatusMeta: giữ tương thích hoàn toàn cho khu vực vận hành (#16).
-// - CUSTOMER_STATUS_CONFIG & getCustomerStatusMeta: nhãn tiếng Việt tự nhiên cho khách hàng (#15),
-//   tuyệt đối không hiển thị mã enum thô trên giao diện khách hàng.
+// Bản đồ enum -> nhãn tiếng Việt tự nhiên và màu sắc hiển thị thống nhất toàn hệ thống EVRide.
 
 export const STATUS_CONFIG = {
   userRole: {
-    CUSTOMER: { label: 'Khách hàng (CUSTOMER)', tone: 'neutral' },
-    STAFF: { label: 'Nhân viên (STAFF)', tone: 'info' },
-    MANAGER: { label: 'Quản lý (MANAGER)', tone: 'success' },
+    CUSTOMER: { label: 'Khách hàng', tone: 'neutral' },
+    STAFF: { label: 'Nhân viên vận hành', tone: 'info' },
+    MANAGER: { label: 'Quản lý', tone: 'success' },
   },
   userStatus: {
-    ACTIVE: { label: 'Đang hoạt động (ACTIVE)', tone: 'success' },
-    INACTIVE: { label: 'Ngừng hoạt động (INACTIVE)', tone: 'neutral' },
-    BLOCKED: { label: 'Bị khóa (BLOCKED)', tone: 'danger' },
-    BLACKLISTED: { label: 'Danh sách đen (BLACKLISTED)', tone: 'danger' },
+    ACTIVE: { label: 'Đang hoạt động', tone: 'success' },
+    INACTIVE: { label: 'Ngừng hoạt động', tone: 'neutral' },
+    BLOCKED: { label: 'Đang bị khóa', tone: 'danger' },
+    BLACKLISTED: { label: 'Hạn chế sử dụng', tone: 'danger' },
   },
   documentType: {
     CCCD: { label: 'CCCD', tone: 'info' },
@@ -21,28 +18,28 @@ export const STATUS_CONFIG = {
     DRIVER_LICENSE: { label: 'GPLX', tone: 'info' },
   },
   documentStatus: {
-    PENDING: { label: 'Chờ duyệt (PENDING)', tone: 'warning' },
-    VERIFIED: { label: 'Đã xác minh (VERIFIED)', tone: 'success' },
-    REJECTED: { label: 'Từ chối (REJECTED)', tone: 'danger' },
-    REVOKED: { label: 'Đã thu hồi (REVOKED)', tone: 'danger' },
+    PENDING: { label: 'Chờ duyệt', tone: 'warning' },
+    VERIFIED: { label: 'Đã xác minh', tone: 'success' },
+    REJECTED: { label: 'Đã từ chối', tone: 'danger' },
+    REVOKED: { label: 'Đã thu hồi', tone: 'danger' },
   },
   stationStatus: {
-    ACTIVE: { label: 'Hoạt động (ACTIVE)', tone: 'success' },
-    INACTIVE: { label: 'Ngừng hoạt động (INACTIVE)', tone: 'danger' },
+    ACTIVE: { label: 'Đang hoạt động', tone: 'success' },
+    INACTIVE: { label: 'Ngừng hoạt động', tone: 'danger' },
   },
   vehicleStatus: {
-    AVAILABLE: { label: 'Sẵn sàng (AVAILABLE)', tone: 'success' },
-    RESERVED: { label: 'Đang giữ chỗ (RESERVED)', tone: 'warning' },
-    RENTED: { label: 'Đang cho thuê (RENTED)', tone: 'info' },
-    RETURN_PENDING: { label: 'Chờ quyết toán (RETURN_PENDING)', tone: 'warning' },
-    MAINTENANCE: { label: 'Bảo trì (MAINTENANCE)', tone: 'danger' },
-    SUSPECTED_STOLEN: { label: 'Nghi mất/trộm (SUSPECTED_STOLEN)', tone: 'danger' },
-    STOLEN: { label: 'Mất xe (STOLEN)', tone: 'danger' },
+    AVAILABLE: { label: 'Sẵn sàng', tone: 'success' },
+    RESERVED: { label: 'Đang giữ chỗ', tone: 'warning' },
+    RENTED: { label: 'Đang cho thuê', tone: 'info' },
+    RETURN_PENDING: { label: 'Chờ quyết toán', tone: 'warning' },
+    MAINTENANCE: { label: 'Đang bảo trì', tone: 'danger' },
+    SUSPECTED_STOLEN: { label: 'Nghi mất / trộm', tone: 'danger' },
+    STOLEN: { label: 'Mất xe', tone: 'danger' },
   },
   walletStatus: {
-    ACTIVE: { label: 'Hoạt động (ACTIVE)', tone: 'success' },
-    FROZEN: { label: 'Đóng băng (FROZEN)', tone: 'warning' },
-    LOCKED: { label: 'Đã khóa (LOCKED)', tone: 'danger' },
+    ACTIVE: { label: 'Đang hoạt động', tone: 'success' },
+    FROZEN: { label: 'Tạm đóng băng', tone: 'warning' },
+    LOCKED: { label: 'Đã khóa', tone: 'danger' },
   },
   topupStatus: {
     PENDING: { label: 'Chờ xác nhận', tone: 'warning' },
@@ -59,24 +56,24 @@ export const STATUS_CONFIG = {
     COMPENSATION_REFUND: { label: 'Hoàn tiền bồi thường', tone: 'success' },
   },
   promotionStatus: {
-    ACTIVE: { label: 'Đang bật (ACTIVE)', tone: 'success' },
-    EXPIRED: { label: 'Hết hạn (EXPIRED)', tone: 'neutral' },
-    DISABLED: { label: 'Đã tắt (DISABLED)', tone: 'neutral' },
+    ACTIVE: { label: 'Đang áp dụng', tone: 'success' },
+    EXPIRED: { label: 'Đã hết hạn', tone: 'neutral' },
+    DISABLED: { label: 'Đã tạm tắt', tone: 'neutral' },
   },
   promotionType: {
     PERCENTAGE: { label: 'Giảm theo %', tone: 'info' },
     FIXED_AMOUNT: { label: 'Giảm số tiền cố định', tone: 'info' },
   },
   rentalStatus: {
-    RESERVED: { label: 'Đang giữ chỗ (RESERVED)', tone: 'warning' },
-    IN_RENT: { label: 'Đang thuê (IN_RENT)', tone: 'info' },
-    RETURN_PENDING: { label: 'Chờ quyết toán (RETURN_PENDING)', tone: 'warning' },
-    COMPLETED: { label: 'Hoàn tất (COMPLETED)', tone: 'success' },
-    CANCELLED: { label: 'Đã hủy (CANCELLED)', tone: 'neutral' },
-    EXPIRED: { label: 'Hết hạn giữ (EXPIRED)', tone: 'neutral' },
-    STOLEN: { label: 'Mất xe (STOLEN)', tone: 'danger' },
-    INCIDENT_PENDING: { label: 'Đang xử lý sự cố (INCIDENT_PENDING)', tone: 'danger' },
-    CLOSED_INCIDENT: { label: 'Đã đóng sự cố (CLOSED_INCIDENT)', tone: 'neutral' },
+    RESERVED: { label: 'Đang giữ chỗ', tone: 'warning' },
+    IN_RENT: { label: 'Đang thuê', tone: 'info' },
+    RETURN_PENDING: { label: 'Chờ quyết toán', tone: 'warning' },
+    COMPLETED: { label: 'Hoàn tất', tone: 'success' },
+    CANCELLED: { label: 'Đã hủy', tone: 'neutral' },
+    EXPIRED: { label: 'Hết hạn giữ', tone: 'neutral' },
+    STOLEN: { label: 'Mất xe', tone: 'danger' },
+    INCIDENT_PENDING: { label: 'Đang xử lý sự cố', tone: 'danger' },
+    CLOSED_INCIDENT: { label: 'Đã đóng sự cố', tone: 'neutral' },
   },
   rentalTransactionKind: {
     DEPOSIT: { label: 'Thu tiền cọc', tone: 'warning' },
@@ -99,40 +96,40 @@ export const STATUS_CONFIG = {
     NEEDS_MAINTENANCE: { label: 'Cần kiểm tra kỹ thuật', tone: 'warning' },
   },
   ticketStatus: {
-    OPEN: { label: 'Mới mở (OPEN)', tone: 'warning' },
-    IN_PROGRESS: { label: 'Đang xử lý (IN_PROGRESS)', tone: 'info' },
-    RESOLVED: { label: 'Đã giải quyết (RESOLVED)', tone: 'success' },
-    CLOSED: { label: 'Đã đóng (CLOSED)', tone: 'neutral' },
+    OPEN: { label: 'Mới mở', tone: 'warning' },
+    IN_PROGRESS: { label: 'Đang xử lý', tone: 'info' },
+    RESOLVED: { label: 'Đã giải quyết', tone: 'success' },
+    CLOSED: { label: 'Đã đóng', tone: 'neutral' },
   },
   maintenanceStatus: {
-    OPEN: { label: 'Chờ xử lý (OPEN)', tone: 'warning' },
-    IN_PROGRESS: { label: 'Đang sửa chữa (IN_PROGRESS)', tone: 'info' },
-    COMPLETED: { label: 'Hoàn tất (COMPLETED)', tone: 'success' },
-    CANCELLED: { label: 'Đã hủy (CANCELLED)', tone: 'neutral' },
+    OPEN: { label: 'Chờ xử lý', tone: 'warning' },
+    IN_PROGRESS: { label: 'Đang sửa chữa', tone: 'info' },
+    COMPLETED: { label: 'Hoàn tất', tone: 'success' },
+    CANCELLED: { label: 'Đã hủy', tone: 'neutral' },
   },
   incidentStatus: {
-    OPEN: { label: 'Mới tạo (OPEN)', tone: 'warning' },
-    INVESTIGATING: { label: 'Đang điều tra (INVESTIGATING)', tone: 'info' },
-    CONFIRMED: { label: 'Đã xác nhận (CONFIRMED)', tone: 'danger' },
-    DISMISSED: { label: 'Báo nhầm (DISMISSED)', tone: 'neutral' },
-    CLOSED: { label: 'Đã đóng hồ sơ (CLOSED)', tone: 'success' },
+    OPEN: { label: 'Mới tạo', tone: 'warning' },
+    INVESTIGATING: { label: 'Đang điều tra', tone: 'info' },
+    CONFIRMED: { label: 'Đã xác nhận', tone: 'danger' },
+    DISMISSED: { label: 'Báo nhầm', tone: 'neutral' },
+    CLOSED: { label: 'Đã đóng hồ sơ', tone: 'success' },
   },
   incidentOutcome: {
-    FALSE_ALARM: { label: 'Báo nhầm (FALSE_ALARM)', tone: 'neutral' },
-    LOSS_THEFT: { label: 'Mất / Trộm (LOSS_THEFT)', tone: 'danger' },
-    ABANDONMENT: { label: 'Bỏ xe (ABANDONMENT)', tone: 'warning' },
+    FALSE_ALARM: { label: 'Báo nhầm', tone: 'neutral' },
+    LOSS_THEFT: { label: 'Mất / Trộm', tone: 'danger' },
+    ABANDONMENT: { label: 'Bỏ xe', tone: 'warning' },
   },
   recoveryCondition: {
-    INTACT: { label: 'Nguyên vẹn (INTACT)', tone: 'success' },
-    REPAIRABLE: { label: 'Hư hỏng sửa được (REPAIRABLE)', tone: 'warning' },
-    UNREPAIRABLE: { label: 'Hư hỏng không sửa được (UNREPAIRABLE)', tone: 'danger' },
+    INTACT: { label: 'Nguyên vẹn', tone: 'success' },
+    REPAIRABLE: { label: 'Hư hỏng sửa được', tone: 'warning' },
+    UNREPAIRABLE: { label: 'Hư hỏng không sửa được', tone: 'danger' },
   },
   agreementStatus: {
-    PENDING: { label: 'Chưa xác định (PENDING)', tone: 'neutral' },
-    DISPUTED: { label: 'Đang trao đổi (DISPUTED)', tone: 'warning' },
-    AGREED: { label: 'Đã thỏa thuận (AGREED)', tone: 'success' },
-    AUTHORITY_DECISION: { label: 'Quyết định cơ quan thẩm quyền (AUTHORITY_DECISION)', tone: 'info' },
-    NOT_REQUIRED: { label: 'Không yêu cầu bồi thường (NOT_REQUIRED)', tone: 'success' },
+    PENDING: { label: 'Chưa xác định', tone: 'neutral' },
+    DISPUTED: { label: 'Đang trao đổi', tone: 'warning' },
+    AGREED: { label: 'Đã thỏa thuận', tone: 'success' },
+    AUTHORITY_DECISION: { label: 'Quyết định cơ quan thẩm quyền', tone: 'info' },
+    NOT_REQUIRED: { label: 'Không yêu cầu bồi thường', tone: 'success' },
   },
   revenueType: {
     NORMAL: { label: 'Chuyến thường', tone: 'success' },
@@ -142,6 +139,11 @@ export const STATUS_CONFIG = {
     PENDING: { label: 'Đang xử lý', tone: 'warning' },
     SUCCESS: { label: 'Thành công', tone: 'success' },
     FAILED: { label: 'Thất bại', tone: 'danger' },
+  },
+  reportSource: {
+    CUSTOMER: { label: 'Khách hàng báo', tone: 'info' },
+    STAFF: { label: 'Nhân viên ghi nhận', tone: 'neutral' },
+    SYSTEM: { label: 'Cảnh báo hệ thống', tone: 'warning' },
   },
 };
 
@@ -249,7 +251,7 @@ export function getStatusMeta(domain, value) {
 }
 
 /**
- * Lấy nhãn tiếng Việt thuần túy và màu hiển thị cho giao diện CUSTOMER (không bao giờ lộ enum thô).
+ * Lấy nhãn tiếng Việt thuần túy và màu hiển thị cho giao diện khách hàng (không lộ mã nội bộ).
  */
 export function getCustomerStatusMeta(domain, value) {
   if (value === null || value === undefined || value === '') {

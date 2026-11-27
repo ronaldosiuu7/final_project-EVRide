@@ -110,7 +110,7 @@ export default function VehicleFormModal({ vehicle = null, stations = [], onClos
           onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
         />
         <TextField
-          label="Mẫu xe (model)"
+          label="Dòng xe"
           required
           maxLength={100}
           placeholder="Ví dụ: Klara S, Feliz S, Evo200..."
@@ -126,7 +126,7 @@ export default function VehicleFormModal({ vehicle = null, stations = [], onClos
               required
               value={form.current_station_id}
               error={fieldErrors.current_station_id}
-              placeholder="Chọn trạm ACTIVE"
+              placeholder="Chọn trạm đang hoạt động"
               options={activeStations.map((s) => ({
                 value: s.id,
                 label: `#${s.id} - ${s.name} (Trống ${s.available_spaces}/${s.capacity})`,
@@ -168,7 +168,7 @@ export default function VehicleFormModal({ vehicle = null, stations = [], onClos
               required
               value={form.deposit_amount}
               error={fieldErrors.deposit_amount}
-              hint="Muốn đổi giá sau khi tạo, sử dụng chức năng Bảng giá (POST /prices)."
+              hint="Muốn điều chỉnh giá sau khi tạo, hãy sử dụng mục Bảng giá theo xe."
               onChange={(e) => setForm((f) => ({ ...f, deposit_amount: e.target.value }))}
             />
           </>

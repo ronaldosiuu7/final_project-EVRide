@@ -22,6 +22,7 @@ const compiled = await build({
       export { default as CustomerRentalDetailPage } from './src/features/rentals/CustomerRentalDetailPage.jsx';
       export { default as CustomerWalletPage } from './src/features/wallet/CustomerWalletPage.jsx';
       export { default as CustomerPromotionsPage } from './src/features/promotions/CustomerPromotionsPage.jsx';
+      export { default as OperationalAnalyticsPage } from './src/features/analytics/OperationalAnalyticsPage.jsx';
       export { default as CustomerProfilePage } from './src/features/profile/CustomerProfilePage.jsx';
       export { default as CustomerTicketListPage } from './src/features/tickets/CustomerTicketListPage.jsx';
       export { default as CustomerFaqPage } from './src/features/faq/CustomerFaqPage.jsx';
@@ -66,6 +67,7 @@ const {
   CustomerRentalDetailPage,
   CustomerWalletPage,
   CustomerPromotionsPage,
+  OperationalAnalyticsPage,
   CustomerProfilePage,
   CustomerTicketListPage,
   CustomerFaqPage,
@@ -1354,6 +1356,51 @@ test('LoginPage and RegisterPage render split desktop shell with linked labels a
   } finally {
     act(() => loginRoot?.unmount());
     act(() => regRoot?.unmount());
+    resetPlatformApi();
+  }
+});
+
+test('Tabs renders items prop on CustomerWalletPage, CustomerRentalDetailPage shows 4-step stepper, and OperationalAnalyticsPage shows honest unconnected status', async () => {
+  const originalFetch = globalThis.fetch;
+  let walletRoot;
+  let opsRoot;
+  resetPlatformApi();
+
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes('/wallets/me/topups')) {
+      return jsonResponse({ data: [], meta: { page: 1, page_size: 10, total: 0 } });
+    }
+    if (u.includes('/wallets/me/transactions')) {
+      return jsonResponse({ data: [], meta: { page: 1, page_size: 10, total: 0 } });
+    }
+    return jsonResponse({
+      data: { id: 'w-1', balance: '250000.00', status: 'ACTIVE', updated_at: '2026-11-26T10:00:00Z' },
+    });
+  };
+
+  try {
+    await act(async () => {
+      walletRoot = TestRenderer.create(
+        h(MemoryRouter, { initialEntries: ['/wallet'] }, h(ToastProvider, null, h(CustomerWalletPage)))
+      );
+      opsRoot = TestRenderer.create(
+        h(MemoryRouter, { initialEntries: ['/admin/reports/operations'] }, h(OperationalAnalyticsPage))
+      );
+      await flush();
+      await flush();
+    });
+
+    const walletTabs = walletRoot.root.findAllByProps({ role: 'tab' });
+    assert.equal(walletTabs.length, 2, 'Wallet page must render both tabs via Tabs component');
+
+    const opsText = extractVisibleText(opsRoot.toJSON());
+    assert.match(opsText, /Chưa kết nối dữ liệu trực tiếp/);
+    assert.doesNotMatch(opsText, /Q3|Q5|Q8|RANK|as_of_date|OBSERVED_|demo|mock|fixture/i);
+  } finally {
+    act(() => walletRoot?.unmount());
+    act(() => opsRoot?.unmount());
+    globalThis.fetch = originalFetch;
     resetPlatformApi();
   }
 });

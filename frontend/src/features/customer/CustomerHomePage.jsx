@@ -168,15 +168,15 @@ export default function CustomerHomePage() {
               <dd>Tối đa 30 phút tại trạm</dd>
             </div>
             <div className="customer-hero-fact">
+              <dt>Trả xe linh hoạt</dt>
+              <dd>Tại bất kỳ trạm nào còn chỗ</dd>
+            </div>
+            <div className="customer-hero-fact">
               <dt>Cách tính cước</dt>
               <dd>30 phút đầu + mỗi phút thêm</dd>
             </div>
             <div className="customer-hero-fact">
-              <dt>Bàn giao &amp; trả xe</dt>
-              <dd>Nhân viên xác nhận tại trạm</dd>
-            </div>
-            <div className="customer-hero-fact">
-              <dt>Điều kiện mở khóa</dt>
+              <dt>Điều kiện nhận xe</dt>
               <dd>CCCD đã duyệt &amp; ví đủ cọc</dd>
             </div>
           </dl>

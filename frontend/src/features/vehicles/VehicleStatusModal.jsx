@@ -19,6 +19,9 @@ export default function VehicleStatusModal({ vehicle, onClose, onSuccess }) {
     updateVehicleStatus(vehicle.id, payload, idempotencyKey)
   );
 
+  const nextStatusLabel = nextStatus === 'MAINTENANCE' ? 'Đang bảo trì' : 'Sẵn sàng';
+  const currentStatusLabel = vehicle.status === 'AVAILABLE' ? 'Sẵn sàng' : 'Đang bảo trì';
+
   const handleConfirm = async () => {
     setConfirmOpen(false);
     try {
@@ -26,7 +29,7 @@ export default function VehicleStatusModal({ vehicle, onClose, onSuccess }) {
         status: nextStatus,
         note: note.trim(),
       });
-      toast.success(`Đã chuyển xe #${vehicle.id} sang ${nextStatus}.`);
+      toast.success(`Đã chuyển xe #${vehicle.id} sang trạng thái ${nextStatusLabel}.`);
       onSuccess(res.data);
     } catch {
       // Lỗi hiển thị ngay trên modal; giữ nguyên Idempotency-Key khi thử lại.
@@ -52,20 +55,19 @@ export default function VehicleStatusModal({ vehicle, onClose, onSuccess }) {
               loading={mutation.loading}
               onClick={() => setConfirmOpen(true)}
             >
-              Chuyển sang {nextStatus}
+              Chuyển sang {nextStatusLabel}
             </Button>
           </>
         }
       >
         <p className="muted">
           <strong>{vehicle.name}</strong> ({vehicle.model}): chuyển từ{' '}
-          <code>{vehicle.status}</code> sang <code>{nextStatus}</code>.
+          <strong>{currentStatusLabel}</strong> sang <strong>{nextStatusLabel}</strong>.
         </p>
 
         {forbiddenReopen && (
           <div className="alert alert-warning" role="alert">
-            Chỉ tài khoản <strong>MANAGER</strong> mới được mở lại xe từ <code>MAINTENANCE</code> sang{' '}
-            <code>AVAILABLE</code> (và xe phải hết phiếu bảo trì đang mở).
+            Chỉ tài khoản <strong>Quản lý</strong> mới được mở lại xe từ trạng thái bảo trì sang sẵn sàng (sau khi hoàn tất mọi phiếu bảo trì đang mở).
           </div>
         )}
 
@@ -92,7 +94,7 @@ export default function VehicleStatusModal({ vehicle, onClose, onSuccess }) {
       <ConfirmDialog
         open={confirmOpen}
         title="Xác nhận đổi trạng thái xe"
-        message={`Chuyển xe #${vehicle.id} sang trạng thái ${nextStatus}?`}
+        message={`Chuyển xe #${vehicle.id} sang trạng thái ${nextStatusLabel}?`}
         confirmLabel="Xác nhận"
         variant={nextStatus === 'MAINTENANCE' ? 'danger' : 'primary'}
         loading={mutation.loading}

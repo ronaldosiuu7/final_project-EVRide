@@ -84,7 +84,7 @@ export default function LoginPage() {
             <ul className="auth-aside-points">
               <li className="auth-aside-point">
                 <ClockIcon size={17} />
-                <span>Giữ xe miễn phí 30 phút theo đồng hồ máy chủ.</span>
+                <span>Giữ xe miễn phí 30 phút và trả xe tại bất kỳ trạm nào còn chỗ.</span>
               </li>
               <li className="auth-aside-point">
                 <ShieldCheckIcon size={17} />
@@ -140,7 +140,7 @@ export default function LoginPage() {
               required
               maxLength={100}
               autoComplete="username"
-              placeholder="ten.ban@example.com"
+              placeholder="nguyen.minh@evride.vn"
               value={email}
               error={fieldErrors.email}
               onChange={(e) => setEmail(e.target.value)}

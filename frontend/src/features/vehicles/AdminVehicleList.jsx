@@ -32,7 +32,7 @@ export default function AdminVehicleList() {
   const isManager = hasRole('MANAGER');
 
   const [stationId, setStationId] = useState(searchParams.get('station_id') || '');
-  const [status, setStatus] = useState('');
+  const [status, setStatus] = useState(searchParams.get('status') || '');
   const [model, setModel] = useState('');
   const debouncedModel = useDebouncedValue(model, 300);
   const [nameSearch, setNameSearch] = useState('');
@@ -103,7 +103,7 @@ export default function AdminVehicleList() {
       render: (v) => <Link to={`/admin/vehicles/${v.id}`}>#{v.id}</Link>,
     },
     { key: 'name', header: 'Tên xe máy điện' },
-    { key: 'model', header: 'Mẫu xe (model)' },
+    { key: 'model', header: 'Dòng xe' },
     {
       key: 'battery_percent',
       header: 'Pin',
@@ -172,7 +172,7 @@ export default function AdminVehicleList() {
               <Button
                 size="sm"
                 disabled={!canReopen}
-                title={isManager ? 'Mở lại xe sau bảo trì' : 'Chỉ MANAGER được mở lại xe'}
+                title={isManager ? 'Mở lại xe sau bảo trì' : 'Chỉ tài khoản quản lý được mở lại xe'}
                 onClick={() => setStatusVehicle(v)}
               >
                 Mở lại
@@ -194,7 +194,7 @@ export default function AdminVehicleList() {
         <div>
           <h2>Quản lý xe máy điện</h2>
           <p className="muted">
-            Thay đổi giá/cọc tại tab Chi tiết xe hoặc màn hình Bảng giá (<code>/admin/prices</code>).
+            Theo dõi trạng thái, mức pin, vị trí trạm và điều chỉnh biểu giá tại Chi tiết xe hoặc mục Bảng giá theo xe.
           </p>
         </div>
         <div className="page-header-actions">
@@ -234,9 +234,9 @@ export default function AdminVehicleList() {
           }}
         />
         <TextField
-          label="Mẫu xe (model)"
+          label="Dòng xe"
           type="search"
-          placeholder="Khớp chính xác mẫu xe..."
+          placeholder="Nhập chính xác tên dòng xe..."
           value={model}
           onChange={(e) => {
             setModel(e.target.value);
@@ -278,7 +278,7 @@ export default function AdminVehicleList() {
         emptyHint={
           normalizedNameSearch
             ? 'Không có xe nào trên trang hiện tại khớp từ khóa; thử sang trang khác hoặc xóa bộ lọc.'
-            : 'Thử xóa bộ lọc hoặc thêm xe mới (MANAGER).'
+            : 'Thử xóa bộ lọc hoặc thêm xe máy điện mới.'
         }
         emptyAction={
           <Button size="sm" onClick={resetFilters}>

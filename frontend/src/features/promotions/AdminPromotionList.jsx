@@ -36,7 +36,9 @@ export default function AdminPromotionList() {
     setTogglingLoading(true);
     try {
       await updatePromotionStatus(togglingPromo.id, { status: nextStatus });
-      toast.success(`Đã chuyển mã ${togglingPromo.code} sang ${nextStatus}.`);
+      toast.success(
+        `Đã ${nextStatus === 'ACTIVE' ? 'bật áp dụng' : 'tạm tắt'} mã khuyến mãi ${togglingPromo.code}.`
+      );
       setTogglingPromo(null);
       reload();
     } catch (err) {
@@ -110,7 +112,7 @@ export default function AdminPromotionList() {
           variant={p.status === 'ACTIVE' ? 'danger' : 'primary'}
           onClick={() => setTogglingPromo(p)}
         >
-          {p.status === 'ACTIVE' ? 'Tắt mã (DISABLED)' : 'Bật lại (ACTIVE)'}
+          {p.status === 'ACTIVE' ? 'Tạm tắt mã' : 'Bật lại mã'}
         </Button>
       ),
     },
@@ -120,9 +122,9 @@ export default function AdminPromotionList() {
     <div>
       <div className="page-header">
         <div>
-          <h2>Quản lý khuyến mãi (MANAGER)</h2>
+          <h2>Quản lý khuyến mãi</h2>
           <p className="muted">
-            Tạo mới và bật/tắt trạng thái khuyến mãi. Không áp dụng khuyến mãi cho hồ sơ sự cố đã xác nhận.
+            Tạo mới và quản lý trạng thái áp dụng các mã khuyến mãi. Khuyến mãi không áp dụng cho các hồ sơ sự cố đã xác nhận.
           </p>
         </div>
         <Button variant="primary" onClick={() => setCreating(true)}>
@@ -141,8 +143,8 @@ export default function AdminPromotionList() {
           value={status}
           placeholder="Tất cả"
           options={[
-            { value: 'ACTIVE', label: 'Đang bật (ACTIVE)' },
-            { value: 'DISABLED', label: 'Đã tắt (DISABLED)' },
+            { value: 'ACTIVE', label: 'Đang áp dụng' },
+            { value: 'DISABLED', label: 'Đã tạm tắt' },
           ]}
           onChange={(e) => {
             setStatus(e.target.value);

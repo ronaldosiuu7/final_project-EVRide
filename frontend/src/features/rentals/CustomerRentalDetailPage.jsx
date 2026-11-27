@@ -232,6 +232,25 @@ export default function CustomerRentalDetailPage() {
   const canCustomerCancel = user?.role === 'CUSTOMER' && rental.status === 'RESERVED';
   const showGpsSection = rental.actual_start_time !== null && rental.actual_start_time !== undefined;
 
+  const normalStepIndex = {
+    RESERVED: 0,
+    IN_RENT: 2,
+    RETURN_PENDING: 3,
+    COMPLETED: 4,
+  }[rental.status];
+
+  const rentalSteps = [
+    { num: 1, title: 'Giữ xe 30 phút', desc: 'Đến quầy trước khi hết hạn' },
+    { num: 2, title: 'Nhận xe tại trạm', desc: 'Nhân viên kiểm tra & giao xe' },
+    { num: 3, title: 'Đang di chuyển', desc: 'Trả tại bất kỳ trạm còn chỗ' },
+    { num: 4, title: 'Trả xe & Quyết toán', desc: 'Xuất hóa đơn minh bạch' },
+  ];
+
+  const holdProgressPct =
+    rental.status === 'RESERVED' && typeof countdownState.remainingSeconds === 'number'
+      ? Math.min(100, Math.max(0, Math.round((countdownState.remainingSeconds / 1800) * 100)))
+      : 0;
+
   return (
     <div className="customer-page">
       <nav className="customer-breadcrumb" aria-label="Đường dẫn">
@@ -285,6 +304,35 @@ export default function CustomerRentalDetailPage() {
           </div>
         </div>
 
+        {/* Tiến trình chuyến thuê trực quan cho người dùng mới */}
+        {normalStepIndex !== undefined && (
+          <ol className="rental-stepper" aria-label="Tiến trình chuyến thuê">
+            {rentalSteps.map((step, idx) => {
+              const stateClass =
+                normalStepIndex > idx
+                  ? 'is-done'
+                  : normalStepIndex === idx
+                    ? 'is-current'
+                    : 'is-upcoming';
+              return (
+                <li
+                  key={step.num}
+                  className={`rental-stepper-item ${stateClass}`}
+                  aria-current={normalStepIndex === idx ? 'step' : undefined}
+                >
+                  <span className="rental-stepper-num" aria-hidden="true">
+                    {step.num}
+                  </span>
+                  <div className="rental-stepper-copy">
+                    <strong>{step.title}</strong>
+                    <span>{step.desc}</span>
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        )}
+
         {/* Trạng thái RESERVED: đếm ngược theo server_time + hủy giữ chỗ */}
         {rental.status === 'RESERVED' && (
           <div className="reservation-hold-banner" role="status">
@@ -293,7 +341,7 @@ export default function CustomerRentalDetailPage() {
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
                   <strong>
                     {countdownState.needsServerRefresh
-                      ? 'Đang kiểm tra hạn giữ chỗ với máy chủ...'
+                      ? 'Đang kiểm tra hạn giữ chỗ...'
                       : 'Thời gian giữ chỗ còn lại:'}
                   </strong>
                   {!countdownState.needsServerRefresh && (
@@ -302,10 +350,18 @@ export default function CustomerRentalDetailPage() {
                     </span>
                   )}
                 </div>
-                <p style={{ marginTop: 6 }}>
-                  Hạn nhận xe trên máy chủ:{' '}
-                  <strong>{formatDateTimeVN(rental.expires_at, { withSeconds: true })}</strong>. Vui lòng có mặt tại trạm nhận xe để{' '}
-                  <strong>nhân viên trạm kiểm tra giấy tờ và thực hiện bàn giao nhận xe</strong> (khách hàng không tự bấm nhận xe trên ứng dụng).
+                {!countdownState.needsServerRefresh && (
+                  <div className="rental-countdown-track" aria-hidden="true">
+                    <div
+                      className="rental-countdown-fill"
+                      style={{ width: `${holdProgressPct}%` }}
+                    />
+                  </div>
+                )}
+                <p style={{ marginTop: 8 }}>
+                  Hạn nhận xe:{' '}
+                  <strong>{formatDateTimeVN(rental.expires_at, { withSeconds: true })}</strong>. Bước tiếp theo: đến quầy trạm nhận xe và xuất trình CCCD đã xác minh để{' '}
+                  <strong>nhân viên trạm kiểm tra và thực hiện bàn giao xe</strong>.
                 </p>
               </div>
               {canCustomerCancel && (

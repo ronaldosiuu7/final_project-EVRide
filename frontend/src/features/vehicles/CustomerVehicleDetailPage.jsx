@@ -301,6 +301,10 @@ export default function CustomerVehicleDetailPage() {
               <ShieldCheckIcon size={16} />
               <span>Nhân viên tại trạm kiểm tra CCCD đã xác minh và bàn giao xe trực tiếp.</span>
             </div>
+            <div className="vehicle-booking-guarantee-item">
+              <MapPinIcon size={16} />
+              <span>Có thể trả xe tại trạm nhận hoặc bất kỳ trạm EVRide nào khác còn chỗ trống.</span>
+            </div>
           </div>
 
           <div className="customer-card-actions">

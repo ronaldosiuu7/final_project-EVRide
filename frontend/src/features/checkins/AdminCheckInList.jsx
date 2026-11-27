@@ -119,22 +119,22 @@ export default function AdminCheckInList() {
     <div>
       <div className="page-header">
         <div>
-          <h2>Danh sách kiểm tra sau 24 giờ từ pickup</h2>
+          <h2>Danh sách kiểm tra chuyến sau 24 giờ</h2>
           <p className="muted">
-            Theo dõi chuyến <code>IN_RENT</code> đã qua mốc 24 giờ hoặc tới <code>next_check_at</code>.
+            Theo dõi các chuyến đang thuê đã vượt mốc 24 giờ từ lúc bàn giao hoặc đến lịch hẹn kiểm tra lại.
           </p>
         </div>
       </div>
 
       <div className="alert alert-info">
-        Danh sách <code>GET /rental-check-ins</code> là dữ liệu chỉ đọc. Ngưỡng 24 giờ không tự động phạt, không tạo trạng thái <code>OVERDUE</code> và không tự kết luận mất trộm.
+        Mốc kiểm tra 24 giờ giúp đội ngũ vận hành chủ động liên hệ xác nhận tình trạng xe. Ngưỡng này không tự động phạt, không khóa chuyến và không tự kết luận mất xe.
       </div>
 
       {lastEscalatedIncident && (
         <div className="alert alert-warning row-wrap">
           <span>
-            Đã mở hồ sơ sự cố <strong>#{lastEscalatedIncident.id}</strong> (trạng thái{' '}
-            <code>{lastEscalatedIncident.status}</code>).
+            Đã mở hồ sơ sự cố <strong>#{lastEscalatedIncident.id}</strong>{' '}
+            <StatusBadge domain="incidentStatus" value={lastEscalatedIncident.status} />
           </span>
           <Link to={`/admin/incidents/${lastEscalatedIncident.id}`} className="btn btn-sm btn-primary">
             Mở hồ sơ sự cố #{lastEscalatedIncident.id}
@@ -179,7 +179,7 @@ export default function AdminCheckInList() {
           setPage(1);
         }}
         emptyTitle="Hiện không có chuyến thuê nào đến lịch kiểm tra 24 giờ"
-        emptyHint="Các chuyến IN_RENT vượt mốc 24 giờ từ lúc pickup hoặc tới hẹn next_check_at sẽ tự xuất hiện tại đây."
+        emptyHint="Các chuyến đang thuê vượt mốc 24 giờ từ lúc bàn giao hoặc đến lịch hẹn kiểm tra lại sẽ tự động xuất hiện tại đây."
       />
 
       {selectedItem && (

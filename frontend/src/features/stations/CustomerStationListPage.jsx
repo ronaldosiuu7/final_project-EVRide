@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import useApiQuery from '../../hooks/useApiQuery.js';
 import useDebouncedValue from '../../hooks/useDebouncedValue.js';
@@ -12,6 +12,7 @@ import {
   TextField,
 } from '../../components/ui/index.js';
 import StationCard, { StationGridSkeleton } from '../../components/customer/StationCard.jsx';
+import StationMap from '../../components/maps/StationMap.jsx';
 import {
   MapPinIcon,
   RefreshIcon,
@@ -22,6 +23,7 @@ import {
   buildStationQueryParams,
   getSystemTotalFromMeta,
 } from '../../utils/fleetDisplay.js';
+import { calculateDistanceKm, formatDistanceVi } from '../../utils/mapHelpers.js';
 
 const PAGE_SIZE_OPTIONS = [12, 24, 48];
 
@@ -39,6 +41,10 @@ function readInitialFilters(searchParams) {
 export default function CustomerStationListPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [filters, setFilters] = useState(() => readInitialFilters(searchParams));
+  const [viewMode, setViewMode] = useState('split');
+  const [selectedStationId, setSelectedStationId] = useState(null);
+  const [userLocation, setUserLocation] = useState(null);
+  const mapSectionRef = useRef(null);
   const debouncedQ = useDebouncedValue(filters.q, 300);
 
   // Đồng bộ URL khi người dùng tìm hoặc đổi trang (tránh ghi đè state nếu URL không đổi).
@@ -81,10 +87,34 @@ export default function CustomerStationListPage() {
   );
 
   const stations = Array.isArray(data) ? data : [];
+  const stationsWithDistance = useMemo(() => {
+    const enriched = stations.map((station) => {
+      const km = userLocation
+        ? calculateDistanceKm(userLocation, { lat: station.latitude, lng: station.longitude })
+        : null;
+      return { station, distanceKm: km, distanceText: formatDistanceVi(km) };
+    });
+    if (userLocation) {
+      enriched.sort((a, b) => {
+        if (a.distanceKm === null) return 1;
+        if (b.distanceKm === null) return -1;
+        return a.distanceKm - b.distanceKm;
+      });
+    }
+    return enriched;
+  }, [stations, userLocation]);
   const totalStations = getSystemTotalFromMeta(meta);
   const hasActiveFilters = Boolean(
     filters.q.trim() || filters.hasAvailableVehicles || filters.hasReturnSpace
   );
+
+  const handleFocusOnMap = (station) => {
+    setSelectedStationId(String(station.id));
+    if (viewMode === 'list') {
+      setViewMode('split');
+    }
+    mapSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  };
 
   const handleResetFilters = () => {
     setFilters((prev) => ({
@@ -214,19 +244,51 @@ export default function CustomerStationListPage() {
           </div>
 
           {!loading && !error && (
-            <div className="customer-results-bar">
-              <span>
-                {totalStations !== null ? (
-                  <>
-                    Tìm thấy <strong>{totalStations}</strong> trạm phù hợp
-                    {stations.length > 0 && totalStations > stations.length
-                      ? ` · Hiển thị ${stations.length} trạm ở trang ${filters.page}`
-                      : ''}
-                  </>
-                ) : (
-                  'Đã tải danh sách trạm'
-                )}
-              </span>
+            <div className="row-wrap" style={{ gap: 12, justifyContent: 'space-between', alignItems: 'center' }}>
+              <div className="customer-results-bar">
+                <span>
+                  {totalStations !== null ? (
+                    <>
+                      Tìm thấy <strong>{totalStations}</strong> trạm phù hợp
+                      {stations.length > 0 && totalStations > stations.length
+                        ? ` · Hiển thị ${stations.length} trạm ở trang ${filters.page}`
+                        : ''}
+                      {userLocation ? ' · Đã sắp xếp gần bạn nhất' : ''}
+                    </>
+                  ) : (
+                    'Đã tải danh sách trạm'
+                  )}
+                </span>
+              </div>
+
+              {stations.length > 0 && (
+                <div className="station-view-switch" role="group" aria-label="Chế độ hiển thị trạm">
+                  <button
+                    type="button"
+                    className={`station-view-btn${viewMode === 'split' ? ' is-active' : ''}`}
+                    aria-pressed={viewMode === 'split'}
+                    onClick={() => setViewMode('split')}
+                  >
+                    Bản đồ &amp; Danh sách
+                  </button>
+                  <button
+                    type="button"
+                    className={`station-view-btn${viewMode === 'map' ? ' is-active' : ''}`}
+                    aria-pressed={viewMode === 'map'}
+                    onClick={() => setViewMode('map')}
+                  >
+                    Chỉ bản đồ
+                  </button>
+                  <button
+                    type="button"
+                    className={`station-view-btn${viewMode === 'list' ? ' is-active' : ''}`}
+                    aria-pressed={viewMode === 'list'}
+                    onClick={() => setViewMode('list')}
+                  >
+                    Chỉ danh sách
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -271,11 +333,32 @@ export default function CustomerStationListPage() {
 
       {!loading && !error && stations.length > 0 && (
         <>
-          <div className="customer-card-grid">
-            {stations.map((station) => (
-              <StationCard key={station.id} station={station} />
-            ))}
-          </div>
+          {viewMode !== 'list' && (
+            <section ref={mapSectionRef} aria-label="Bản đồ mạng lưới trạm EVRide">
+              <StationMap
+                stations={stations}
+                mode="customer"
+                selectedStationId={selectedStationId}
+                onSelectStation={(st) => setSelectedStationId(String(st.id))}
+                userLocation={userLocation}
+                onUserLocationChange={setUserLocation}
+              />
+            </section>
+          )}
+
+          {viewMode !== 'map' && (
+            <div className="customer-card-grid">
+              {stationsWithDistance.map(({ station, distanceText }) => (
+                <StationCard
+                  key={station.id}
+                  station={station}
+                  isSelected={selectedStationId === String(station.id)}
+                  distanceText={distanceText}
+                  onFocusMap={handleFocusOnMap}
+                />
+              ))}
+            </div>
+          )}
 
           <Pagination
             meta={meta}
